@@ -78,7 +78,7 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen> {
             Expanded(
               flex: 5,
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 40),
+                padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
                 decoration: const BoxDecoration(
                   gradient: LinearGradient(
                     begin: Alignment.topLeft,
@@ -89,121 +89,119 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen> {
                     ],
                   ),
                 ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    // Brand Header
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(12),
-                              decoration: BoxDecoration(
-                                color: AppColors.brandAccent.withValues(alpha: 0.15),
-                                borderRadius: BorderRadius.circular(16),
-                                border: Border.all(
-                                  color: AppColors.brandAccent.withValues(alpha: 0.3),
-                                  width: 2,
-                                ),
-                              ),
-                              child: const Icon(
-                                Icons.shelves,
-                                color: AppColors.brandAccent,
-                                size: 34,
-                              ),
-                            ),
-                            const SizedBox(width: 16),
-                            const Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'OTTO SCENTS',
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 26,
-                                    fontWeight: FontWeight.w900,
-                                    letterSpacing: 2.0,
-                                  ),
-                                ),
-                                Text(
-                                  'SMART SHELF SYSTEM',
-                                  style: TextStyle(
-                                    color: AppColors.brandAccent,
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w700,
-                                    letterSpacing: 1.5,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 48),
-                        const Text(
-                          'Automated Perfume\nInventory Monitoring',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 34,
-                            fontWeight: FontWeight.w800,
-                            height: 1.2,
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        const Text(
-                          'Computer Vision real-time stock detection and retail shelf verification.',
-                          style: TextStyle(
-                            color: AppColors.darkTextSecondary,
-                            fontSize: 16,
-                            height: 1.5,
-                          ),
-                        ),
-                      ],
-                    ),
-
-                    // Kiosk Status Footer
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: AppColors.darkSurface.withValues(alpha: 0.6),
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: AppColors.darkBorder),
-                      ),
-                      child: Row(
+                child: SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      // Brand Header
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Container(
-                            width: 12,
-                            height: 12,
-                            decoration: const BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: AppColors.statusGreen,
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          const Expanded(
-                            child: Text(
-                              'Kiosk Online • Touchscreen Ready',
-                              style: TextStyle(
-                                color: AppColors.darkTextPrimary,
-                                fontSize: 14,
-                                fontWeight: FontWeight.w600,
+                          Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(10),
+                                decoration: BoxDecoration(
+                                  color: AppColors.brandAccent.withValues(alpha: 0.15),
+                                  borderRadius: BorderRadius.circular(16),
+                                  border: Border.all(
+                                    color: AppColors.brandAccent.withValues(alpha: 0.3),
+                                    width: 2,
+                                  ),
+                                ),
+                                child: const Icon(
+                                  Icons.shelves,
+                                  color: AppColors.brandAccent,
+                                  size: 30,
+                                ),
                               ),
+                              const SizedBox(width: 14),
+                              const Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'OTTO SCENTS',
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 22,
+                                        fontWeight: FontWeight.w900,
+                                        letterSpacing: 2.0,
+                                      ),
+                                    ),
+                                    Text(
+                                      'SMART SHELF SYSTEM',
+                                      style: TextStyle(
+                                        color: AppColors.brandAccent,
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w700,
+                                        letterSpacing: 1.5,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 32),
+                          const Text(
+                            'Automated Perfume\nInventory Monitoring',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 28,
+                              fontWeight: FontWeight.w800,
+                              height: 1.2,
                             ),
                           ),
+                          const SizedBox(height: 12),
                           const Text(
-                            'v1.0',
+                            'Computer Vision real-time stock detection and retail shelf verification.',
                             style: TextStyle(
-                              color: AppColors.darkTextMuted,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w500,
+                              color: AppColors.darkTextSecondary,
+                              fontSize: 15,
+                              height: 1.4,
                             ),
                           ),
                         ],
                       ),
-                    ),
-                  ],
+                      const SizedBox(height: 36),
+
+                      // Kiosk Status Footer
+                      Container(
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: AppColors.darkSurface.withValues(alpha: 0.6),
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: AppColors.darkBorder),
+                        ),
+                        child: const Row(
+                          children: [
+                            Icon(Icons.circle, color: AppColors.statusGreen, size: 12),
+                            SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                'Kiosk Online • Touchscreen Ready',
+                                style: TextStyle(
+                                  color: AppColors.darkTextPrimary,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                            Text(
+                              'v1.0',
+                              style: TextStyle(
+                                color: AppColors.darkTextMuted,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
