@@ -1,17 +1,15 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
-import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
-import 'firebase_options.dart';
-import 'providers/app_provider.dart';
-import 'app.dart';
+import 'core/router/app_router.dart';
+import 'core/theme/app_theme.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Initialize SQLite FFI for Linux Desktop
+  // Initialize SQLite FFI for Linux Desktop Standalone Kiosk
   if (Platform.isLinux || Platform.isWindows || Platform.isMacOS) {
     sqfliteFfiInit();
     databaseFactory = databaseFactoryFfi;
@@ -33,26 +31,31 @@ void main() async {
       await windowManager.waitUntilReadyToShow(windowOptions, () async {
         await windowManager.show();
         await windowManager.focus();
-        await windowManager.maximize();
       });
     } catch (_) {}
   }
 
-  // Initialize Firebase Cloud Firestore with graceful local fallback
-  try {
-    await Firebase.initializeApp(
-      options: DefaultFirebaseOptions.currentPlatform,
-    );
-  } catch (_) {
-    // If running offline or without active network credentials, continue with local SQLite/Repository
-  }
-
   runApp(
-    MultiProvider(
-      providers: [
-        ChangeNotifierProvider(create: (_) => AppProvider()),
-      ],
-      child: const SmartShelfApp(),
+    const ProviderScope(
+      child: OttoScentsKioskApp(),
     ),
   );
+}
+
+class OttoScentsKioskApp extends ConsumerWidget {
+  const OttoScentsKioskApp({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final router = ref.watch(appRouterProvider);
+
+    return MaterialApp.router(
+      title: 'Otto Scents Smart Shelf',
+      debugShowCheckedModeBanner: false,
+      theme: AppTheme.darkKioskTheme,
+      darkTheme: AppTheme.darkKioskTheme,
+      themeMode: ThemeMode.dark,
+      routerConfig: router,
+    );
+  }
 }
