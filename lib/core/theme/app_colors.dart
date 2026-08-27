@@ -3,8 +3,8 @@ import 'package:flutter/material.dart';
 class AppColors {
   // Brand
   static const Color brandPrimary = Color(0xFF0F172A); // Deep Slate Navy
-  static const Color brandAccent = Color(0xFF38BDF8); // Electric Sky Blue
-  static const Color brandGold = Color(0xFFFBBF24); // Warm Gold Accent
+  static const Color brandAccent = Color(0xFF0284C7); // Electric Sky Blue
+  static const Color brandGold = Color(0xFFD97706); // Warm Gold Accent
 
   // High-Contrast Dark Theme (Retail Kiosk Optimized)
   static const Color darkBackground = Color(0xFF090D16);
@@ -14,6 +14,15 @@ class AppColors {
   static const Color darkTextPrimary = Color(0xFFF8FAFC);
   static const Color darkTextSecondary = Color(0xFF94A3B8);
   static const Color darkTextMuted = Color(0xFF64748B);
+
+  // High-Contrast Light Theme (Retail Kiosk Daylight Mode)
+  static const Color lightBackground = Color(0xFFF1F5F9);
+  static const Color lightSurface = Color(0xFFFFFFFF);
+  static const Color lightSurfaceElevated = Color(0xFFF8FAFC);
+  static const Color lightBorder = Color(0xFFCBD5E1);
+  static const Color lightTextPrimary = Color(0xFF0F172A);
+  static const Color lightTextSecondary = Color(0xFF475569);
+  static const Color lightTextMuted = Color(0xFF64748B);
 
   // Status & Semantic Badges
   // Green = Synced / In Stock / Normal

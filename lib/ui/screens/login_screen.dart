@@ -116,24 +116,22 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                     ),
                     const SizedBox(height: 16),
-                    const Text(
-                      'Real-time automated perfume detection, YOLOv8 zone classification, and PaddleOCR cap recognition powered by Cloud Firestore and offline SQLite.',
+                    Text(
+                      'Real-time automated perfume detection, YOLOv8 zone classification, and PaddleOCR cap recognition powered by Supabase and offline SQLite.',
                       style: TextStyle(
-                        color: Color(0xFF94A3B8),
                         fontSize: 15,
+                        color: Colors.white.withValues(alpha: 0.8),
                         height: 1.5,
                       ),
                     ),
-                    const SizedBox(height: 36),
-
-                    // Feature highlights badges
+                    const SizedBox(height: 32),
                     Wrap(
                       spacing: 12,
                       runSpacing: 12,
                       children: [
-                        _buildFeatureBadge(Icons.camera_alt_outlined, 'YOLOv8 + PaddleOCR'),
-                        _buildFeatureBadge(Icons.storage_rounded, 'SQLite Offline Engine'),
-                        _buildFeatureBadge(Icons.sync_rounded, 'Cloud Firestore Sync'),
+                        _buildFeatureBadge(Icons.camera_alt_rounded, 'YOLOv8 Vision'),
+                        _buildFeatureBadge(Icons.document_scanner_rounded, 'PaddleOCR'),
+                        _buildFeatureBadge(Icons.sync_rounded, 'Supabase Sync'),
                         _buildFeatureBadge(Icons.touch_app_rounded, '1080p Touchscreen UI'),
                       ],
                     ),

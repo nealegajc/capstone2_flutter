@@ -1,4 +1,4 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:intl/intl.dart';
 
 class AlertModel {
   final String id;
@@ -21,12 +21,17 @@ class AlertModel {
     DateTime? createdAt,
   }) : createdAt = createdAt ?? DateTime.now();
 
-  factory AlertModel.fromMap(Map<String, dynamic> map, String id) {
+  String get formattedTime {
+    return DateFormat('MMM dd, hh:mm a').format(createdAt);
+  }
+
+  String get formattedTimestamp => formattedTime;
+
+  factory AlertModel.fromMap(Map<String, dynamic> map, [String? id]) {
+    final alertId = id ?? (map['id'] as String? ?? '');
     DateTime parsedDate;
-    final ca = map['createdAt'] ?? map['time'];
-    if (ca is Timestamp) {
-      parsedDate = ca.toDate();
-    } else if (ca is int) {
+    final ca = map['createdAt'] ?? map['created_at'] ?? map['time'];
+    if (ca is int) {
       parsedDate = DateTime.fromMillisecondsSinceEpoch(ca);
     } else if (ca is String) {
       parsedDate = DateTime.tryParse(ca) ?? DateTime.now();
@@ -34,36 +39,48 @@ class AlertModel {
       parsedDate = DateTime.now();
     }
 
-    final rawIsRead = map['isRead'];
+    final rawIsRead = map['isRead'] ?? map['is_read'];
     final bool parsedIsRead = (rawIsRead is bool)
         ? rawIsRead
         : (rawIsRead == 1 || rawIsRead == '1' || rawIsRead == 'true');
 
     return AlertModel(
-      id: id,
+      id: alertId,
       title: map['title'] as String? ?? 'System Alert',
       desc: map['desc'] as String? ?? map['description'] as String? ?? '',
       branch: map['branch'] as String? ?? 'San Pablo',
       type: map['type'] as String? ?? 'low_stock',
       isRead: parsedIsRead,
-      perfumeCode: map['perfumeCode'] as String? ?? '',
+      perfumeCode: map['perfumeCode'] as String? ?? map['perfume_code'] as String? ?? '',
       createdAt: parsedDate,
     );
   }
 
-  factory AlertModel.fromFirestore(DocumentSnapshot<Map<String, dynamic>> doc) {
-    return AlertModel.fromMap(doc.data() ?? {}, doc.id);
-  }
-
+  /// SQLite-compatible Map with exact column names
   Map<String, dynamic> toMap() {
     return {
+      'id': id,
       'title': title,
       'desc': desc,
       'branch': branch,
       'type': type,
-      'isRead': isRead,
+      'isRead': isRead ? 1 : 0,
       'perfumeCode': perfumeCode,
-      'createdAt': Timestamp.fromDate(createdAt),
+      'createdAt': createdAt.millisecondsSinceEpoch,
+    };
+  }
+
+  /// Supabase-compatible Map
+  Map<String, dynamic> toSupabaseMap() {
+    return {
+      'id': id,
+      'title': title,
+      'description': desc,
+      'branch': branch,
+      'type': type,
+      'is_read': isRead,
+      'perfume_code': perfumeCode,
+      'created_at': createdAt.toIso8601String(),
     };
   }
 

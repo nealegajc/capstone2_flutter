@@ -17,58 +17,40 @@ class _HelpGuideScreenState extends State<HelpGuideScreen> {
 
   final List<Map<String, dynamic>> _topics = [
     {
-      'title': '1. Aligning the Shelf Regions of Interest (ROI)',
-      'desc': 'Navigate to the "Shelf AI" tab and tap "Start Live Calibration". Drag the green vertical dividers so each perfume compartment (A, B, C, D) has its own zone. Use the Nudge buttons for 1% fine adjustments.',
+      'title': '1. 3-Camera Multi-Shelf Architecture & Optical Alignment',
+      'desc': 'The kiosk integrates 3 fixed overhead cameras corresponding to 3 shelf tiers:\n• Camera 1: Layer A (Top Shelf — Male Scents #1–#19, Cap Codes AA1–AK2)\n• Camera 2: Layer B (Middle Shelf — 5 Male + 5 Female, Cap Codes BA1–BK2)\n• Camera 3: Layer C (Bottom Shelf — Female Scents #14–#32, Cap Codes CA1–CK2)\nEach tier houses 20 SKUs (10 fragrance variants × 2 bottle sizes: 100ML & 50ML).',
     },
     {
-      'title': '2. Real-Time YOLOv8 & PaddleOCR Scanning',
-      'desc': 'The overhead camera captures shelf frames periodically or when triggered manually. YOLO detects bottle caps, while PaddleOCR recognizes the printed letter code (A/B/C/D) to verify variant accuracy.',
+      'title': '2. Real-Time YOLOv8 & Cap OCR Vision Verification',
+      'desc': 'When triggered from the Dashboard or Camera Monitor, the system captures a frame via the plugged-in Rapoo USB camera (/dev/video2). YOLOv8 detects individual bottle boundaries, while OCR decodes the 3-character cap code (e.g., AA1, BA2, CK1) to count and verify each perfume SKU.',
     },
     {
-      'title': '3. Image Quality Assessment & Preprocessing',
-      'desc': 'Before executing AI detection, the frame is evaluated for brightness (min 40%), contrast, and sharpness. OpenCV applies CLAHE histogram equalization and sharpening if lighting is suboptimal.',
+      'title': '3. Automated Misplacement & Low Stock Alert Detection',
+      'desc': 'If a bottle with cap code "AA1" is detected within the ROI compartment assigned to "AA2", a "Misplaced Item" incident is instantly flagged. If any perfume variant drops below the safety threshold (default: 2 bottles), a Low Stock notice is dispatched to the Alerts Center.',
     },
     {
-      'title': '4. Offline-First SQLite Operation',
-      'desc': 'When internet connection is lost, all shelf checks, ROI calibrations, and stock movements continue locally inside SQLite. Events are queued and automatically synced once online.',
+      'title': '4. Hardware-Accelerated Zero-Copy MJPEG Live Feed',
+      'desc': 'The camera monitor runs an on-demand 30 FPS hardware stream directly from the Rapoo webcam using native V4L2 MJPEG decoding. Stream only runs when actively monitored to preserve CPU resources for AI inference.',
     },
     {
-      'title': '5. Multi-Branch Cloud Synchronization',
-      'desc': 'The San Pablo main branch kiosk and Lipa secondary branch kiosk continuously replicate state through Cloud Firestore for centralized inventory monitoring and restocking.',
+      'title': '5. Offline-First SQLite Operation & Cloud Sync',
+      'desc': 'All stock counts, scans, and audit trail logs are stored securely in local SQLite databases. When network connectivity is established, records automatically replicate to Supabase Cloud.',
     },
     {
-      'title': '6. Detecting Misplaced Perfume Bottles',
-      'desc': 'If a bottle with cap code "B" is placed inside Zone "A", the system automatically creates a "Misplaced Item" alert and flags the compartment for staff attention.',
+      'title': '6. Store Owner 6-Digit PIN Security',
+      'desc': 'The kiosk requires a 6-digit PIN to unlock. Store owners can securely change their PIN in Settings > Security. The updated hash is stored in SQLite with SHA-256 encryption, invalidating previous PINs immediately.',
     },
     {
-      'title': '7. Low Stock Warnings & Thresholds',
-      'desc': 'When detected count drops to or below the configured low stock threshold (default 2 bottles), an orange warning notification is sent to the Alerts center.',
-    },
-    {
-      'title': '8. Requesting Inter-Branch Restock',
-      'desc': 'Staff can open any product detail page and tap "Request Branch Restock" to transfer inventory between San Pablo and Lipa branches.',
-    },
-    {
-      'title': '9. Touchscreen Kiosk Navigation',
-      'desc': 'Designed with large 56px+ tap targets, high contrast AMOLED dark mode, and a 5-tab pill navigation bar optimized for 1920x1080 landscape displays.',
-    },
-    {
-      'title': '10. Registering New Fragrances',
-      'desc': 'Admin users can navigate to Settings > Register Product to create new SKUs, assign them to shelf letter codes (A–D), and configure retail pricing.',
-    },
-    {
-      'title': '11. Role-Based Access Control',
-      'desc': 'Admin accounts (San Pablo) have full management rights including financial reports, product creation, and log deletion. Staff accounts (Lipa) focus on daily shelf operations.',
+      'title': '7. Restock & Shipment Verification',
+      'desc': 'When new perfume shipments arrive, staff log the batch in "Restock Records". Once bottles are placed onto the corresponding shelf layer, the camera scan automatically validates physical placement against the delivery manifest.',
     },
   ];
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
     return ScrollScreen(
-      title: 'Help & Operational Guide',
-      subtitle: 'Complete documentation for Smart Shelf kiosk setup, calibration, and AI workflows',
+      title: 'Otto Scents Kiosk Help & Operational Manual',
+      subtitle: 'Complete documentation for 3-camera setup, YOLOv8 vision scanning, cap OCR, and inventory workflows',
       showBackButton: true,
       onBack: widget.onBack,
       children: [
@@ -96,24 +78,26 @@ class _HelpGuideScreenState extends State<HelpGuideScreen> {
                       Expanded(
                         child: Text(
                           topic['title'] as String,
-                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                          style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
                         ),
                       ),
                       Icon(
                         isExpanded ? Icons.keyboard_arrow_up_rounded : Icons.keyboard_arrow_down_rounded,
-                        color: AppColors.accent,
-                        size: 28,
+                        color: Theme.of(context).colorScheme.primary,
+                        size: 26,
                       ),
                     ],
                   ),
                   if (isExpanded) ...[
-                    const Divider(height: 24),
+                    const SizedBox(height: 12),
+                    const Divider(height: 1),
+                    const SizedBox(height: 12),
                     Text(
                       topic['desc'] as String,
                       style: TextStyle(
                         fontSize: 14,
                         height: 1.5,
-                        color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                        color: Theme.of(context).textTheme.bodyMedium?.color?.withValues(alpha: 0.85),
                       ),
                     ),
                   ],

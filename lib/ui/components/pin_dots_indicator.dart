@@ -95,8 +95,8 @@ class _PinDotsIndicatorState extends State<PinDotsIndicator>
           }
 
           return AnimatedContainer(
-            duration: const Duration(milliseconds: 200),
-            curve: Curves.easeOutBack,
+            duration: const Duration(milliseconds: 180),
+            curve: Curves.easeOut,
             margin: const EdgeInsets.symmetric(horizontal: 10),
             width: isFilled ? 26 : 22,
             height: isFilled ? 26 : 22,
@@ -107,15 +107,15 @@ class _PinDotsIndicatorState extends State<PinDotsIndicator>
                 color: borderColor,
                 width: isFilled || isCurrent ? 2.5 : 2.0,
               ),
-              boxShadow: isFilled
-                  ? [
-                      BoxShadow(
-                        color: AppColors.brandAccent.withValues(alpha: 0.4),
-                        blurRadius: 10,
-                        spreadRadius: 1,
-                      ),
-                    ]
-                  : null,
+              boxShadow: [
+                BoxShadow(
+                  color: isFilled
+                      ? AppColors.brandAccent.withValues(alpha: 0.35)
+                      : Colors.transparent,
+                  blurRadius: isFilled ? 8.0 : 0.0,
+                  spreadRadius: isFilled ? 1.0 : 0.0,
+                ),
+              ],
             ),
           );
         }),

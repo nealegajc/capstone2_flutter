@@ -3,6 +3,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:smart_shelf_linux/data/services/sqlite_service.dart';
 import 'package:smart_shelf_linux/data/models/inventory_record_model.dart';
 import 'package:smart_shelf_linux/data/models/alert_model.dart';
+import 'package:smart_shelf_linux/core/constants/app_constants.dart';
 
 void main() {
   setUpAll(() {
@@ -20,46 +21,42 @@ void main() {
 
     test('Initial seeding populates master products catalog', () async {
       final products = await sqliteService.getProducts();
-      expect(products.length, equals(4));
-      expect(products.map((p) => p.perfumeCode).toList(), containsAll(['A', 'B', 'C', 'D']));
+      expect(products.length, equals(60));
+      expect(products.map((p) => p.perfumeCode).toList(), containsAll(['AA1', 'AA2', 'BA1', 'CK2']));
     });
 
-    test('Initial seeding populates branch shelf regions', () async {
+    test('Initial seeding populates branch shelf regions for 3 cameras', () async {
       final spRegions = await sqliteService.getShelfRegions('San Pablo');
-      expect(spRegions.length, equals(4));
-      expect(spRegions.first.code, equals('A'));
-      expect(spRegions.first.left, equals(0.0));
-      expect(spRegions.first.right, equals(0.25));
-
-      final lipaRegions = await sqliteService.getShelfRegions('Lipa');
-      expect(lipaRegions.length, equals(4));
+      expect(spRegions.length, equals(3));
+      expect(spRegions.first.code, equals('Layer A'));
+      expect(spRegions.first.cameraId, equals(1));
+      expect(spRegions[1].cameraId, equals(2));
+      expect(spRegions[2].cameraId, equals(3));
     });
 
     test('Inventory CRUD operations work properly', () async {
       final initialInv = await sqliteService.getInventoryRecords('San Pablo');
-      expect(initialInv.length, equals(4));
+      expect(initialInv.length, equals(60));
 
       // Upsert modified record
       final updatedItem = InventoryRecordModel(
-        id: 'inv_sp_A',
-        perfumeCode: 'A',
-        name: 'Otto Scents Ocean Breeze Updated',
+        id: 'inv_San Pablo_AA1',
+        perfumeCode: 'AA1',
+        name: 'Bvlgari Extreme 100ML Updated',
         category: 'Men',
         branch: 'San Pablo',
-        shelf: 'Area A',
+        shelf: 'Layer A (Top) - Slot 1',
         recorded: 5,
         detected: 3,
         status: 'normal',
-        price: 280.0,
       );
 
       await sqliteService.upsertInventoryRecord(updatedItem);
 
       final invAfter = await sqliteService.getInventoryRecords('San Pablo');
-      final fetched = invAfter.firstWhere((i) => i.id == 'inv_sp_A');
-      expect(fetched.name, equals('Otto Scents Ocean Breeze Updated'));
+      final fetched = invAfter.firstWhere((i) => i.id == 'inv_San Pablo_AA1');
+      expect(fetched.name, equals('Bvlgari Extreme 100ML Updated'));
       expect(fetched.detected, equals(3));
-      expect(fetched.price, equals(280.0));
     });
 
     test('Alert lifecycle operations in SQLite', () async {
@@ -122,15 +119,37 @@ void main() {
       final adminCreds = await sqliteService.getUserWithCredentials('admin@ottoscents.com');
       expect(adminCreds, isNotNull);
       expect(adminCreds!['user'].role, equals('admin'));
-      expect(adminCreds['passwordHash'], equals(SqliteService.hashPassword('password123')));
+      expect(adminCreds['passwordHash'], equals(SqliteService.hashPassword(AppConstants.defaultOwnerPin)));
 
       // 2. Wrong password verification fails
       final wrongPasswordHash = SqliteService.hashPassword('wrongpassword');
       expect(adminCreds['passwordHash'] == wrongPasswordHash, isFalse);
 
       // 3. Correct password verification succeeds
-      final correctPasswordHash = SqliteService.hashPassword('password123');
+      final correctPasswordHash = SqliteService.hashPassword(AppConstants.defaultOwnerPin);
       expect(adminCreds['passwordHash'] == correctPasswordHash, isTrue);
+    });
+
+    test('Store Owner PIN update strictly invalidates old PIN', () async {
+      // 1. Initial default PIN is valid
+      final initialValid = await sqliteService.verifyOwnerPin('123456');
+      expect(initialValid, isTrue);
+
+      // 2. Update PIN to new 6-digit code
+      final updated = await sqliteService.updateOwnerPin(oldPin: '123456', newPin: '852963');
+      expect(updated, isTrue);
+
+      // 3. New PIN works
+      final newPinValid = await sqliteService.verifyOwnerPin('852963');
+      expect(newPinValid, isTrue);
+
+      // 4. Old PIN is strictly rejected
+      final oldPinValid = await sqliteService.verifyOwnerPin('123456');
+      expect(oldPinValid, isFalse);
+
+      // 5. Arbitrary PIN is rejected
+      final wrongPinValid = await sqliteService.verifyOwnerPin('000000');
+      expect(wrongPinValid, isFalse);
     });
   });
 }

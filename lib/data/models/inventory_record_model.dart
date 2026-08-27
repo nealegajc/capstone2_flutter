@@ -1,5 +1,3 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-
 class InventoryRecordModel {
   final String id;
   final String perfumeCode;
@@ -34,11 +32,12 @@ class InventoryRecordModel {
   bool get isMisplaced => status == 'misplaced';
   bool get isNeedsReview => status == 'needs_review';
 
-  factory InventoryRecordModel.fromMap(Map<String, dynamic> map, String id) {
+  factory InventoryRecordModel.fromMap(Map<String, dynamic> map, [String? id]) {
+    final recordId = id ?? (map['id'] as String? ?? '');
     DateTime parsedDate;
-    final lastUpdatedVal = map['lastUpdated'];
-    if (lastUpdatedVal is Timestamp) {
-      parsedDate = lastUpdatedVal.toDate();
+    final lastUpdatedVal = map['lastUpdated'] ?? map['last_updated'];
+    if (lastUpdatedVal is int) {
+      parsedDate = DateTime.fromMillisecondsSinceEpoch(lastUpdatedVal);
     } else if (lastUpdatedVal is String) {
       parsedDate = DateTime.tryParse(lastUpdatedVal) ?? DateTime.now();
     } else {
@@ -46,8 +45,11 @@ class InventoryRecordModel {
     }
 
     return InventoryRecordModel(
-      id: id,
-      perfumeCode: map['perfumeCode'] as String? ?? map['code'] as String? ?? '',
+      id: recordId,
+      perfumeCode: map['perfumeCode'] as String? ??
+          map['perfume_code'] as String? ??
+          map['code'] as String? ??
+          '',
       name: map['name'] as String? ?? map['productName'] as String? ?? '',
       category: map['category'] as String? ?? 'Men',
       branch: map['branch'] as String? ?? 'San Pablo',
@@ -55,18 +57,18 @@ class InventoryRecordModel {
       recorded: (map['recorded'] as num?)?.toInt() ?? 5,
       detected: (map['detected'] as num?)?.toInt() ?? 5,
       status: map['status'] as String? ?? 'normal',
-      misplacementDetails: map['misplacementDetails'] as String? ?? '',
+      misplacementDetails: map['misplacementDetails'] as String? ??
+          map['misplacement_details'] as String? ??
+          '',
       lastUpdated: parsedDate,
       price: (map['price'] as num?)?.toDouble() ?? 250.0,
     );
   }
 
-  factory InventoryRecordModel.fromFirestore(DocumentSnapshot<Map<String, dynamic>> doc) {
-    return InventoryRecordModel.fromMap(doc.data() ?? {}, doc.id);
-  }
-
+  /// SQLite-compatible Map with exact column names
   Map<String, dynamic> toMap() {
     return {
+      'id': id,
       'perfumeCode': perfumeCode,
       'name': name,
       'category': category,
@@ -76,8 +78,26 @@ class InventoryRecordModel {
       'detected': detected,
       'status': status,
       'misplacementDetails': misplacementDetails,
-      'lastUpdated': Timestamp.fromDate(lastUpdated),
       'price': price,
+      'lastUpdated': lastUpdated.millisecondsSinceEpoch,
+    };
+  }
+
+  /// Supabase-compatible Map with snake_case columns
+  Map<String, dynamic> toSupabaseMap() {
+    return {
+      'id': id,
+      'perfume_code': perfumeCode,
+      'name': name,
+      'category': category,
+      'branch': branch,
+      'shelf': shelf,
+      'recorded': recorded,
+      'detected': detected,
+      'status': status,
+      'misplacement_details': misplacementDetails,
+      'price': price,
+      'last_updated': lastUpdated.toIso8601String(),
     };
   }
 

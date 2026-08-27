@@ -189,7 +189,7 @@ class _ShelfScreenState extends State<ShelfScreen> {
                         ),
                         const SizedBox(height: 8),
                         Text(
-                          'Captures current shelf image, executes YOLOv8 model inference, OCR cap tags, and updates Firestore.',
+                          'Captures current shelf image, executes YOLOv8 model inference, OCR cap tags, and updates Supabase.',
                           style: TextStyle(
                             fontSize: 13,
                             color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,

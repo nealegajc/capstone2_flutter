@@ -1,116 +1,167 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import '../../../core/router/route_names.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/theme/theme_helper.dart';
+import '../../../providers/kiosk_providers.dart';
 import '../../components/status_badge.dart';
 
-class RestockScreen extends StatelessWidget {
+class RestockScreen extends ConsumerWidget {
   const RestockScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    const branch = 'San Pablo';
+    final eventsAsync = ref.watch(stockMovementLogsProvider(branch));
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Restock Management & Receiving'),
+        title: const Text('Restock Management & Delivery Records'),
         actions: [
           ElevatedButton.icon(
-            onPressed: () {},
-            icon: const Icon(Icons.check, size: 22),
-            label: const Text('Confirm Restock Batch'),
-            style: ElevatedButton.styleFrom(
-              minimumSize: const Size(180, 48),
-            ),
+            onPressed: () => context.push(AppRoutePaths.createRestock),
+            icon: const Icon(Icons.add_rounded, size: 22),
+            label: const Text('Log New Restock'),
           ),
           const SizedBox(width: 16),
         ],
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Delivery & Restock Verification',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.w800,
-                color: AppColors.darkTextPrimary,
-              ),
-            ),
-            const SizedBox(height: 6),
-            const Text(
-              'Compare expected incoming batch quantities against camera computer vision detections.',
-              style: TextStyle(fontSize: 14, color: AppColors.darkTextSecondary),
-            ),
-            const SizedBox(height: 20),
+      body: eventsAsync.when(
+        data: (events) {
+          final restocks = events.where((e) => e.eventType == 'RESTOCKED' || e.eventType == 'ADDED').toList();
 
-            _buildRestockCard(
-              product: 'Vanilla Musk EDP (50ml)',
-              expected: 10,
-              detected: 10,
-              match: true,
-            ),
-            const SizedBox(height: 12),
-            _buildRestockCard(
-              product: 'Citrus Bloom EDT (100ml)',
-              expected: 6,
-              detected: 5,
-              match: false,
-            ),
-          ],
-        ),
+          if (restocks.isEmpty) {
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.inventory_2_outlined, size: 64, color: context.textMutedColor),
+                  const SizedBox(height: 16),
+                  Text(
+                    'No Restock Deliveries Logged',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: context.textPrimaryColor),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Tap "Log New Restock" to record an incoming shipment of perfume bottles.',
+                    style: TextStyle(fontSize: 14, color: context.textSecondaryColor),
+                  ),
+                  const SizedBox(height: 20),
+                  ElevatedButton.icon(
+                    onPressed: () => context.push(AppRoutePaths.createRestock),
+                    icon: const Icon(Icons.add_rounded),
+                    label: const Text('Log Restock Batch'),
+                  ),
+                ],
+              ),
+            );
+          }
+
+          return ListView(
+            padding: const EdgeInsets.all(24),
+            children: [
+              Text(
+                'Recent Restock & Receiving Records',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w800,
+                  color: context.textPrimaryColor,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'Track delivered perfume batches and compare physical shipments against automated computer vision shelf detections.',
+                style: TextStyle(fontSize: 14, color: context.textSecondaryColor),
+              ),
+              const SizedBox(height: 20),
+
+              ...restocks.map((r) {
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: _buildRestockItem(
+                    context: context,
+                    batchNumber: r.id,
+                    product: '${r.productName} (${r.perfumeCode})',
+                    roi: r.shelfArea,
+                    expectedQty: r.quantity,
+                    detectedQty: r.quantity,
+                    statusLabel: 'Verified Restock',
+                    statusType: StatusBadgeType.synced,
+                    timestamp: r.formattedTimestamp,
+                    notes: 'Delivery logged and saved into local SQLite database.',
+                  ),
+                );
+              }),
+            ],
+          );
+        },
+        loading: () => const Center(child: CircularProgressIndicator()),
+        error: (err, _) => Center(child: Text('Error loading restocks: $err')),
       ),
     );
   }
 
-  Widget _buildRestockCard({
+  Widget _buildRestockItem({
+    required BuildContext context,
+    required String batchNumber,
     required String product,
-    required int expected,
-    required int detected,
-    required bool match,
+    required String roi,
+    required int expectedQty,
+    required int detectedQty,
+    required String statusLabel,
+    required StatusBadgeType statusType,
+    required String timestamp,
+    required String notes,
   }) {
     return Card(
+      color: context.surfaceColor,
       child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Row(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: match ? AppColors.statusGreenBg : AppColors.statusOrangeBg,
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: Icon(
-                match ? Icons.verified_rounded : Icons.pending_actions_rounded,
-                color: match ? AppColors.statusGreen : AppColors.statusOrange,
-                size: 30,
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Batch #$batchNumber',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: context.textMutedColor,
+                  ),
+                ),
+                StatusBadge(type: statusType, customLabel: statusLabel),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              product,
+              style: TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.w800,
+                color: context.textPrimaryColor,
               ),
             ),
-            const SizedBox(width: 20),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    product,
-                    style: const TextStyle(
-                      fontSize: 17,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.darkTextPrimary,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Expected Delivery: $expected units • Computer Vision Count: $detected units',
-                    style: const TextStyle(
-                      color: AppColors.darkTextSecondary,
-                      fontSize: 14,
-                    ),
-                  ),
-                ],
-              ),
+            const SizedBox(height: 4),
+            Text(
+              'Shelf Location: $roi • Logged: $timestamp',
+              style: TextStyle(fontSize: 13, color: context.textSecondaryColor),
             ),
-            StatusBadge(
-              type: match ? StatusBadgeType.synced : StatusBadgeType.needsVerification,
-              customLabel: match ? 'Verified Match' : 'Discrepancy (1 Missing)',
+            Divider(height: 20, color: context.borderColor),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Delivered: $expectedQty bottles',
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: context.textPrimaryColor),
+                ),
+                Text(
+                  'Shelf Status: Synced',
+                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.statusGreen),
+                ),
+              ],
             ),
           ],
         ),

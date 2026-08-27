@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/inventory_record_model.dart';
 import '../models/alert_model.dart';
 import '../models/inventory_event_model.dart';
@@ -8,11 +8,10 @@ import '../models/restock_record_model.dart';
 import '../models/sync_queue_model.dart';
 import '../models/shelf_region_model.dart';
 
-class FirestoreRepository {
-  FirebaseFirestore? _safeFirestore;
-  FirebaseFirestore? get _firestore {
+class SupabaseRepository {
+  SupabaseClient? get _supabase {
     try {
-      return _safeFirestore ??= FirebaseFirestore.instance;
+      return Supabase.instance.client;
     } catch (_) {
       return null;
     }
@@ -23,15 +22,15 @@ class FirestoreRepository {
   // ---------------------------------------------------------------------------
   Stream<List<InventoryRecordModel>> streamInventory(String? branch) {
     try {
-      final fs = _firestore;
-      if (fs == null) return const Stream.empty();
+      final client = _supabase;
+      if (client == null) return const Stream.empty();
 
-      Query<Map<String, dynamic>> query = fs.collection('inventory_records');
+      var query = client.from('inventory_records').stream(primaryKey: ['id']);
       if (branch != null && branch.isNotEmpty && branch != 'All Branches') {
-        query = query.where('branch', isEqualTo: branch);
+        query = query.eq('branch', branch);
       }
-      return query.snapshots().map((snapshot) {
-        return snapshot.docs.map((doc) => InventoryRecordModel.fromFirestore(doc)).toList();
+      return query.map((data) {
+        return data.map((row) => InventoryRecordModel.fromMap(row)).toList();
       }).handleError((_) => <InventoryRecordModel>[]);
     } catch (_) {
       return const Stream.empty();
@@ -40,20 +39,17 @@ class FirestoreRepository {
 
   Future<void> saveInventoryRecord(InventoryRecordModel item) async {
     try {
-      final fs = _firestore;
-      if (fs == null) return;
-      await fs
-          .collection('inventory_records')
-          .doc(item.id.isEmpty ? null : item.id)
-          .set(item.toMap(), SetOptions(merge: true));
+      final client = _supabase;
+      if (client == null) return;
+      await client.from('inventory_records').upsert(item.toSupabaseMap());
     } catch (_) {}
   }
 
   Future<void> deleteInventoryRecord(String id) async {
     try {
-      final fs = _firestore;
-      if (fs == null) return;
-      await fs.collection('inventory_records').doc(id).delete();
+      final client = _supabase;
+      if (client == null) return;
+      await client.from('inventory_records').delete().eq('id', id);
     } catch (_) {}
   }
 
@@ -62,15 +58,15 @@ class FirestoreRepository {
   // ---------------------------------------------------------------------------
   Stream<List<AlertModel>> streamAlerts(String? branch) {
     try {
-      final fs = _firestore;
-      if (fs == null) return const Stream.empty();
+      final client = _supabase;
+      if (client == null) return const Stream.empty();
 
-      Query<Map<String, dynamic>> query = fs.collection('alerts');
+      var query = client.from('alerts').stream(primaryKey: ['id']);
       if (branch != null && branch.isNotEmpty && branch != 'All Branches') {
-        query = query.where('branch', isEqualTo: branch);
+        query = query.eq('branch', branch);
       }
-      return query.snapshots().map((snapshot) {
-        final list = snapshot.docs.map((doc) => AlertModel.fromFirestore(doc)).toList();
+      return query.map((data) {
+        final list = data.map((row) => AlertModel.fromMap(row)).toList();
         list.sort((a, b) => b.createdAt.compareTo(a.createdAt));
         return list;
       }).handleError((_) => <AlertModel>[]);
@@ -81,49 +77,41 @@ class FirestoreRepository {
 
   Future<void> saveAlert(AlertModel alert) async {
     try {
-      final fs = _firestore;
-      if (fs == null) return;
-      await fs.collection('alerts').doc(alert.id.isEmpty ? null : alert.id).set(alert.toMap());
+      final client = _supabase;
+      if (client == null) return;
+      await client.from('alerts').upsert(alert.toSupabaseMap());
     } catch (_) {}
   }
 
   Future<void> markAlertRead(String id) async {
     try {
-      final fs = _firestore;
-      if (fs == null) return;
-      await fs.collection('alerts').doc(id).update({'isRead': true});
+      final client = _supabase;
+      if (client == null) return;
+      await client.from('alerts').update({'is_read': true}).eq('id', id);
     } catch (_) {}
   }
 
   Future<void> markAllAlertsRead(List<String> ids) async {
     try {
-      final fs = _firestore;
-      if (fs == null) return;
-      final batch = fs.batch();
-      for (final id in ids) {
-        batch.update(fs.collection('alerts').doc(id), {'isRead': true});
-      }
-      await batch.commit();
+      final client = _supabase;
+      if (client == null || ids.isEmpty) return;
+      await client.from('alerts').update({'is_read': true}).inFilter('id', ids);
     } catch (_) {}
   }
 
   Future<void> deleteAlert(String id) async {
     try {
-      final fs = _firestore;
-      if (fs == null) return;
-      await fs.collection('alerts').doc(id).delete();
+      final client = _supabase;
+      if (client == null) return;
+      await client.from('alerts').delete().eq('id', id);
     } catch (_) {}
   }
 
   Future<void> deleteAllReadAlerts(List<String> readIds) async {
     try {
-      final fs = _firestore;
-      if (fs == null) return;
-      final batch = fs.batch();
-      for (final id in readIds) {
-        batch.delete(fs.collection('alerts').doc(id));
-      }
-      await batch.commit();
+      final client = _supabase;
+      if (client == null || readIds.isEmpty) return;
+      await client.from('alerts').delete().inFilter('id', readIds);
     } catch (_) {}
   }
 
@@ -132,15 +120,15 @@ class FirestoreRepository {
   // ---------------------------------------------------------------------------
   Stream<List<InventoryEventModel>> streamInventoryEvents(String? branch) {
     try {
-      final fs = _firestore;
-      if (fs == null) return const Stream.empty();
+      final client = _supabase;
+      if (client == null) return const Stream.empty();
 
-      Query<Map<String, dynamic>> query = fs.collection('inventory_events');
+      var query = client.from('inventory_events').stream(primaryKey: ['id']);
       if (branch != null && branch.isNotEmpty && branch != 'All Branches') {
-        query = query.where('branch', isEqualTo: branch);
+        query = query.eq('branch', branch);
       }
-      return query.snapshots().map((snapshot) {
-        final list = snapshot.docs.map((doc) => InventoryEventModel.fromFirestore(doc)).toList();
+      return query.map((data) {
+        final list = data.map((row) => InventoryEventModel.fromMap(row)).toList();
         list.sort((a, b) => b.timestamp.compareTo(a.timestamp));
         return list;
       }).handleError((_) => <InventoryEventModel>[]);
@@ -151,9 +139,9 @@ class FirestoreRepository {
 
   Future<void> logInventoryEvent(InventoryEventModel event) async {
     try {
-      final fs = _firestore;
-      if (fs == null) return;
-      await fs.collection('inventory_events').doc(event.id.isEmpty ? null : event.id).set(event.toMap());
+      final client = _supabase;
+      if (client == null) return;
+      await client.from('inventory_events').upsert(event.toSupabaseMap());
     } catch (_) {}
   }
 
@@ -162,15 +150,15 @@ class FirestoreRepository {
   // ---------------------------------------------------------------------------
   Stream<List<SystemLogModel>> streamSystemLogs(String? branch) {
     try {
-      final fs = _firestore;
-      if (fs == null) return const Stream.empty();
+      final client = _supabase;
+      if (client == null) return const Stream.empty();
 
-      Query<Map<String, dynamic>> query = fs.collection('system_logs');
+      var query = client.from('system_logs').stream(primaryKey: ['id']);
       if (branch != null && branch.isNotEmpty && branch != 'All Branches') {
-        query = query.where('branch', isEqualTo: branch);
+        query = query.eq('branch', branch);
       }
-      return query.snapshots().map((snapshot) {
-        final list = snapshot.docs.map((doc) => SystemLogModel.fromFirestore(doc)).toList();
+      return query.map((data) {
+        final list = data.map((row) => SystemLogModel.fromMap(row)).toList();
         list.sort((a, b) => b.timestamp.compareTo(a.timestamp));
         return list;
       }).handleError((_) => <SystemLogModel>[]);
@@ -181,29 +169,25 @@ class FirestoreRepository {
 
   Future<void> logSystemActivity(SystemLogModel log) async {
     try {
-      final fs = _firestore;
-      if (fs == null) return;
-      await fs.collection('system_logs').doc(log.id.isEmpty ? null : log.id).set(log.toMap());
+      final client = _supabase;
+      if (client == null) return;
+      await client.from('system_logs').upsert(log.toMap());
     } catch (_) {}
   }
 
   Future<void> deleteSystemLog(String id) async {
     try {
-      final fs = _firestore;
-      if (fs == null) return;
-      await fs.collection('system_logs').doc(id).delete();
+      final client = _supabase;
+      if (client == null) return;
+      await client.from('system_logs').delete().eq('id', id);
     } catch (_) {}
   }
 
   Future<void> deleteAllSystemLogs(List<String> ids) async {
     try {
-      final fs = _firestore;
-      if (fs == null) return;
-      final batch = fs.batch();
-      for (final id in ids) {
-        batch.delete(fs.collection('system_logs').doc(id));
-      }
-      await batch.commit();
+      final client = _supabase;
+      if (client == null || ids.isEmpty) return;
+      await client.from('system_logs').delete().inFilter('id', ids);
     } catch (_) {}
   }
 
@@ -212,15 +196,15 @@ class FirestoreRepository {
   // ---------------------------------------------------------------------------
   Stream<List<SyncQueueModel>> streamSyncQueue(String? branch) {
     try {
-      final fs = _firestore;
-      if (fs == null) return const Stream.empty();
+      final client = _supabase;
+      if (client == null) return const Stream.empty();
 
-      Query<Map<String, dynamic>> query = fs.collection('sync_queue');
+      var query = client.from('sync_queue').stream(primaryKey: ['id']);
       if (branch != null && branch.isNotEmpty && branch != 'All Branches') {
-        query = query.where('branch', isEqualTo: branch);
+        query = query.eq('branch', branch);
       }
-      return query.snapshots().map((snapshot) {
-        return snapshot.docs.map((doc) => SyncQueueModel.fromFirestore(doc)).toList();
+      return query.map((data) {
+        return data.map((row) => SyncQueueModel.fromMap(row)).toList();
       }).handleError((_) => <SyncQueueModel>[]);
     } catch (_) {
       return const Stream.empty();
@@ -232,11 +216,11 @@ class FirestoreRepository {
   // ---------------------------------------------------------------------------
   Stream<List<RestockRecordModel>> streamRestockRecords() {
     try {
-      final fs = _firestore;
-      if (fs == null) return const Stream.empty();
+      final client = _supabase;
+      if (client == null) return const Stream.empty();
 
-      return fs.collection('restock_records').snapshots().map((snapshot) {
-        return snapshot.docs.map((doc) => RestockRecordModel.fromFirestore(doc)).toList();
+      return client.from('restock_records').stream(primaryKey: ['id']).map((data) {
+        return data.map((row) => RestockRecordModel.fromMap(row)).toList();
       }).handleError((_) => <RestockRecordModel>[]);
     } catch (_) {
       return const Stream.empty();
@@ -245,9 +229,9 @@ class FirestoreRepository {
 
   Future<void> createRestockRequest(RestockRecordModel restock) async {
     try {
-      final fs = _firestore;
-      if (fs == null) return;
-      await fs.collection('restock_records').doc(restock.id.isEmpty ? null : restock.id).set(restock.toMap());
+      final client = _supabase;
+      if (client == null) return;
+      await client.from('restock_records').upsert(restock.toSupabaseMap());
     } catch (_) {}
   }
 
@@ -256,15 +240,15 @@ class FirestoreRepository {
   // ---------------------------------------------------------------------------
   Stream<List<ShelfRegionModel>> streamShelfRegions(String branch) {
     try {
-      final fs = _firestore;
-      if (fs == null) return const Stream.empty();
+      final client = _supabase;
+      if (client == null) return const Stream.empty();
 
-      return fs
-          .collection('shelf_regions')
-          .where('branch', isEqualTo: branch)
-          .snapshots()
-          .map((snapshot) {
-        return snapshot.docs.map((doc) => ShelfRegionModel.fromFirestore(doc)).toList();
+      return client
+          .from('shelf_regions')
+          .stream(primaryKey: ['id'])
+          .eq('branch', branch)
+          .map((data) {
+        return data.map((row) => ShelfRegionModel.fromMap(row)).toList();
       }).handleError((_) => <ShelfRegionModel>[]);
     } catch (_) {
       return const Stream.empty();
@@ -276,11 +260,11 @@ class FirestoreRepository {
   // ---------------------------------------------------------------------------
   Future<Map<String, dynamic>> getSystemSettings() async {
     try {
-      final fs = _firestore;
-      if (fs != null) {
-        final doc = await fs.collection('settings').doc('global_config').get();
-        if (doc.exists && doc.data() != null) {
-          return doc.data()!;
+      final client = _supabase;
+      if (client != null) {
+        final data = await client.from('system_settings').select().eq('key', 'global_config').maybeSingle();
+        if (data != null && data['value'] != null) {
+          return data;
         }
       }
     } catch (_) {}
@@ -295,9 +279,12 @@ class FirestoreRepository {
 
   Future<void> saveSystemSettings(Map<String, dynamic> settings) async {
     try {
-      final fs = _firestore;
-      if (fs == null) return;
-      await fs.collection('settings').doc('global_config').set(settings, SetOptions(merge: true));
+      final client = _supabase;
+      if (client == null) return;
+      await client.from('system_settings').upsert({
+        'key': 'global_config',
+        'value': settings.toString(),
+      });
     } catch (_) {}
   }
 }

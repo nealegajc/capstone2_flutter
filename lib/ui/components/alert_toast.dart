@@ -17,6 +17,7 @@ class AlertToast extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     Color accentColor;
     IconData icon;
 
@@ -52,12 +53,12 @@ class AlertToast extends StatelessWidget {
         padding: const EdgeInsets.all(16.0),
         constraints: const BoxConstraints(maxWidth: 450),
         decoration: BoxDecoration(
-          color: const Color(0xFF1E293B),
+          color: isDark ? const Color(0xFF1E293B) : Colors.white,
           borderRadius: BorderRadius.circular(18.0),
-          border: Border.all(color: accentColor.withOpacity(0.5), width: 1.5),
+          border: Border.all(color: accentColor.withValues(alpha: 0.5), width: 1.5),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.35),
+              color: Colors.black.withValues(alpha: isDark ? 0.35 : 0.08),
               blurRadius: 16,
               offset: const Offset(0, 6),
             ),
@@ -68,7 +69,7 @@ class AlertToast extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
-                color: accentColor.withOpacity(0.2),
+                color: accentColor.withValues(alpha: 0.2),
                 shape: BoxShape.circle,
               ),
               child: Icon(icon, color: accentColor, size: 22),
@@ -81,8 +82,8 @@ class AlertToast extends StatelessWidget {
                 children: [
                   Text(
                     title,
-                    style: const TextStyle(
-                      color: Colors.white,
+                    style: TextStyle(
+                      color: isDark ? Colors.white : const Color(0xFF0F172A),
                       fontWeight: FontWeight.bold,
                       fontSize: 15,
                     ),
@@ -90,19 +91,25 @@ class AlertToast extends StatelessWidget {
                   const SizedBox(height: 2),
                   Text(
                     message,
-                    style: const TextStyle(
-                      color: Color(0xFFCBD5E1),
+                    style: TextStyle(
+                      color: isDark ? const Color(0xFFCBD5E1) : const Color(0xFF475569),
                       fontSize: 13,
                     ),
                   ),
                 ],
               ),
             ),
-            if (onDismiss != null)
+            if (onDismiss != null) ...[
+              const SizedBox(width: 8),
               IconButton(
+                icon: Icon(
+                  Icons.close_rounded,
+                  color: isDark ? Colors.white60 : Colors.black45,
+                  size: 20,
+                ),
                 onPressed: onDismiss,
-                icon: const Icon(Icons.close_rounded, color: Colors.white60, size: 20),
               ),
+            ],
           ],
         ),
       ),

@@ -1,4 +1,4 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:intl/intl.dart';
 
 class SystemLogModel {
   final String id;
@@ -17,11 +17,16 @@ class SystemLogModel {
     DateTime? timestamp,
   }) : timestamp = timestamp ?? DateTime.now();
 
-  factory SystemLogModel.fromMap(Map<String, dynamic> map, String id) {
+  String get formattedTimestamp {
+    return DateFormat('MMM dd, hh:mm a').format(timestamp);
+  }
+
+  factory SystemLogModel.fromMap(Map<String, dynamic> map, [String? id]) {
+    final logId = id ?? (map['id'] as String? ?? '');
     DateTime parsedDate;
-    final ts = map['timestamp'] ?? map['createdAt'];
-    if (ts is Timestamp) {
-      parsedDate = ts.toDate();
+    final ts = map['timestamp'] ?? map['createdAt'] ?? map['created_at'];
+    if (ts is int) {
+      parsedDate = DateTime.fromMillisecondsSinceEpoch(ts);
     } else if (ts is String) {
       parsedDate = DateTime.tryParse(ts) ?? DateTime.now();
     } else {
@@ -29,26 +34,23 @@ class SystemLogModel {
     }
 
     return SystemLogModel(
-      id: id,
+      id: logId,
       type: map['type'] as String? ?? 'info',
-      description: map['description'] as String? ?? '',
+      description: map['description'] as String? ?? map['desc'] as String? ?? '',
       user: map['user'] as String? ?? 'System',
       branch: map['branch'] as String? ?? 'San Pablo',
       timestamp: parsedDate,
     );
   }
 
-  factory SystemLogModel.fromFirestore(DocumentSnapshot<Map<String, dynamic>> doc) {
-    return SystemLogModel.fromMap(doc.data() ?? {}, doc.id);
-  }
-
   Map<String, dynamic> toMap() {
     return {
+      'id': id,
       'type': type,
       'description': description,
       'user': user,
       'branch': branch,
-      'timestamp': Timestamp.fromDate(timestamp),
+      'timestamp': timestamp.toIso8601String(),
     };
   }
 }

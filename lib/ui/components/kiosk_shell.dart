@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import '../../core/router/route_names.dart';
 import '../../core/theme/app_colors.dart';
 import '../../providers/auth_provider.dart';
+import '../../providers/theme_provider.dart';
 import 'status_badge.dart';
 
 class KioskShell extends ConsumerStatefulWidget {
@@ -52,9 +53,10 @@ class _KioskShellState extends ConsumerState<KioskShell> {
     if (location.startsWith(AppRoutePaths.alerts)) return 4;
     if (location.startsWith(AppRoutePaths.restock)) return 5;
     if (location.startsWith(AppRoutePaths.syncStatus)) return 6;
-    if (location.startsWith(AppRoutePaths.activityLogs)) return 7;
-    if (location.startsWith(AppRoutePaths.settings)) return 8;
-    if (location.startsWith(AppRoutePaths.helpGuide)) return 9;
+    if (location.startsWith(AppRoutePaths.reports)) return 7;
+    if (location.startsWith(AppRoutePaths.activityLogs)) return 8;
+    if (location.startsWith(AppRoutePaths.settings)) return 9;
+    if (location.startsWith(AppRoutePaths.helpGuide)) return 10;
     return 0;
   }
 
@@ -82,12 +84,15 @@ class _KioskShellState extends ConsumerState<KioskShell> {
         context.go(AppRoutePaths.syncStatus);
         break;
       case 7:
-        context.go(AppRoutePaths.activityLogs);
+        context.go(AppRoutePaths.reports);
         break;
       case 8:
-        context.go(AppRoutePaths.settings);
+        context.go(AppRoutePaths.activityLogs);
         break;
       case 9:
+        context.go(AppRoutePaths.settings);
+        break;
+      case 10:
         context.go(AppRoutePaths.helpGuide);
         break;
     }
@@ -96,19 +101,27 @@ class _KioskShellState extends ConsumerState<KioskShell> {
   @override
   Widget build(BuildContext context) {
     final selectedIndex = _calculateSelectedIndex(context);
+    final themeMode = ref.watch(themeModeProvider);
+    final isDark = themeMode == ThemeMode.dark;
+
+    final headerBg = isDark ? AppColors.darkSurface : AppColors.lightSurface;
+    final headerBorder = isDark ? AppColors.darkBorder : AppColors.lightBorder;
+    final sidebarBg = isDark ? AppColors.darkSurface : AppColors.lightSurface;
+    final textPrimary = isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary;
+    final textSecondary = isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary;
 
     return Scaffold(
-      backgroundColor: AppColors.darkBackground,
+      backgroundColor: isDark ? AppColors.darkBackground : AppColors.lightBackground,
       body: Column(
         children: [
           // Top Kiosk Header Bar
           Container(
             height: 72,
             padding: const EdgeInsets.symmetric(horizontal: 24),
-            decoration: const BoxDecoration(
-              color: AppColors.darkSurface,
+            decoration: BoxDecoration(
+              color: headerBg,
               border: Border(
-                bottom: BorderSide(color: AppColors.darkBorder, width: 1.5),
+                bottom: BorderSide(color: headerBorder, width: 1.5),
               ),
             ),
             child: Row(
@@ -123,23 +136,23 @@ class _KioskShellState extends ConsumerState<KioskShell> {
                   child: const Icon(Icons.shelves, color: AppColors.brandAccent, size: 28),
                 ),
                 const SizedBox(width: 14),
-                const Column(
+                Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       'OTTO SCENTS',
                       style: TextStyle(
-                        color: AppColors.darkTextPrimary,
+                        color: textPrimary,
                         fontSize: 18,
                         fontWeight: FontWeight.w900,
                         letterSpacing: 1.5,
                       ),
                     ),
                     Text(
-                      'Smart Shelf Kiosk',
+                      'Smart Shelf Kiosk (San Pablo)',
                       style: TextStyle(
-                        color: AppColors.darkTextSecondary,
+                        color: textSecondary,
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
                       ),
@@ -151,23 +164,63 @@ class _KioskShellState extends ConsumerState<KioskShell> {
                 // Live Clock
                 Row(
                   children: [
-                    const Icon(Icons.access_time, color: AppColors.darkTextSecondary, size: 20),
+                    Icon(Icons.access_time, color: textSecondary, size: 20),
                     const SizedBox(width: 8),
                     Text(
                       _currentTime,
-                      style: const TextStyle(
-                        color: AppColors.darkTextPrimary,
+                      style: TextStyle(
+                        color: textPrimary,
                         fontSize: 15,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
                   ],
                 ),
-                const SizedBox(width: 24),
+                const SizedBox(width: 20),
 
                 // System Status Badge
                 const StatusBadge(type: StatusBadgeType.synced, customLabel: 'System Online'),
-                const SizedBox(width: 24),
+                const SizedBox(width: 14),
+
+                // Dark / Light Mode Toggle Button
+                Tooltip(
+                  message: isDark ? 'Switch to Daylight Light Mode' : 'Switch to Dark Mode',
+                  child: InkWell(
+                    onTap: () {
+                      ref.read(themeModeProvider.notifier).toggleTheme();
+                    },
+                    borderRadius: BorderRadius.circular(12),
+                    child: Container(
+                      height: 48,
+                      padding: const EdgeInsets.symmetric(horizontal: 14),
+                      decoration: BoxDecoration(
+                        color: isDark ? AppColors.darkSurfaceElevated : AppColors.lightSurfaceElevated,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: headerBorder),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            isDark ? Icons.light_mode_rounded : Icons.dark_mode_rounded,
+                            color: isDark ? const Color(0xFFFBBF24) : AppColors.brandPrimary,
+                            size: 20,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            isDark ? 'Light' : 'Dark',
+                            style: TextStyle(
+                              color: textPrimary,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 14),
 
                 // Lock Kiosk Button (Large Touch Target)
                 InkWell(
@@ -175,24 +228,24 @@ class _KioskShellState extends ConsumerState<KioskShell> {
                     ref.read(authNotifierProvider.notifier).logout();
                     context.go(AppRoutePaths.login);
                   },
-                  borderRadius: BorderRadius.circular(14),
+                  borderRadius: BorderRadius.circular(12),
                   child: Container(
-                    height: 52,
-                    padding: const EdgeInsets.symmetric(horizontal: 18),
+                    height: 48,
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
                     decoration: BoxDecoration(
-                      color: AppColors.darkSurfaceElevated,
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: AppColors.darkBorder),
+                      color: isDark ? AppColors.darkSurfaceElevated : AppColors.lightSurfaceElevated,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: headerBorder),
                     ),
-                    child: const Row(
+                    child: Row(
                       children: [
-                        Icon(Icons.lock_outline, color: AppColors.statusOrange, size: 22),
-                        SizedBox(width: 8),
+                        const Icon(Icons.lock_outline, color: AppColors.statusOrange, size: 20),
+                        const SizedBox(width: 8),
                         Text(
                           'Lock Kiosk',
                           style: TextStyle(
-                            color: AppColors.darkTextPrimary,
-                            fontSize: 15,
+                            color: textPrimary,
+                            fontSize: 14,
                             fontWeight: FontWeight.w700,
                           ),
                         ),
@@ -208,28 +261,33 @@ class _KioskShellState extends ConsumerState<KioskShell> {
           Expanded(
             child: Row(
               children: [
-                // Left Touch Navigation Sidebar (Large touch items)
+                // Left Touch Navigation Sidebar (Categorized & Ergonomic)
                 Container(
                   width: 240,
-                  decoration: const BoxDecoration(
-                    color: AppColors.darkSurface,
+                  decoration: BoxDecoration(
+                    color: sidebarBg,
                     border: Border(
-                      right: BorderSide(color: AppColors.darkBorder, width: 1.5),
+                      right: BorderSide(color: headerBorder, width: 1.5),
                     ),
                   ),
                   child: ListView(
                     padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 10),
                     children: [
-                      _buildNavItem(0, 'Dashboard', Icons.dashboard_rounded, selectedIndex),
-                      _buildNavItem(1, 'Inventory', Icons.inventory_2_rounded, selectedIndex),
-                      _buildNavItem(2, 'Shelf Camera', Icons.videocam_rounded, selectedIndex),
-                      _buildNavItem(3, 'Products & ROIs', Icons.category_rounded, selectedIndex),
-                      _buildNavItem(4, 'Alerts & Events', Icons.notifications_active_rounded, selectedIndex),
-                      _buildNavItem(5, 'Restock Verification', Icons.move_to_inbox_rounded, selectedIndex),
-                      _buildNavItem(6, 'Sync Status', Icons.sync_rounded, selectedIndex),
-                      _buildNavItem(7, 'Activity Logs', Icons.receipt_long_rounded, selectedIndex),
-                      _buildNavItem(8, 'Settings & PIN', Icons.settings_rounded, selectedIndex),
-                      _buildNavItem(9, 'Help / Guide', Icons.help_center_rounded, selectedIndex),
+                      _buildSectionHeader('OPERATIONS', textSecondary),
+                      _buildNavItem(0, 'Dashboard', Icons.dashboard_rounded, selectedIndex, isDark),
+                      _buildNavItem(1, 'Inventory', Icons.inventory_2_rounded, selectedIndex, isDark),
+                      _buildNavItem(2, 'Shelf Camera', Icons.videocam_rounded, selectedIndex, isDark),
+                      _buildNavItem(3, 'ROIs & Partitions', Icons.category_rounded, selectedIndex, isDark),
+                      _buildNavItem(4, 'Alerts & Events', Icons.notifications_active_rounded, selectedIndex, isDark),
+                      _buildNavItem(5, 'Restock Records', Icons.move_to_inbox_rounded, selectedIndex, isDark),
+
+                      const SizedBox(height: 12),
+                      _buildSectionHeader('SYSTEM & TOOLS', textSecondary),
+                      _buildNavItem(6, 'Cloud & Sync', Icons.cloud_sync_rounded, selectedIndex, isDark),
+                      _buildNavItem(7, 'Reports & Audits', Icons.analytics_outlined, selectedIndex, isDark),
+                      _buildNavItem(8, 'Activity Logs', Icons.receipt_long_rounded, selectedIndex, isDark),
+                      _buildNavItem(9, 'Settings & PIN', Icons.settings_rounded, selectedIndex, isDark),
+                      _buildNavItem(10, 'Help / Guide', Icons.help_center_rounded, selectedIndex, isDark),
                     ],
                   ),
                 ),
@@ -246,23 +304,40 @@ class _KioskShellState extends ConsumerState<KioskShell> {
     );
   }
 
-  Widget _buildNavItem(int index, String title, IconData icon, int selectedIndex) {
+  Widget _buildSectionHeader(String label, Color color) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 12, top: 8, bottom: 4),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 10,
+          fontWeight: FontWeight.w800,
+          color: color,
+          letterSpacing: 1.2,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildNavItem(int index, String title, IconData icon, int selectedIndex, bool isDark) {
     final isSelected = index == selectedIndex;
+    final activeText = isDark ? Colors.white : AppColors.brandPrimary;
+    final inactiveText = isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary;
 
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
+      padding: const EdgeInsets.symmetric(vertical: 3),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
           onTap: () => _onItemTapped(index, context),
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(12),
           splashColor: AppColors.brandAccent.withValues(alpha: 0.2),
           child: Container(
-            height: 58,
-            padding: const EdgeInsets.symmetric(horizontal: 16),
+            height: 52,
+            padding: const EdgeInsets.symmetric(horizontal: 14),
             decoration: BoxDecoration(
-              color: isSelected ? AppColors.brandAccent.withValues(alpha: 0.15) : Colors.transparent,
-              borderRadius: BorderRadius.circular(14),
+              color: isSelected ? AppColors.brandAccent.withValues(alpha: isDark ? 0.15 : 0.12) : Colors.transparent,
+              borderRadius: BorderRadius.circular(12),
               border: isSelected
                   ? Border.all(color: AppColors.brandAccent.withValues(alpha: 0.5), width: 1.5)
                   : null,
@@ -271,16 +346,16 @@ class _KioskShellState extends ConsumerState<KioskShell> {
               children: [
                 Icon(
                   icon,
-                  color: isSelected ? AppColors.brandAccent : AppColors.darkTextSecondary,
-                  size: 26,
+                  color: isSelected ? AppColors.brandAccent : inactiveText,
+                  size: 24,
                 ),
-                const SizedBox(width: 14),
+                const SizedBox(width: 12),
                 Expanded(
                   child: Text(
                     title,
                     style: TextStyle(
-                      color: isSelected ? Colors.white : AppColors.darkTextSecondary,
-                      fontSize: 15,
+                      color: isSelected ? activeText : inactiveText,
+                      fontSize: 14,
                       fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
                     ),
                     overflow: TextOverflow.ellipsis,

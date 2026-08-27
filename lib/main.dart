@@ -1,13 +1,34 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+import 'core/config/supabase_config.dart';
 import 'core/router/app_router.dart';
 import 'core/theme/app_theme.dart';
+import 'providers/theme_provider.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Load .env configuration
+  try {
+    await dotenv.load(fileName: '.env');
+  } catch (_) {
+    // If .env file is missing or unreadable, fallback to hardcoded constants in SupabaseConfig
+  }
+
+  // Initialize Supabase Cloud Backend
+  try {
+    await Supabase.initialize(
+      url: SupabaseConfig.url,
+      anonKey: SupabaseConfig.anonKey,
+    );
+  } catch (e) {
+    debugPrint('Supabase initialization warning (running in offline mode): $e');
+  }
 
   // Initialize SQLite FFI for Linux Desktop Standalone Kiosk
   if (Platform.isLinux || Platform.isWindows || Platform.isMacOS) {
@@ -48,13 +69,14 @@ class OttoScentsKioskApp extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final router = ref.watch(appRouterProvider);
+    final themeMode = ref.watch(themeModeProvider);
 
     return MaterialApp.router(
       title: 'Otto Scents Smart Shelf',
       debugShowCheckedModeBanner: false,
-      theme: AppTheme.darkKioskTheme,
+      theme: AppTheme.lightKioskTheme,
       darkTheme: AppTheme.darkKioskTheme,
-      themeMode: ThemeMode.dark,
+      themeMode: themeMode,
       routerConfig: router,
     );
   }

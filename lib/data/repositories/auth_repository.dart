@@ -1,27 +1,22 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:io';
-import 'package:http/http.dart' as http;
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/user_model.dart';
 import '../models/sync_queue_model.dart';
 import '../services/sqlite_service.dart';
-import '../../firebase_options.dart';
 
 class AuthRepository {
   final SqliteService _sqlite = SqliteService.instance;
-  final String _apiKey = DefaultFirebaseOptions.linux.apiKey;
 
-  FirebaseFirestore? _safeFirestore;
-  FirebaseFirestore? get _firestore {
+  SupabaseClient? get _supabase {
     try {
-      return _safeFirestore ??= FirebaseFirestore.instance;
+      return Supabase.instance.client;
     } catch (_) {
       return null;
     }
   }
 
-  /// Strict online Firebase authentication with fallback to cached SQLite credentials when offline.
+  /// Strict online Supabase authentication with fallback to cached SQLite credentials when offline.
   Future<UserModel> signIn(String email, String password) async {
     final cleanEmail = email.trim();
     final cleanPassword = password.trim();
@@ -32,50 +27,29 @@ class AuthRepository {
 
     bool isOnlineAttempted = false;
 
-    // 1. Attempt Cloud Firebase Authentication via Identity Toolkit REST
+    // 1. Attempt Cloud Supabase Authentication
     try {
-      final url = Uri.parse('https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=$_apiKey');
-      final response = await http.post(
-        url,
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'email': cleanEmail,
-          'password': cleanPassword,
-          'returnSecureToken': true,
-        }),
-      ).timeout(const Duration(seconds: 7));
+      final client = _supabase;
+      if (client != null) {
+        isOnlineAttempted = true;
+        final response = await client.auth.signInWithPassword(
+          email: cleanEmail,
+          password: cleanPassword,
+        );
 
-      isOnlineAttempted = true;
-      final data = jsonDecode(response.body) as Map<String, dynamic>;
-
-      if (response.statusCode == 200) {
-        // Online login succeeded!
-        final uid = data['localId'] as String? ?? '';
-        final idToken = data['idToken'] as String? ?? '';
-
-        final profile = await _fetchOrCreateProfile(uid, cleanEmail, idToken);
-        // Cache user profile and hashed password locally for future offline logins
-        await _sqlite.saveUser(profile, password: cleanPassword);
-        return profile;
-      } else {
-        // Firebase returned an explicit error -> REJECT LOGIN IMMEDIATELY
-        final error = data['error'];
-        final message = (error is Map) ? error['message'] as String? : null;
-
-        if (message == 'EMAIL_NOT_FOUND' || message == 'INVALID_PASSWORD' || message == 'INVALID_LOGIN_CREDENTIALS') {
-          throw 'Invalid email or password.';
-        } else if (message == 'USER_DISABLED') {
-          throw 'This user account has been disabled.';
-        } else if (message == 'TOO_MANY_ATTEMPTS_TRY_LATER') {
-          throw 'Too many failed login attempts. Please try again later.';
-        } else {
-          throw 'Authentication failed: ${message ?? "Unknown error"}.';
+        final user = response.user;
+        if (user != null) {
+          final profile = await _fetchOrCreateProfile(user.id, cleanEmail);
+          // Cache user profile and hashed password locally for future offline logins
+          await _sqlite.saveUser(profile, password: cleanPassword);
+          return profile;
         }
       }
+    } on AuthException catch (e) {
+      // Supabase returned an explicit authentication error -> REJECT LOGIN IMMEDIATELY
+      throw 'Authentication failed: ${e.message}';
     } on SocketException catch (_) {
       // Offline: Device has no internet connection
-    } on http.ClientException catch (_) {
-      // Offline: Network transport failure
     } on TimeoutException catch (_) {
       // Offline: Connection timed out
     } catch (e) {
@@ -101,7 +75,7 @@ class AuthRepository {
     }
   }
 
-  /// Register a new user in Firebase Auth and Cloud Firestore, caching into SQLite.
+  /// Register a new user in Supabase Auth and Supabase database, caching into SQLite.
   Future<UserModel> register(String email, String password, String role, String branch) async {
     final cleanEmail = email.trim();
     final cleanPassword = password.trim();
@@ -116,36 +90,23 @@ class AuthRepository {
     String uid = 'user_${DateTime.now().millisecondsSinceEpoch}';
     bool registeredOnline = false;
 
-    // 1. Attempt Cloud Firebase Auth User Creation
+    // 1. Attempt Cloud Supabase Auth User Creation
     try {
-      final url = Uri.parse('https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=$_apiKey');
-      final response = await http.post(
-        url,
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'email': cleanEmail,
-          'password': cleanPassword,
-          'returnSecureToken': true,
-        }),
-      ).timeout(const Duration(seconds: 7));
+      final client = _supabase;
+      if (client != null) {
+        final response = await client.auth.signUp(
+          email: cleanEmail,
+          password: cleanPassword,
+        );
 
-      final data = jsonDecode(response.body) as Map<String, dynamic>;
-
-      if (response.statusCode == 200) {
-        uid = data['localId'] as String? ?? uid;
-        registeredOnline = true;
-      } else {
-        final error = data['error'];
-        final message = (error is Map) ? error['message'] as String? : null;
-        if (message == 'EMAIL_EXISTS') {
-          throw 'This email address is already registered.';
-        } else {
-          throw 'Registration failed: ${message ?? "Unknown error"}.';
+        if (response.user != null) {
+          uid = response.user!.id;
+          registeredOnline = true;
         }
       }
+    } on AuthException catch (e) {
+      throw 'Registration failed: ${e.message}';
     } on SocketException catch (_) {
-      // Offline registration
-    } on http.ClientException catch (_) {
       // Offline registration
     } on TimeoutException catch (_) {
       // Offline registration
@@ -160,12 +121,12 @@ class AuthRepository {
       branch: branch,
     );
 
-    // 2. Save profile in Firestore if online
+    // 2. Save profile in Supabase table if online
     if (registeredOnline) {
       try {
-        final fs = _firestore;
-        if (fs != null) {
-          await fs.collection('users').doc(uid).set(userModel.toMap(), SetOptions(merge: true));
+        final client = _supabase;
+        if (client != null) {
+          await client.from('users').upsert(userModel.toMap());
         }
       } catch (_) {}
     } else {
@@ -184,13 +145,13 @@ class AuthRepository {
     return userModel;
   }
 
-  Future<UserModel> _fetchOrCreateProfile(String uid, String email, String idToken) async {
+  Future<UserModel> _fetchOrCreateProfile(String uid, String email) async {
     try {
-      final fs = _firestore;
-      if (fs != null) {
-        final doc = await fs.collection('users').doc(uid).get();
-        if (doc.exists && doc.data() != null) {
-          return UserModel.fromFirestore(doc);
+      final client = _supabase;
+      if (client != null) {
+        final data = await client.from('users').select().eq('uid', uid).maybeSingle();
+        if (data != null) {
+          return UserModel.fromMap(data, uid);
         }
       }
     } catch (_) {}
@@ -208,14 +169,21 @@ class AuthRepository {
     );
 
     try {
-      final fs = _firestore;
-      if (fs != null) {
-        await fs.collection('users').doc(uid).set(user.toMap(), SetOptions(merge: true));
+      final client = _supabase;
+      if (client != null) {
+        await client.from('users').upsert(user.toMap());
       }
     } catch (_) {}
 
     return user;
   }
 
-  Future<void> signOut() async {}
+  Future<void> signOut() async {
+    try {
+      final client = _supabase;
+      if (client != null) {
+        await client.auth.signOut();
+      }
+    } catch (_) {}
+  }
 }

@@ -5,16 +5,20 @@ import 'package:crypto/crypto.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../models/inventory_record_model.dart';
 import '../models/product_model.dart';
 import '../models/shelf_region_model.dart';
 import '../models/inventory_event_model.dart';
 import '../models/alert_model.dart';
+import '../models/image_quality_log_model.dart';
+import '../models/restock_record_model.dart';
 import '../models/system_log_model.dart';
 import '../models/sync_queue_model.dart';
 import '../models/user_model.dart';
+import '../seeds/catalog_seed_data.dart';
+import '../../core/constants/app_constants.dart';
+import 'sync_service.dart';
 
 class SqliteService {
   static SqliteService? _instance;
@@ -77,6 +81,27 @@ class SqliteService {
       )
     ''');
     await _seedInitialUsersIfEmpty(db);
+
+    // Automatically purge old dummy products ('A', 'B', 'C', 'D' or legacy tests)
+    // and ensure the full 60 SKUs catalog is present in SQLite.
+    try {
+      final oldDummyRes = await db.rawQuery(
+        "SELECT COUNT(*) as c FROM products WHERE perfumeCode IN ('A', 'B', 'C', 'D') OR name LIKE '%Ocean Breeze%' OR name LIKE '%Velvet Rose%'",
+      );
+      final hasOldDummy = (oldDummyRes.first['c'] as num?)?.toInt() ?? 0;
+
+      final validCountRes = await db.rawQuery(
+        "SELECT COUNT(*) as c FROM products WHERE perfumeCode NOT IN ('A', 'B', 'C', 'D')",
+      );
+      final validCount = (validCountRes.first['c'] as num?)?.toInt() ?? 0;
+
+      if (hasOldDummy > 0 || validCount < 60) {
+        await db.delete('products');
+        await db.delete('shelf_regions');
+        await db.delete('inventory_records');
+        await CatalogSeedData.seedToSqlite(db, branch: 'San Pablo');
+      }
+    } catch (_) {}
   }
 
   Future<void> _onCreate(Database db, int version) async {
@@ -91,7 +116,9 @@ class SqliteService {
         brand TEXT,
         category TEXT,
         bottleSize TEXT,
-        price REAL NOT NULL DEFAULT 250.0,
+        shelfLayer TEXT DEFAULT 'Layer A',
+        slotPosition INTEGER DEFAULT 1,
+        price REAL NOT NULL DEFAULT 0.0,
         status TEXT NOT NULL DEFAULT 'active'
       )
     ''');
@@ -104,10 +131,13 @@ class SqliteService {
         assignedProductId TEXT,
         assignedProductName TEXT,
         branch TEXT NOT NULL,
+        cameraId INTEGER DEFAULT 1,
+        cameraName TEXT DEFAULT 'Camera 1 (Top)',
+        layerName TEXT DEFAULT 'Layer A (Top)',
         left_coord REAL NOT NULL,
         right_coord REAL NOT NULL,
-        top_coord REAL NOT NULL DEFAULT 0.15,
-        bottom_coord REAL NOT NULL DEFAULT 0.85,
+        top_coord REAL NOT NULL DEFAULT 0.0,
+        bottom_coord REAL NOT NULL DEFAULT 1.0,
         status TEXT NOT NULL DEFAULT 'active'
       )
     ''');
@@ -245,55 +275,19 @@ class SqliteService {
   }
 
   Future<void> _seedInitialData(Database db) async {
-    final now = DateTime.now().millisecondsSinceEpoch;
+    // 1. Seed 60 products (30 variants × 2 sizes across 3 shelf layers/cameras)
+    await CatalogSeedData.seedToSqlite(db, branch: 'San Pablo');
+
+    // 2. Seed Default System Settings
     final batch = db.batch();
-
-    // Seed Master Products
-    final products = [
-      {'id': 'prod_A', 'perfumeCode': 'A', 'name': 'Otto Scents Ocean Breeze', 'brand': 'Otto Scents', 'category': 'Men', 'bottleSize': '50ml', 'price': 250.0, 'status': 'active'},
-      {'id': 'prod_B', 'perfumeCode': 'B', 'name': 'Otto Scents Velvet Rose', 'brand': 'Otto Scents', 'category': 'Women', 'bottleSize': '50ml', 'price': 250.0, 'status': 'active'},
-      {'id': 'prod_C', 'perfumeCode': 'C', 'name': 'Otto Scents Vanilla Musk', 'brand': 'Otto Scents', 'category': 'Unisex', 'bottleSize': '50ml', 'price': 250.0, 'status': 'active'},
-      {'id': 'prod_D', 'perfumeCode': 'D', 'name': 'Otto Scents Citrus Blossom', 'brand': 'Otto Scents', 'category': 'Women', 'bottleSize': '50ml', 'price': 250.0, 'status': 'active'},
-    ];
-    for (final p in products) {
-      batch.insert('products', p, conflictAlgorithm: ConflictAlgorithm.replace);
-    }
-
-    // Seed Shelf Regions (San Pablo & Lipa)
-    for (final branch in ['San Pablo', 'Lipa']) {
-      final regions = [
-        {'id': 'roi_${branch}_A', 'code': 'A', 'assignedProductId': 'prod_A', 'assignedProductName': 'Otto Scents Ocean Breeze', 'branch': branch, 'left_coord': 0.0, 'right_coord': 0.25, 'top_coord': 0.15, 'bottom_coord': 0.85, 'status': 'active'},
-        {'id': 'roi_${branch}_B', 'code': 'B', 'assignedProductId': 'prod_B', 'assignedProductName': 'Otto Scents Velvet Rose', 'branch': branch, 'left_coord': 0.25, 'right_coord': 0.50, 'top_coord': 0.15, 'bottom_coord': 0.85, 'status': 'active'},
-        {'id': 'roi_${branch}_C', 'code': 'C', 'assignedProductId': 'prod_C', 'assignedProductName': 'Otto Scents Vanilla Musk', 'branch': branch, 'left_coord': 0.50, 'right_coord': 0.75, 'top_coord': 0.15, 'bottom_coord': 0.85, 'status': 'active'},
-        {'id': 'roi_${branch}_D', 'code': 'D', 'assignedProductId': 'prod_D', 'assignedProductName': 'Otto Scents Citrus Blossom', 'branch': branch, 'left_coord': 0.75, 'right_coord': 1.0, 'top_coord': 0.15, 'bottom_coord': 0.85, 'status': 'active'},
-      ];
-      for (final r in regions) {
-        batch.insert('shelf_regions', r, conflictAlgorithm: ConflictAlgorithm.replace);
-      }
-    }
-
-    // Seed Initial Inventory
-    final inventory = [
-      {'id': 'inv_sp_A', 'perfumeCode': 'A', 'name': 'Otto Scents Ocean Breeze', 'category': 'Men', 'branch': 'San Pablo', 'shelf': 'Area A', 'recorded': 5, 'detected': 5, 'status': 'normal', 'misplacementDetails': '', 'price': 250.0, 'lastUpdated': now},
-      {'id': 'inv_sp_B', 'perfumeCode': 'B', 'name': 'Otto Scents Velvet Rose', 'category': 'Women', 'branch': 'San Pablo', 'shelf': 'Area B', 'recorded': 5, 'detected': 2, 'status': 'low', 'misplacementDetails': '', 'price': 250.0, 'lastUpdated': now},
-      {'id': 'inv_sp_C', 'perfumeCode': 'C', 'name': 'Otto Scents Vanilla Musk', 'category': 'Unisex', 'branch': 'San Pablo', 'shelf': 'Area C', 'recorded': 5, 'detected': 4, 'status': 'normal', 'misplacementDetails': '', 'price': 250.0, 'lastUpdated': now},
-      {'id': 'inv_sp_D', 'perfumeCode': 'D', 'name': 'Otto Scents Citrus Blossom', 'category': 'Women', 'branch': 'San Pablo', 'shelf': 'Area D', 'recorded': 5, 'detected': 1, 'status': 'low', 'misplacementDetails': '', 'price': 250.0, 'lastUpdated': now},
-      {'id': 'inv_lipa_A', 'perfumeCode': 'A', 'name': 'Otto Scents Ocean Breeze', 'category': 'Men', 'branch': 'Lipa', 'shelf': 'Area A', 'recorded': 5, 'detected': 4, 'status': 'normal', 'misplacementDetails': '', 'price': 250.0, 'lastUpdated': now},
-      {'id': 'inv_lipa_B', 'perfumeCode': 'B', 'name': 'Otto Scents Velvet Rose', 'category': 'Women', 'branch': 'Lipa', 'shelf': 'Area B', 'recorded': 5, 'detected': 5, 'status': 'normal', 'misplacementDetails': '', 'price': 250.0, 'lastUpdated': now},
-      {'id': 'inv_lipa_C', 'perfumeCode': 'C', 'name': 'Otto Scents Vanilla Musk', 'category': 'Unisex', 'branch': 'Lipa', 'shelf': 'Area C', 'recorded': 5, 'detected': 0, 'status': 'out_of_stock', 'misplacementDetails': '', 'price': 250.0, 'lastUpdated': now},
-      {'id': 'inv_lipa_D', 'perfumeCode': 'D', 'name': 'Otto Scents Citrus Blossom', 'category': 'Women', 'branch': 'Lipa', 'shelf': 'Area D', 'recorded': 5, 'detected': 3, 'status': 'normal', 'misplacementDetails': '', 'price': 250.0, 'lastUpdated': now},
-    ];
-    for (final inv in inventory) {
-      batch.insert('inventory_records', inv, conflictAlgorithm: ConflictAlgorithm.replace);
-    }
-
-    // Seed Default System Settings
     final settings = {
       'captureSchedule': 'Every hour',
       'lowStockThreshold': '2',
-      'roiBoundaries': '[0.0, 0.25, 0.50, 0.75, 1.0]',
-      'roiTop': '0.15',
-      'roiBottom': '0.85',
+      'roiBoundaries': '[0.0, 0.33, 0.66, 1.0]',
+      'roiTop': '0.0',
+      'roiBottom': '1.0',
+      'cameraCount': '3',
+      'owner_pin_hash': hashPassword(AppConstants.defaultOwnerPin),
     };
     settings.forEach((k, v) {
       batch.insert('system_settings', {'key': k, 'value': v}, conflictAlgorithm: ConflictAlgorithm.replace);
@@ -303,13 +297,19 @@ class SqliteService {
     await _seedInitialUsersIfEmpty(db);
   }
 
+  /// Re-seeds catalog data into SQLite
+  Future<void> seedCatalog({String branch = 'San Pablo'}) async {
+    final db = await database;
+    await CatalogSeedData.seedToSqlite(db, branch: branch);
+  }
+
   Future<void> _seedInitialUsersIfEmpty(Database db) async {
     try {
       final rows = await db.rawQuery('SELECT COUNT(*) as count FROM users');
       final count = (rows.isNotEmpty) ? (rows.first['count'] as num?)?.toInt() ?? 0 : 0;
       if (count == 0) {
         final batch = db.batch();
-        final defaultHash = hashPassword('password123');
+        final defaultHash = hashPassword(AppConstants.defaultOwnerPin);
         final now = DateTime.now().millisecondsSinceEpoch;
 
         batch.insert('users', {
@@ -346,6 +346,38 @@ class SqliteService {
     return maps.map((m) => ProductModel.fromMap(m, m['id'] as String? ?? '')).toList();
   }
 
+  Future<void> saveProduct(ProductModel product) async {
+    final db = await database;
+    await db.insert('products', product.toMap(), conflictAlgorithm: ConflictAlgorithm.replace);
+
+    try {
+      await enqueueSyncItem(
+        id: 'sync_prod_${product.id}',
+        pendingEventId: product.id,
+        targetCollection: 'products',
+        operation: 'UPSERT',
+        payload: product.toMap(),
+        branch: 'San Pablo',
+      );
+    } catch (_) {}
+  }
+
+  Future<void> deleteProduct(String id) async {
+    final db = await database;
+    await db.delete('products', where: 'id = ?', whereArgs: [id]);
+
+    try {
+      await enqueueSyncItem(
+        id: 'sync_del_prod_${id}_${DateTime.now().millisecondsSinceEpoch}',
+        pendingEventId: id,
+        targetCollection: 'products',
+        operation: 'DELETE',
+        payload: {'id': id},
+        branch: 'San Pablo',
+      );
+    } catch (_) {}
+  }
+
   Future<ProductModel?> getProductByCode(String code) async {
     final db = await database;
     final maps = await db.query('products', where: 'perfumeCode = ?', whereArgs: [code], limit: 1);
@@ -371,6 +403,17 @@ class SqliteService {
     map['top_coord'] = region.top;
     map['bottom_coord'] = region.bottom;
     await db.insert('shelf_regions', map, conflictAlgorithm: ConflictAlgorithm.replace);
+
+    try {
+      await enqueueSyncItem(
+        id: 'sync_roi_${region.id}',
+        pendingEventId: region.id,
+        targetCollection: 'shelf_regions',
+        operation: 'UPSERT',
+        payload: region.toMap(),
+        branch: region.branch,
+      );
+    } catch (_) {}
   }
 
   // ---------------------------------------------------------------------------
@@ -395,15 +438,37 @@ class SqliteService {
     final db = await database;
     final map = record.toMap();
     map['id'] = record.id;
-    if (map['lastUpdated'] is Timestamp) {
-      map['lastUpdated'] = (map['lastUpdated'] as Timestamp).millisecondsSinceEpoch;
+    if (map['lastUpdated'] is DateTime) {
+      map['lastUpdated'] = (map['lastUpdated'] as DateTime).millisecondsSinceEpoch;
     }
     await db.insert('inventory_records', map, conflictAlgorithm: ConflictAlgorithm.replace);
+
+    try {
+      await enqueueSyncItem(
+        id: 'sync_inv_${record.id}',
+        pendingEventId: record.id,
+        targetCollection: 'inventory_records',
+        operation: 'UPSERT',
+        payload: record.toMap(),
+        branch: record.branch,
+      );
+    } catch (_) {}
   }
 
   Future<void> deleteInventoryRecord(String id) async {
     final db = await database;
     await db.delete('inventory_records', where: 'id = ?', whereArgs: [id]);
+
+    try {
+      await enqueueSyncItem(
+        id: 'sync_del_inv_${id}_${DateTime.now().millisecondsSinceEpoch}',
+        pendingEventId: id,
+        targetCollection: 'inventory_records',
+        operation: 'DELETE',
+        payload: {'id': id},
+        branch: 'San Pablo',
+      );
+    } catch (_) {}
   }
 
   // ---------------------------------------------------------------------------
@@ -430,10 +495,24 @@ class SqliteService {
     final db = await database;
     final map = event.toMap();
     map['id'] = event.id;
-    if (map['timestamp'] is Timestamp) {
-      map['timestamp'] = (map['timestamp'] as Timestamp).millisecondsSinceEpoch;
+    if (map['timestamp'] is DateTime) {
+      map['timestamp'] = (map['timestamp'] as DateTime).millisecondsSinceEpoch;
+    } else if (map['timestamp'] is String) {
+      map['timestamp'] = DateTime.tryParse(map['timestamp'] as String)?.millisecondsSinceEpoch ??
+          DateTime.now().millisecondsSinceEpoch;
     }
     await db.insert('inventory_events', map, conflictAlgorithm: ConflictAlgorithm.replace);
+
+    try {
+      await enqueueSyncItem(
+        id: 'sync_event_${event.id}',
+        pendingEventId: event.id,
+        targetCollection: 'inventory_events',
+        operation: 'UPSERT',
+        payload: event.toMap(),
+        branch: event.branch,
+      );
+    } catch (_) {}
   }
 
   // ---------------------------------------------------------------------------
@@ -459,15 +538,37 @@ class SqliteService {
     if (map['isRead'] is bool) {
       map['isRead'] = (map['isRead'] as bool) ? 1 : 0;
     }
-    if (map['createdAt'] is Timestamp) {
-      map['createdAt'] = (map['createdAt'] as Timestamp).millisecondsSinceEpoch;
+    if (map['createdAt'] is DateTime) {
+      map['createdAt'] = (map['createdAt'] as DateTime).millisecondsSinceEpoch;
     }
     await db.insert('alerts', map, conflictAlgorithm: ConflictAlgorithm.replace);
+
+    try {
+      await enqueueSyncItem(
+        id: 'sync_alert_${alert.id}',
+        pendingEventId: alert.id,
+        targetCollection: 'alerts',
+        operation: 'UPSERT',
+        payload: alert.toMap(),
+        branch: alert.branch,
+      );
+    } catch (_) {}
   }
 
   Future<void> markAlertRead(String id) async {
     final db = await database;
     await db.update('alerts', {'isRead': 1}, where: 'id = ?', whereArgs: [id]);
+
+    try {
+      await enqueueSyncItem(
+        id: 'sync_read_alert_${id}_${DateTime.now().millisecondsSinceEpoch}',
+        pendingEventId: id,
+        targetCollection: 'alerts',
+        operation: 'UPSERT',
+        payload: {'id': id, 'isRead': 1},
+        branch: 'San Pablo',
+      );
+    } catch (_) {}
   }
 
   Future<void> markAllAlertsRead(List<String> ids) async {
@@ -480,6 +581,17 @@ class SqliteService {
   Future<void> deleteAlert(String id) async {
     final db = await database;
     await db.delete('alerts', where: 'id = ?', whereArgs: [id]);
+
+    try {
+      await enqueueSyncItem(
+        id: 'sync_del_alert_${id}_${DateTime.now().millisecondsSinceEpoch}',
+        pendingEventId: id,
+        targetCollection: 'alerts',
+        operation: 'DELETE',
+        payload: {'id': id},
+        branch: 'San Pablo',
+      );
+    } catch (_) {}
   }
 
   Future<void> deleteAllReadAlerts([dynamic arg]) async {
@@ -493,6 +605,93 @@ class SqliteService {
     } else {
       await db.delete('alerts', where: 'isRead = 1');
     }
+  }
+
+  // ---------------------------------------------------------------------------
+  // IMAGE QUALITY LOGS CRUD
+  // ---------------------------------------------------------------------------
+  Future<void> logImageQuality(ImageQualityLogModel log) async {
+    final db = await database;
+    await db.insert('image_quality_logs', log.toMap(), conflictAlgorithm: ConflictAlgorithm.replace);
+
+    try {
+      await enqueueSyncItem(
+        id: 'sync_iq_${log.id}',
+        pendingEventId: log.id,
+        targetCollection: 'image_quality_logs',
+        operation: 'UPSERT',
+        payload: log.toMap(),
+        branch: log.branch,
+      );
+    } catch (_) {}
+  }
+
+  Future<List<ImageQualityLogModel>> getImageQualityLogs(String? branch, {int limit = 50}) async {
+    final db = await database;
+    List<Map<String, dynamic>> maps;
+    if (branch != null && branch.isNotEmpty && branch != 'All Branches') {
+      maps = await db.query(
+        'image_quality_logs',
+        where: 'branch = ?',
+        whereArgs: [branch],
+        orderBy: 'timestamp DESC',
+        limit: limit,
+      );
+    } else {
+      maps = await db.query('image_quality_logs', orderBy: 'timestamp DESC', limit: limit);
+    }
+    return maps.map((m) => ImageQualityLogModel.fromMap(m, m['id'] as String? ?? '')).toList();
+  }
+
+  // ---------------------------------------------------------------------------
+  // RESTOCK RECORDS CRUD
+  // ---------------------------------------------------------------------------
+  Future<void> saveRestockRecord(RestockRecordModel restock) async {
+    final db = await database;
+    await db.insert('restock_records', restock.toMap(), conflictAlgorithm: ConflictAlgorithm.replace);
+
+    try {
+      await enqueueSyncItem(
+        id: 'sync_restock_${restock.id}',
+        pendingEventId: restock.id,
+        targetCollection: 'restock_records',
+        operation: 'UPSERT',
+        payload: restock.toMap(),
+        branch: restock.toBranch,
+      );
+    } catch (_) {}
+  }
+
+  Future<List<RestockRecordModel>> getRestockRecords(String? branch) async {
+    final db = await database;
+    List<Map<String, dynamic>> maps;
+    if (branch != null && branch.isNotEmpty && branch != 'All Branches') {
+      maps = await db.query(
+        'restock_records',
+        where: 'toBranch = ? OR fromBranch = ?',
+        whereArgs: [branch, branch],
+        orderBy: 'createdAt DESC',
+      );
+    } else {
+      maps = await db.query('restock_records', orderBy: 'createdAt DESC');
+    }
+    return maps.map((m) => RestockRecordModel.fromMap(m, m['id'] as String? ?? '')).toList();
+  }
+
+  Future<void> updateRestockStatus(String id, String status) async {
+    final db = await database;
+    await db.update('restock_records', {'status': status}, where: 'id = ?', whereArgs: [id]);
+
+    try {
+      await enqueueSyncItem(
+        id: 'sync_status_restock_${id}_${DateTime.now().millisecondsSinceEpoch}',
+        pendingEventId: id,
+        targetCollection: 'restock_records',
+        operation: 'UPSERT',
+        payload: {'id': id, 'status': status},
+        branch: 'San Pablo',
+      );
+    } catch (_) {}
   }
 
   // ---------------------------------------------------------------------------
@@ -518,6 +717,34 @@ class SqliteService {
   Future<void> logSystemActivity(SystemLogModel log) async {
     final db = await database;
     await db.insert('system_logs', log.toMap(), conflictAlgorithm: ConflictAlgorithm.replace);
+
+    try {
+      await enqueueSyncItem(
+        id: 'sync_log_${log.id}',
+        pendingEventId: log.id,
+        targetCollection: 'system_logs',
+        operation: 'UPSERT',
+        payload: log.toMap(),
+        branch: log.branch,
+      );
+    } catch (_) {}
+  }
+
+  Future<void> logActivity({
+    required String type,
+    required String description,
+    String user = 'Store Owner',
+    String branch = 'San Pablo',
+  }) async {
+    final log = SystemLogModel(
+      id: 'log_${DateTime.now().millisecondsSinceEpoch}_${type.toLowerCase()}',
+      type: type,
+      description: description,
+      user: user,
+      branch: branch,
+      timestamp: DateTime.now(),
+    );
+    await logSystemActivity(log);
   }
 
   Future<void> deleteSystemLog(String id) async {
@@ -653,6 +880,18 @@ class SqliteService {
       {'key': key, 'value': strVal},
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
+
+    // Queue for cloud synchronization with Supabase
+    try {
+      await enqueueSyncItem(
+        id: 'sync_setting_${key}_${DateTime.now().millisecondsSinceEpoch}',
+        pendingEventId: key,
+        targetCollection: 'system_settings',
+        operation: 'UPSERT',
+        payload: {'key': key, 'value': strVal},
+        branch: 'San Pablo',
+      );
+    } catch (_) {}
   }
 
   // ---------------------------------------------------------------------------
@@ -730,5 +969,91 @@ class SqliteService {
         lastLogin INTEGER NOT NULL
       )
     ''');
+  }
+
+  // ---------------------------------------------------------------------------
+  // OWNER PIN OPERATIONS
+  // ---------------------------------------------------------------------------
+  Future<bool> verifyOwnerPin(String pin) async {
+    try {
+      final db = await database;
+      final maps = await db.query('system_settings', where: 'key = ?', whereArgs: ['owner_pin_hash']);
+      if (maps.isNotEmpty) {
+        final storedHash = maps.first['value'] as String? ?? '';
+        if (storedHash.isNotEmpty) {
+          // If a custom PIN hash is stored, ONLY this hash is valid
+          return storedHash == hashPassword(pin);
+        }
+      }
+      // Check admin user in users table if not set in system settings
+      final adminCreds = await getUserWithCredentials('admin@ottoscents.com');
+      if (adminCreds != null && (adminCreds['passwordHash'] as String).isNotEmpty) {
+        final hash = adminCreds['passwordHash'] as String;
+        return hash == hashPassword(pin);
+      }
+      // Initial factory default PIN
+      return pin == AppConstants.defaultOwnerPin;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<bool> updateOwnerPin({required String oldPin, required String newPin}) async {
+    try {
+      final isValidOld = await verifyOwnerPin(oldPin);
+      if (!isValidOld) return false;
+
+      final db = await database;
+      final newHash = hashPassword(newPin);
+
+      // 1. Save in system_settings (auto-enqueues to sync_queue)
+      await setSystemSetting('owner_pin_hash', newHash);
+
+      // 2. Update admin user credentials in local SQLite and queue for Supabase
+      await _ensureUsersTable(db);
+      await db.update(
+        'users',
+        {
+          'passwordHash': newHash,
+          'lastLogin': DateTime.now().millisecondsSinceEpoch,
+        },
+        where: 'role = ?',
+        whereArgs: ['admin'],
+      );
+
+      try {
+        await enqueueSyncItem(
+          id: 'sync_user_admin_${DateTime.now().millisecondsSinceEpoch}',
+          pendingEventId: 'admin_san_pablo',
+          targetCollection: 'users',
+          operation: 'UPSERT',
+          payload: {
+            'uid': 'admin_san_pablo',
+            'email': 'admin@ottoscents.com',
+            'role': 'owner',
+            'branch': 'San Pablo',
+          },
+          branch: 'San Pablo',
+        );
+      } catch (_) {}
+
+      // 3. Insert system audit log (auto-enqueues to sync_queue)
+      final logId = 'log_${DateTime.now().millisecondsSinceEpoch}_pin';
+      await logSystemActivity(SystemLogModel(
+        id: logId,
+        user: 'Store Owner',
+        type: 'SECURITY_UPDATE',
+        description: 'Store owner 6-digit PIN successfully changed.',
+        timestamp: DateTime.now(),
+        branch: 'San Pablo',
+      ));
+
+      // 4. Trigger immediate real-time sync with Supabase cloud
+      unawaited(SyncService.instance.syncPendingQueue());
+
+      return true;
+    } catch (_) {
+      return false;
+    }
   }
 }

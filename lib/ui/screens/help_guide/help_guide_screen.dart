@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/theme/theme_helper.dart';
 
 class HelpGuideScreen extends StatelessWidget {
   const HelpGuideScreen({super.key});
@@ -8,61 +9,99 @@ class HelpGuideScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Store Owner Guide & FAQs'),
+        title: const Text('Store Owner Help & Troubleshooting Guide'),
       ),
       body: ListView(
         padding: const EdgeInsets.all(24),
         children: [
-          _buildFaqItem(
-            question: 'How does the Smart Shelf count my perfume bottles?',
+          Text(
+            'Beginner-Friendly Kiosk Guide',
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.w800,
+              color: context.textPrimaryColor,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Simple explanations for operating your Otto Scents 3-Camera Smart Shelf system.',
+            style: TextStyle(fontSize: 14, color: context.textSecondaryColor),
+          ),
+          const SizedBox(height: 20),
+
+          // 1. Stopped Scan Safeguard
+          _buildFaqCard(
+            context: context,
+            question: 'Why did the inventory scan stop (Insufficient Image Quality)?',
             answer:
-                'The camera above each shelf captures snapshots at scheduled intervals. Our AI computer vision model detects the perfume bottles within their designated shelf partitions (ROIs) and automatically updates your counts.',
-            icon: Icons.camera_enhance_rounded,
+                'If there is strong glare, sudden dark shadows, or if a customer’s hand blocks the camera during capture, the AI safety check halts the scan. It retries up to 3 times. Check that the shelf lights are on and nothing is obstructing the camera, then tap "Scan Shelf Now" on the Dashboard.',
+            icon: Icons.high_quality_rounded,
           ),
           const SizedBox(height: 12),
-          _buildFaqItem(
-            question: 'What do the color badges mean?',
+
+          // 2. Misplaced Product Alert
+          _buildFaqCard(
+            context: context,
+            question: 'What is a "Misplaced" product alert?',
             answer:
-                '• Green (Normal / Synced): Stock count is healthy and cloud data is up to date.\n• Red (Low Stock / Alert): Quantity is below your safety threshold or a scan requires attention.\n• Orange (Pending / Misplaced): A bottle is in the wrong region, or awaiting synchronization.',
-            icon: Icons.palette_rounded,
+                'Each perfume SKU is assigned to a specific shelf layer and slot (e.g. AA1 on Layer A Top). If a customer picks up a bottle and returns it into the wrong layer, the camera detects the cap code in the wrong spot and displays an orange "Misplaced" badge. Move the bottle back to its assigned shelf section to clear the alert.',
+            icon: Icons.move_up_rounded,
           ),
           const SizedBox(height: 12),
-          _buildFaqItem(
-            question: 'What should I do when receiving a new restock delivery?',
+
+          // 3. Low Stock Alert
+          _buildFaqCard(
+            context: context,
+            question: 'When is a "Low Stock" alert triggered?',
             answer:
-                'Go to the "Restock Verification" screen on the left menu. Place the incoming bottles on the shelf and verify that the detected count matches your packing slip before tapping "Confirm Restock Batch".',
-            icon: Icons.move_to_inbox_rounded,
+                'Whenever the computer vision detected bottle count on a shelf drops at or below your safety threshold (2 bottles), a red "Low Stock" alert appears. You can log an incoming delivery via "Restock Management".',
+            icon: Icons.warning_amber_rounded,
           ),
           const SizedBox(height: 12),
-          _buildFaqItem(
-            question: 'What happens if the internet goes down?',
+
+          // 4. Offline Operation
+          _buildFaqCard(
+            context: context,
+            question: 'What happens when the retail store loses internet connection?',
             answer:
-                'The kiosk runs 100% locally on this terminal. It continues monitoring, counting, and alerting you without internet. All data will automatically sync to the cloud once connectivity resumes.',
+                'The kiosk runs completely offline! It stores all inventory detections, movement logs, and scans in a secure local database (SQLite). You can continue using all kiosk features normally.',
             icon: Icons.wifi_off_rounded,
+          ),
+          const SizedBox(height: 12),
+
+          // 5. Pending Synchronization & Restoration
+          _buildFaqCard(
+            context: context,
+            question: 'How does cloud synchronization restore when internet returns?',
+            answer:
+                'As soon as internet connection is detected, the kiosk automatically uploads all buffered events from local SQLite to your Supabase cloud database. The status badge will switch back to green "Synced".',
+            icon: Icons.cloud_sync_rounded,
           ),
         ],
       ),
     );
   }
 
-  Widget _buildFaqItem({
+  Widget _buildFaqCard({
+    required BuildContext context,
     required String question,
     required String answer,
     required IconData icon,
   }) {
     return Card(
+      color: context.surfaceColor,
       child: Padding(
         padding: const EdgeInsets.all(20),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Container(
-              padding: const EdgeInsets.all(10),
+              padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: AppColors.brandAccent.withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(12),
+                color: AppColors.brandAccent.withValues(alpha: context.isDark ? 0.15 : 0.1),
+                borderRadius: BorderRadius.circular(14),
               ),
-              child: Icon(icon, color: AppColors.brandAccent, size: 26),
+              child: Icon(icon, color: AppColors.brandAccent, size: 28),
             ),
             const SizedBox(width: 18),
             Expanded(
@@ -71,19 +110,19 @@ class HelpGuideScreen extends StatelessWidget {
                 children: [
                   Text(
                     question,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w700,
-                      color: AppColors.darkTextPrimary,
+                      color: context.textPrimaryColor,
                     ),
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 6),
                   Text(
                     answer,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 14,
-                      color: AppColors.darkTextSecondary,
-                      height: 1.5,
+                      color: context.textSecondaryColor,
+                      height: 1.4,
                     ),
                   ),
                 ],

@@ -3,7 +3,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:smart_shelf_linux/core/theme/app_theme.dart';
 import 'package:smart_shelf_linux/ui/screens/auth/pin_login_screen.dart';
-import 'package:smart_shelf_linux/ui/components/kiosk_numpad.dart';
 
 void main() {
   testWidgets('PinLoginScreen renders branding, title, and touch numpad', (tester) async {

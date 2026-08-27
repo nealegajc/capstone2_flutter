@@ -1,0 +1,207 @@
+import 'dart:async';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../data/models/inventory_record_model.dart';
+import '../data/models/product_model.dart';
+import '../data/models/shelf_region_model.dart';
+import '../data/models/alert_model.dart';
+import '../data/models/inventory_event_model.dart';
+import '../data/models/system_log_model.dart';
+import '../data/models/sync_queue_model.dart';
+import '../data/models/image_quality_log_model.dart';
+import '../data/models/restock_record_model.dart';
+import '../data/models/hardware_camera_device.dart';
+import '../data/services/sqlite_service.dart';
+import '../data/services/sync_service.dart';
+import '../data/services/camera_hardware_service.dart';
+
+final sqliteServiceProvider = Provider<SqliteService>((ref) {
+  return SqliteService.instance;
+});
+
+final syncServiceProvider = ChangeNotifierProvider<SyncService>((ref) {
+  return SyncService.instance;
+});
+
+/// Dynamic Inventory Records Provider with 5s Auto-Refresh
+final liveInventoryProvider = FutureProvider.autoDispose.family<List<InventoryRecordModel>, String?>((ref, branch) async {
+  final timer = Timer.periodic(const Duration(seconds: 5), (_) {
+    ref.invalidateSelf();
+  });
+  ref.onDispose(() => timer.cancel());
+
+  final sqlite = ref.watch(sqliteServiceProvider);
+  return await sqlite.getInventoryRecords(branch);
+});
+
+/// Dynamic Master Products Catalog Provider
+final masterProductsProvider = FutureProvider.autoDispose<List<ProductModel>>((ref) async {
+  final timer = Timer.periodic(const Duration(seconds: 10), (_) {
+    ref.invalidateSelf();
+  });
+  ref.onDispose(() => timer.cancel());
+
+  final sqlite = ref.watch(sqliteServiceProvider);
+  return await sqlite.getProducts();
+});
+
+/// Dynamic Shelf Regions (3 Cameras) Provider
+final shelfRegionsProvider = FutureProvider.autoDispose.family<List<ShelfRegionModel>, String>((ref, branch) async {
+  final sqlite = ref.watch(sqliteServiceProvider);
+  return await sqlite.getShelfRegions(branch);
+});
+
+/// Dynamic Active Alerts Provider with 4s Auto-Refresh
+final liveAlertsProvider = FutureProvider.autoDispose.family<List<AlertModel>, String?>((ref, branch) async {
+  final timer = Timer.periodic(const Duration(seconds: 4), (_) {
+    ref.invalidateSelf();
+  });
+  ref.onDispose(() => timer.cancel());
+
+  final sqlite = ref.watch(sqliteServiceProvider);
+  return await sqlite.getAlerts(branch);
+});
+
+/// Dynamic Stock Movement Events Logs Provider with 4s Auto-Refresh
+final stockMovementLogsProvider = FutureProvider.autoDispose.family<List<InventoryEventModel>, String?>((ref, branch) async {
+  final timer = Timer.periodic(const Duration(seconds: 4), (_) {
+    ref.invalidateSelf();
+  });
+  ref.onDispose(() => timer.cancel());
+
+  final sqlite = ref.watch(sqliteServiceProvider);
+  return await sqlite.getInventoryEvents(branch);
+});
+
+/// Dynamic System Activity Logs Provider with 3s Auto-Refresh
+final systemActivityLogsProvider = FutureProvider.autoDispose.family<List<SystemLogModel>, String?>((ref, branch) async {
+  final timer = Timer.periodic(const Duration(seconds: 3), (_) {
+    ref.invalidateSelf();
+  });
+  ref.onDispose(() => timer.cancel());
+
+  final sqlite = ref.watch(sqliteServiceProvider);
+  return await sqlite.getSystemLogs(branch);
+});
+
+/// Dynamic Sync Queue Provider with 3s Auto-Refresh + SyncService State Binding
+final syncQueueListProvider = FutureProvider.autoDispose.family<List<SyncQueueModel>, String?>((ref, branch) async {
+  // Automatically re-fetch whenever SyncService notifies of queue changes / completions
+  ref.watch(syncServiceProvider);
+
+  final timer = Timer.periodic(const Duration(seconds: 3), (_) {
+    ref.invalidateSelf();
+  });
+  ref.onDispose(() => timer.cancel());
+
+  final sqlite = ref.watch(sqliteServiceProvider);
+  return await sqlite.getSyncQueue(branch);
+});
+
+/// Dynamic Restock Records Provider with 5s Auto-Refresh
+final restockRecordsProvider = FutureProvider.autoDispose.family<List<RestockRecordModel>, String?>((ref, branch) async {
+  final timer = Timer.periodic(const Duration(seconds: 5), (_) {
+    ref.invalidateSelf();
+  });
+  ref.onDispose(() => timer.cancel());
+
+  final sqlite = ref.watch(sqliteServiceProvider);
+  return await sqlite.getRestockRecords(branch);
+});
+
+/// Dynamic Image Quality Logs Provider with 5s Auto-Refresh
+final imageQualityLogsProvider = FutureProvider.autoDispose.family<List<ImageQualityLogModel>, String?>((ref, branch) async {
+  final timer = Timer.periodic(const Duration(seconds: 5), (_) {
+    ref.invalidateSelf();
+  });
+  ref.onDispose(() => timer.cancel());
+
+  final sqlite = ref.watch(sqliteServiceProvider);
+  return await sqlite.getImageQualityLogs(branch);
+});
+
+/// Computed Dashboard Statistics Provider with 5s Auto-Refresh
+class DashboardStats {
+  final int totalInStock;
+  final int lowStockCount;
+  final int misplacedCount;
+  final int needsVerificationCount;
+  final int totalCapacity;
+
+  const DashboardStats({
+    required this.totalInStock,
+    required this.lowStockCount,
+    required this.misplacedCount,
+    required this.needsVerificationCount,
+    required this.totalCapacity,
+  });
+}
+
+final dashboardStatsProvider = FutureProvider.autoDispose.family<DashboardStats, String?>((ref, branch) async {
+  final inventory = await ref.watch(liveInventoryProvider(branch).future);
+  final alerts = await ref.watch(liveAlertsProvider(branch).future);
+
+  int totalInStock = 0;
+  int lowStock = 0;
+  int misplaced = 0;
+  int needsVerification = 0;
+
+  for (final item in inventory) {
+    totalInStock += item.detected;
+    if (item.isLowStock) lowStock++;
+    if (item.status == 'misplaced') misplaced++;
+  }
+
+  for (final alert in alerts) {
+    if (!alert.isRead && alert.type == 'quality') {
+      needsVerification++;
+    }
+  }
+
+  return DashboardStats(
+    totalInStock: totalInStock,
+    lowStockCount: lowStock,
+    misplacedCount: misplaced,
+    needsVerificationCount: needsVerification,
+    totalCapacity: inventory.length * 5, // 5 max per slot
+  );
+});
+
+// -----------------------------------------------------------------------------
+// Hardware Presence Detection & Camera Providers
+// -----------------------------------------------------------------------------
+final cameraHardwareServiceProvider = Provider<CameraHardwareService>((ref) {
+  final service = CameraHardwareService.instance;
+  service.startMonitoring();
+  ref.onDispose(() => service.stopMonitoring());
+  return service;
+});
+
+final hardwareCamerasProvider = StreamProvider<List<HardwareCameraDevice>>((ref) async* {
+  final service = ref.watch(cameraHardwareServiceProvider);
+  yield await service.probeHardwareDevices();
+
+  // Periodic poll stream
+  final controller = StreamController<List<HardwareCameraDevice>>();
+  void listener() {
+    if (!controller.isClosed) {
+      controller.add(service.devices);
+    }
+  }
+
+  service.addListener(listener);
+  ref.onDispose(() {
+    service.removeListener(listener);
+    controller.close();
+  });
+
+  yield* controller.stream;
+});
+
+final rapooCameraPresenceProvider = Provider<HardwareCameraDevice?>((ref) {
+  final camerasAsync = ref.watch(hardwareCamerasProvider);
+  return camerasAsync.when(
+    data: (devices) => devices.where((d) => d.isRapooCamera).firstOrNull,
+    loading: () => null,
+    error: (_, __) => null,
+  );
+});

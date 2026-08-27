@@ -5,6 +5,8 @@ import '../data/models/auth_state.dart';
 import '../data/services/auth_service.dart';
 import 'api_provider.dart';
 
+import '../data/services/sqlite_service.dart';
+
 final authNotifierProvider = StateNotifierProvider<AuthNotifier, AuthState>((ref) {
   final authService = ref.watch(authServiceProvider);
   return AuthNotifier(authService);
@@ -72,9 +74,27 @@ class AuthNotifier extends StateNotifier<AuthState> {
           failedAttempts: 0,
           clearError: true,
         );
+
+        // Log successful authentication audit
+        try {
+          await SqliteService.instance.logActivity(
+            type: 'USER_LOGIN',
+            description: 'Store Owner authenticated successfully via PIN at kiosk terminal.',
+          );
+        } catch (_) {}
+
         return true;
       } else {
         final attempts = state.failedAttempts + 1;
+
+        // Log failed attempt audit
+        try {
+          await SqliteService.instance.logActivity(
+            type: 'AUTH_FAILURE',
+            description: 'Failed PIN authentication attempt ($attempts of ${AppConstants.maxFailedAttempts}).',
+          );
+        } catch (_) {}
+
         if (attempts >= AppConstants.maxFailedAttempts) {
           _startLockout();
         } else {
@@ -109,6 +129,14 @@ class AuthNotifier extends StateNotifier<AuthState> {
       errorMessage: 'Too many incorrect attempts. Please wait ${AppConstants.lockoutDurationSeconds}s.',
     );
 
+    // Log security lockout audit
+    try {
+      SqliteService.instance.logActivity(
+        type: 'SECURITY_LOCKOUT',
+        description: 'Security lockout initiated for ${AppConstants.lockoutDurationSeconds}s after repeated invalid PIN attempts.',
+      );
+    } catch (_) {}
+
     _lockoutTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       final remaining = state.lockoutRemainingSeconds - 1;
       if (remaining <= 0) {
@@ -131,5 +159,13 @@ class AuthNotifier extends StateNotifier<AuthState> {
   void logout() {
     _lockoutTimer?.cancel();
     state = const AuthState();
+
+    // Log kiosk lock / logout audit
+    try {
+      SqliteService.instance.logActivity(
+        type: 'USER_LOGOUT',
+        description: 'Kiosk locked / owner session ended.',
+      );
+    } catch (_) {}
   }
 }

@@ -35,7 +35,7 @@ class SyncQueueScreen extends StatelessWidget {
                   const Text('Sync Queue Empty', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 8),
                   Text(
-                    'All local inventory events have been successfully replicated to Cloud Firestore.',
+                    'All local inventory events have been successfully replicated to Supabase.',
                     style: TextStyle(color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary),
                   ),
                 ],

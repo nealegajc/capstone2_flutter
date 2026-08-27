@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../core/constants/app_constants.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/theme/theme_helper.dart';
 
 class KioskNumpad extends StatelessWidget {
   const KioskNumpad({
@@ -23,19 +24,19 @@ class KioskNumpad extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          _buildRow(['1', '2', '3']),
+          _buildRow(context, ['1', '2', '3']),
           const SizedBox(height: 14),
-          _buildRow(['4', '5', '6']),
+          _buildRow(context, ['4', '5', '6']),
           const SizedBox(height: 14),
-          _buildRow(['7', '8', '9']),
+          _buildRow(context, ['7', '8', '9']),
           const SizedBox(height: 14),
-          _buildBottomRow(),
+          _buildBottomRow(context),
         ],
       ),
     );
   }
 
-  Widget _buildRow(List<String> digits) {
+  Widget _buildRow(BuildContext context, List<String> digits) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: digits.map((digit) {
@@ -52,7 +53,7 @@ class KioskNumpad extends StatelessWidget {
     );
   }
 
-  Widget _buildBottomRow() {
+  Widget _buildBottomRow(BuildContext context) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
@@ -64,7 +65,7 @@ class KioskNumpad extends StatelessWidget {
               label: 'CLEAR',
               icon: Icons.refresh_rounded,
               color: AppColors.statusRed,
-              bgColor: AppColors.numpadActionClear,
+              bgColor: AppColors.statusRedBg,
               onTap: isEnabled ? onClearPressed : null,
             ),
           ),
@@ -87,7 +88,7 @@ class KioskNumpad extends StatelessWidget {
               label: 'DELETE',
               icon: Icons.backspace_outlined,
               color: AppColors.statusOrange,
-              bgColor: AppColors.numpadActionDelete,
+              bgColor: AppColors.statusOrangeBg,
               onTap: isEnabled ? onDeletePressed : null,
             ),
           ),
@@ -110,26 +111,29 @@ class _NumpadKey extends StatelessWidget {
   Widget build(BuildContext context) {
     final isEnabled = onTap != null;
 
+    final keyBg = context.isDark ? AppColors.numpadKeyBg : context.surfaceColor;
+    final borderCol = isEnabled ? context.borderColor : context.borderColor.withValues(alpha: 0.4);
+
     return Material(
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(18),
         splashColor: AppColors.brandAccent.withValues(alpha: 0.3),
-        highlightColor: AppColors.numpadKeyPressed,
+        highlightColor: context.isDark ? AppColors.numpadKeyPressed : Colors.black12,
         child: Ink(
           height: AppConstants.numpadKeyHeight,
           decoration: BoxDecoration(
-            color: isEnabled ? AppColors.numpadKeyBg : AppColors.numpadKeyBg.withValues(alpha: 0.4),
+            color: isEnabled ? keyBg : keyBg.withValues(alpha: 0.4),
             borderRadius: BorderRadius.circular(18),
             border: Border.all(
-              color: isEnabled ? AppColors.darkBorder : AppColors.darkBorder.withValues(alpha: 0.4),
-              width: 2,
+              color: borderCol,
+              width: 1.5,
             ),
             boxShadow: isEnabled
                 ? [
                     BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.3),
+                      color: Colors.black.withValues(alpha: context.isDark ? 0.3 : 0.05),
                       offset: const Offset(0, 4),
                       blurRadius: 8,
                     ),
@@ -140,7 +144,7 @@ class _NumpadKey extends StatelessWidget {
             child: Text(
               label,
               style: TextStyle(
-                color: isEnabled ? AppColors.darkTextPrimary : AppColors.darkTextMuted,
+                color: isEnabled ? context.textPrimaryColor : context.textMutedColor,
                 fontSize: 32,
                 fontWeight: FontWeight.w700,
                 letterSpacing: 0.5,
@@ -177,33 +181,42 @@ class _NumpadActionKey extends StatelessWidget {
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(18),
-        splashColor: color.withValues(alpha: 0.2),
+        splashColor: color.withValues(alpha: 0.3),
         child: Ink(
           height: AppConstants.numpadKeyHeight,
           decoration: BoxDecoration(
-            color: isEnabled ? bgColor : bgColor.withValues(alpha: 0.2),
+            color: isEnabled ? bgColor : bgColor.withValues(alpha: 0.3),
             borderRadius: BorderRadius.circular(18),
             border: Border.all(
-              color: isEnabled ? color.withValues(alpha: 0.5) : color.withValues(alpha: 0.2),
-              width: 1.8,
+              color: isEnabled ? color.withValues(alpha: 0.4) : color.withValues(alpha: 0.2),
+              width: 1.5,
             ),
+            boxShadow: isEnabled
+                ? [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: context.isDark ? 0.3 : 0.05),
+                      offset: const Offset(0, 4),
+                      blurRadius: 8,
+                    ),
+                  ]
+                : null,
           ),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Icon(
                 icon,
-                color: isEnabled ? color : color.withValues(alpha: 0.4),
-                size: 26,
+                color: isEnabled ? color : color.withValues(alpha: 0.3),
+                size: 24,
               ),
-              const SizedBox(height: 2),
+              const SizedBox(height: 3),
               Text(
                 label,
                 style: TextStyle(
-                  color: isEnabled ? color : color.withValues(alpha: 0.4),
-                  fontSize: 11,
+                  color: isEnabled ? color : color.withValues(alpha: 0.3),
+                  fontSize: 10,
                   fontWeight: FontWeight.w800,
-                  letterSpacing: 0.8,
+                  letterSpacing: 1.0,
                 ),
               ),
             ],

@@ -27,7 +27,7 @@ class SyncStatusScreen extends StatelessWidget {
 
     return ScrollScreen(
       title: 'Cloud Synchronization & Offline Queue',
-      subtitle: 'Multi-branch synchronization state between local SQLite and Cloud Firestore',
+      subtitle: 'Multi-branch synchronization state between local SQLite and Supabase',
       showBackButton: true,
       onBack: onBack,
       actions: [
@@ -94,7 +94,7 @@ class SyncStatusScreen extends StatelessWidget {
                     ),
                     const SizedBox(height: 16),
                     _buildRowItem('Local Database Engine', 'SQLite 3 (Embedded)', isDark),
-                    _buildRowItem('Cloud Sync Target', 'Cloud Firestore (Asia-East1)', isDark),
+                    _buildRowItem('Cloud Sync Target', 'Supabase (Cloud PostgreSQL)', isDark),
                     _buildRowItem('Heartbeat Latency', '42 ms', isDark),
                     _buildRowItem('Sync Conflict Policy', 'Timestamp-Ordered Audit Log', isDark),
                   ],
@@ -118,7 +118,7 @@ class SyncStatusScreen extends StatelessWidget {
                     ),
                     const SizedBox(height: 16),
                     _buildRowItem('Local Database Engine', 'SQLite 3 (Embedded)', isDark),
-                    _buildRowItem('Cloud Sync Target', 'Cloud Firestore (Asia-East1)', isDark),
+                    _buildRowItem('Cloud Sync Target', 'Supabase (Cloud PostgreSQL)', isDark),
                     _buildRowItem('Heartbeat Latency', '68 ms', isDark),
                     _buildRowItem('Sync Conflict Policy', 'Timestamp-Ordered Audit Log', isDark),
                   ],

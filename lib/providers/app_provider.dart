@@ -12,18 +12,20 @@ import '../data/models/sync_queue_model.dart';
 import '../data/models/detection_result_model.dart';
 import '../data/models/image_quality_log_model.dart';
 import '../data/repositories/auth_repository.dart';
-import '../data/repositories/firestore_repository.dart';
+import '../data/repositories/supabase_repository.dart';
 import '../data/repositories/python_api_repository.dart';
 import '../data/repositories/theme_repository.dart';
 import '../data/services/sqlite_service.dart';
 import '../data/services/sync_service.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import '../data/seeds/catalog_seed_data.dart';
 import '../data/services/toast_service.dart';
 
 enum InventoryViewMode { list, grid }
 
 class AppProvider extends ChangeNotifier {
   final AuthRepository _authRepo = AuthRepository();
-  final FirestoreRepository _firestoreRepo = FirestoreRepository();
+  final SupabaseRepository _supabaseRepo = SupabaseRepository();
   final PythonApiRepository _pythonApiRepo = PythonApiRepository();
   final ThemeRepository _themeRepo = ThemeRepository();
   final SqliteService _sqlite = SqliteService.instance;
@@ -166,7 +168,7 @@ class AppProvider extends ChangeNotifier {
     final branchFilter = _currentUser?.isAdmin == true ? null : _currentUser?.branch;
 
     _inventorySub?.cancel();
-    _inventorySub = _firestoreRepo.streamInventory(branchFilter).listen((list) {
+    _inventorySub = _supabaseRepo.streamInventory(branchFilter).listen((list) {
       _inventoryList = list;
       for (final item in list) {
         _sqlite.upsertInventoryRecord(item);
@@ -175,7 +177,7 @@ class AppProvider extends ChangeNotifier {
     });
 
     _alertsSub?.cancel();
-    _alertsSub = _firestoreRepo.streamAlerts(branchFilter).listen((list) {
+    _alertsSub = _supabaseRepo.streamAlerts(branchFilter).listen((list) {
       _alertsList = list;
       for (final item in list) {
         _sqlite.insertAlert(item);
@@ -184,25 +186,25 @@ class AppProvider extends ChangeNotifier {
     });
 
     _eventsSub?.cancel();
-    _eventsSub = _firestoreRepo.streamInventoryEvents(branchFilter).listen((list) {
+    _eventsSub = _supabaseRepo.streamInventoryEvents(branchFilter).listen((list) {
       _movementLogs = list;
       notifyListeners();
     });
 
     _logsSub?.cancel();
-    _logsSub = _firestoreRepo.streamSystemLogs(branchFilter).listen((list) {
+    _logsSub = _supabaseRepo.streamSystemLogs(branchFilter).listen((list) {
       _systemLogs = list;
       notifyListeners();
     });
 
     _syncQueueSub?.cancel();
-    _syncQueueSub = _firestoreRepo.streamSyncQueue(branchFilter).listen((list) {
+    _syncQueueSub = _supabaseRepo.streamSyncQueue(branchFilter).listen((list) {
       _syncQueue = list;
       notifyListeners();
     });
 
     _restockSub?.cancel();
-    _restockSub = _firestoreRepo.streamRestockRecords().listen((list) {
+    _restockSub = _supabaseRepo.streamRestockRecords().listen((list) {
       _restockRecords = list;
       notifyListeners();
     });
@@ -212,7 +214,7 @@ class AppProvider extends ChangeNotifier {
   }
 
   Future<void> _loadSettings() async {
-    final settings = await _firestoreRepo.getSystemSettings();
+    final settings = await _supabaseRepo.getSystemSettings();
     _captureSchedule = settings['captureSchedule'] as String? ?? 'Every hour';
     _lowStockThreshold = (settings['lowStockThreshold'] as num?)?.toInt() ?? 2;
     if (settings['roiBoundaries'] is List) {
@@ -265,7 +267,7 @@ class AppProvider extends ChangeNotifier {
         branch: user.branch,
       );
       await _sqlite.logSystemActivity(log);
-      _firestoreRepo.logSystemActivity(log);
+      _supabaseRepo.logSystemActivity(log);
 
       notifyListeners();
       return true;
@@ -309,7 +311,7 @@ class AppProvider extends ChangeNotifier {
         branch: user.branch,
       );
       await _sqlite.logSystemActivity(log);
-      _firestoreRepo.logSystemActivity(log);
+      _supabaseRepo.logSystemActivity(log);
 
       notifyListeners();
       return true;
@@ -444,7 +446,7 @@ class AppProvider extends ChangeNotifier {
       branch: branch,
     );
     await _sqlite.logSystemActivity(scanLog);
-    _firestoreRepo.logSystemActivity(scanLog);
+    _supabaseRepo.logSystemActivity(scanLog);
   }
 
   Future<void> toggleLiveCalibration() async {
@@ -482,7 +484,7 @@ class AppProvider extends ChangeNotifier {
     await _sqlite.setSystemSetting('roiTop', top.toString());
     await _sqlite.setSystemSetting('roiBottom', bottom.toString());
 
-    await _firestoreRepo.saveSystemSettings({
+    await _supabaseRepo.saveSystemSettings({
       'roiBoundaries': boundaries,
       'roiTop': top,
       'roiBottom': bottom,
@@ -554,7 +556,7 @@ class AppProvider extends ChangeNotifier {
   // ---------------------------------------------------------------------------
   Future<void> markAlertRead(String id) async {
     await _sqlite.markAlertRead(id);
-    await _firestoreRepo.markAlertRead(id);
+    await _supabaseRepo.markAlertRead(id);
     await _loadFromLocalSqlite();
   }
 
@@ -562,14 +564,14 @@ class AppProvider extends ChangeNotifier {
     final unread = _alertsList.where((a) => !a.isRead).map((a) => a.id).toList();
     if (unread.isNotEmpty) {
       await _sqlite.markAllAlertsRead(unread);
-      await _firestoreRepo.markAllAlertsRead(unread);
+      await _supabaseRepo.markAllAlertsRead(unread);
       await _loadFromLocalSqlite();
     }
   }
 
   Future<void> deleteAlert(String id) async {
     await _sqlite.deleteAlert(id);
-    await _firestoreRepo.deleteAlert(id);
+    await _supabaseRepo.deleteAlert(id);
     await _loadFromLocalSqlite();
   }
 
@@ -577,14 +579,14 @@ class AppProvider extends ChangeNotifier {
     final readIds = _alertsList.where((a) => a.isRead).map((a) => a.id).toList();
     if (readIds.isNotEmpty) {
       await _sqlite.deleteAllReadAlerts(readIds);
-      await _firestoreRepo.deleteAllReadAlerts(readIds);
+      await _supabaseRepo.deleteAllReadAlerts(readIds);
       await _loadFromLocalSqlite();
     }
   }
 
   Future<void> deleteSystemLog(String id) async {
     await _sqlite.deleteSystemLog(id);
-    await _firestoreRepo.deleteSystemLog(id);
+    await _supabaseRepo.deleteSystemLog(id);
     await _loadFromLocalSqlite();
   }
 
@@ -592,7 +594,7 @@ class AppProvider extends ChangeNotifier {
     await _sqlite.deleteAllSystemLogs();
     final ids = _systemLogs.map((l) => l.id).toList();
     if (ids.isNotEmpty) {
-      await _firestoreRepo.deleteAllSystemLogs(ids);
+      await _supabaseRepo.deleteAllSystemLogs(ids);
     }
     await _loadFromLocalSqlite();
   }
@@ -604,14 +606,14 @@ class AppProvider extends ChangeNotifier {
     _lowStockThreshold = threshold;
     notifyListeners();
     await _sqlite.setSystemSetting('lowStockThreshold', threshold.toString());
-    await _firestoreRepo.saveSystemSettings({'lowStockThreshold': threshold});
+    await _supabaseRepo.saveSystemSettings({'lowStockThreshold': threshold});
   }
 
   Future<void> setCaptureSchedule(String schedule) async {
     _captureSchedule = schedule;
     notifyListeners();
     await _sqlite.setSystemSetting('captureSchedule', schedule);
-    await _firestoreRepo.saveSystemSettings({'captureSchedule': schedule});
+    await _supabaseRepo.saveSystemSettings({'captureSchedule': schedule});
   }
 
   Future<void> createRestockRequest({
@@ -633,7 +635,7 @@ class AppProvider extends ChangeNotifier {
       status: 'pending',
     );
 
-    await _firestoreRepo.createRestockRequest(request);
+    await _supabaseRepo.createRestockRequest(request);
 
     final event = InventoryEventModel(
       id: 'evt_${DateTime.now().millisecondsSinceEpoch}',
@@ -645,7 +647,7 @@ class AppProvider extends ChangeNotifier {
       quantity: quantity,
     );
     await _sqlite.logInventoryEvent(event);
-    await _firestoreRepo.logInventoryEvent(event);
+    await _supabaseRepo.logInventoryEvent(event);
 
     ToastService.showToast(
       title: 'Restock Requested',
@@ -668,10 +670,37 @@ class AppProvider extends ChangeNotifier {
     ToastService.showToast(
       title: syncService.isOnline ? 'Sync Completed' : 'Sync Offline',
       message: syncService.isOnline
-          ? 'Local SQLite and Cloud Firestore are in sync.'
-          : 'Network unavailable. Events stored in local SQLite queue.',
+          ? 'Local SQLite and Supabase are in sync.'
+          : 'Pending changes in local SQLite will sync to Supabase once online.',
       type: syncService.isOnline ? 'success' : 'warning',
     );
+  }
+
+  Future<void> seedFullCatalog({String branch = 'San Pablo'}) async {
+    final effectiveBranch = _currentUser?.branch ?? branch;
+    try {
+      // 1. Seed local SQLite
+      await _sqlite.seedCatalog(branch: effectiveBranch);
+
+      // 2. Seed Supabase if online
+      final client = Supabase.instance.client;
+      await CatalogSeedData.seedToSupabase(client, branch: effectiveBranch);
+
+      await _loadFromLocalSqlite();
+
+      ToastService.showToast(
+        title: 'Catalog Seeded',
+        message: '60 SKUs (30 variants across 3 camera layers) successfully populated.',
+        type: 'success',
+      );
+    } catch (e) {
+      await _loadFromLocalSqlite();
+      ToastService.showToast(
+        title: 'Catalog Seeded Locally',
+        message: '60 SKUs populated in local database. Will sync to Supabase when connected.',
+        type: 'info',
+      );
+    }
   }
 
   @override

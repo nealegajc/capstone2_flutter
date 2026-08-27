@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
+import '../../../core/router/route_names.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/theme/theme_helper.dart';
 
 class ProductManagementScreen extends StatelessWidget {
   const ProductManagementScreen({super.key});
@@ -11,11 +14,11 @@ class ProductManagementScreen extends StatelessWidget {
         title: const Text('Product & ROI Management'),
         actions: [
           ElevatedButton.icon(
-            onPressed: () {},
-            icon: const Icon(Icons.add, size: 22),
-            label: const Text('Add Product'),
+            onPressed: () => context.push(AppRoutePaths.productForm),
+            icon: const Icon(Icons.add_rounded, size: 22),
+            label: const Text('Add Product SKU'),
             style: ElevatedButton.styleFrom(
-              minimumSize: const Size(140, 48),
+              minimumSize: const Size(160, 48),
             ),
           ),
           const SizedBox(width: 16),
@@ -26,26 +29,27 @@ class ProductManagementScreen extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
+            Text(
               'Configured Perfume Products & Thresholds',
               style: TextStyle(
                 fontSize: 20,
                 fontWeight: FontWeight.w800,
-                color: AppColors.darkTextPrimary,
+                color: context.textPrimaryColor,
               ),
             ),
             const SizedBox(height: 8),
-            const Text(
-              'Set low-stock alert thresholds and map perfume bottles to camera shelf regions.',
+            Text(
+              'Set low-stock alert thresholds and map perfume bottles to camera shelf regions across 3 layers.',
               style: TextStyle(
                 fontSize: 14,
-                color: AppColors.darkTextSecondary,
+                color: context.textSecondaryColor,
               ),
             ),
             const SizedBox(height: 20),
 
             // Form / Card Example
             Card(
+              color: context.surfaceColor,
               child: Padding(
                 padding: const EdgeInsets.all(20),
                 child: Column(
@@ -53,22 +57,22 @@ class ProductManagementScreen extends StatelessWidget {
                   children: [
                     Row(
                       children: [
-                        const Expanded(
+                        Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                'Rose Noir EDP (50ml)',
+                                'Sauvage Eau de Parfum (100ml)',
                                 style: TextStyle(
                                   fontSize: 18,
                                   fontWeight: FontWeight.w700,
-                                  color: AppColors.darkTextPrimary,
+                                  color: context.textPrimaryColor,
                                 ),
                               ),
                               Text(
-                                'SKU-RN-50 • Category: Floral & Woody',
+                                'Cap Code: AA1 • Category: Men Fragrance • Christian Dior',
                                 style: TextStyle(
-                                  color: AppColors.darkTextSecondary,
+                                  color: context.textSecondaryColor,
                                   fontSize: 13,
                                 ),
                               ),
@@ -76,33 +80,28 @@ class ProductManagementScreen extends StatelessWidget {
                           ),
                         ),
                         OutlinedButton.icon(
-                          onPressed: () {},
+                          onPressed: () => context.push(AppRoutePaths.productForm),
                           icon: const Icon(Icons.edit_outlined, size: 20),
                           label: const Text('Edit'),
                         ),
                       ],
                     ),
-                    const Divider(height: 28),
+                    Divider(height: 28, color: context.borderColor),
                     Row(
                       children: [
                         Expanded(
                           child: _buildFormField(
+                            context: context,
                             label: 'Assigned ROI Shelf',
-                            value: 'Shelf A (Top Row)',
+                            value: '📷 Camera 1: Layer A (Top - Slot A)',
                           ),
                         ),
                         const SizedBox(width: 16),
                         Expanded(
                           child: _buildFormField(
+                            context: context,
                             label: 'Low Stock Alert Threshold',
-                            value: '4 Bottles',
-                          ),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: _buildFormField(
-                            label: 'Maximum Capacity',
-                            value: '10 Bottles',
+                            value: '2 Bottles (Safety Limit)',
                           ),
                         ),
                       ],
@@ -117,33 +116,37 @@ class ProductManagementScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildFormField({required String label, required String value}) {
+  Widget _buildFormField({
+    required BuildContext context,
+    required String label,
+    required String value,
+  }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           label,
-          style: const TextStyle(
-            color: AppColors.darkTextSecondary,
+          style: TextStyle(
+            color: context.textSecondaryColor,
             fontSize: 13,
             fontWeight: FontWeight.w600,
           ),
         ),
-        const SizedBox(height: 6),
+        const SizedBox(height: 8),
         Container(
           width: double.infinity,
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
           decoration: BoxDecoration(
-            color: AppColors.darkSurfaceElevated,
+            color: context.surfaceElevatedColor,
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: AppColors.darkBorder),
+            border: Border.all(color: context.borderColor),
           ),
           child: Text(
             value,
-            style: const TextStyle(
-              color: AppColors.darkTextPrimary,
+            style: TextStyle(
               fontSize: 15,
               fontWeight: FontWeight.w600,
+              color: context.textPrimaryColor,
             ),
           ),
         ),

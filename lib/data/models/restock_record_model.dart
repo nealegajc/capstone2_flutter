@@ -1,5 +1,3 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-
 class RestockRecordModel {
   final String id;
   final String productName;
@@ -23,11 +21,12 @@ class RestockRecordModel {
     DateTime? createdAt,
   }) : createdAt = createdAt ?? DateTime.now();
 
-  factory RestockRecordModel.fromMap(Map<String, dynamic> map, String id) {
+  factory RestockRecordModel.fromMap(Map<String, dynamic> map, [String? id]) {
+    final restockId = id ?? (map['id'] as String? ?? '');
     DateTime parsedDate;
-    final ca = map['createdAt'] ?? map['date'];
-    if (ca is Timestamp) {
-      parsedDate = ca.toDate();
+    final ca = map['createdAt'] ?? map['created_at'] ?? map['date'];
+    if (ca is int) {
+      parsedDate = DateTime.fromMillisecondsSinceEpoch(ca);
     } else if (ca is String) {
       parsedDate = DateTime.tryParse(ca) ?? DateTime.now();
     } else {
@@ -35,24 +34,32 @@ class RestockRecordModel {
     }
 
     return RestockRecordModel(
-      id: id,
-      productName: map['productName'] as String? ?? '',
-      perfumeCode: map['perfumeCode'] as String? ?? '',
+      id: restockId,
+      productName: map['productName'] as String? ??
+          map['product_name'] as String? ??
+          '',
+      perfumeCode: map['perfumeCode'] as String? ??
+          map['perfume_code'] as String? ??
+          '',
       quantity: (map['quantity'] as num?)?.toInt() ?? 1,
-      fromBranch: map['fromBranch'] as String? ?? 'San Pablo',
-      toBranch: map['toBranch'] as String? ?? 'Lipa',
-      requestedBy: map['requestedBy'] as String? ?? '',
+      fromBranch: map['fromBranch'] as String? ??
+          map['from_branch'] as String? ??
+          'San Pablo',
+      toBranch: map['toBranch'] as String? ??
+          map['to_branch'] as String? ??
+          'Lipa',
+      requestedBy: map['requestedBy'] as String? ??
+          map['requested_by'] as String? ??
+          '',
       status: map['status'] as String? ?? 'pending',
       createdAt: parsedDate,
     );
   }
 
-  factory RestockRecordModel.fromFirestore(DocumentSnapshot<Map<String, dynamic>> doc) {
-    return RestockRecordModel.fromMap(doc.data() ?? {}, doc.id);
-  }
-
+  /// SQLite-compatible Map
   Map<String, dynamic> toMap() {
     return {
+      'id': id,
       'productName': productName,
       'perfumeCode': perfumeCode,
       'quantity': quantity,
@@ -60,7 +67,22 @@ class RestockRecordModel {
       'toBranch': toBranch,
       'requestedBy': requestedBy,
       'status': status,
-      'createdAt': Timestamp.fromDate(createdAt),
+      'createdAt': createdAt.millisecondsSinceEpoch,
+    };
+  }
+
+  /// Supabase-compatible Map
+  Map<String, dynamic> toSupabaseMap() {
+    return {
+      'id': id,
+      'product_name': productName,
+      'perfume_code': perfumeCode,
+      'quantity': quantity,
+      'from_branch': fromBranch,
+      'to_branch': toBranch,
+      'requested_by': requestedBy,
+      'status': status,
+      'created_at': createdAt.toIso8601String(),
     };
   }
 }
