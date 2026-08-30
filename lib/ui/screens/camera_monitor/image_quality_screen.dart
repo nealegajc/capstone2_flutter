@@ -16,7 +16,7 @@ class ImageQualityScreen extends StatelessWidget {
             onPressed: () {
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
-                  content: Text('✓ Real-time image quality evaluation: Brightness: 88%, Sharpness: 95% (Passed).'),
+                  content: Text('Real-time image quality evaluation: Brightness: 88%, Sharpness: 95% (Passed).'),
                   backgroundColor: AppColors.statusGreen,
                 ),
               );

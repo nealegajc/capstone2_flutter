@@ -17,7 +17,7 @@ class _ReceivingVerificationScreenState extends State<ReceivingVerificationScree
     setState(() => _isConfirmed = true);
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-        content: Text('✓ Restock batch verified and updated in store inventory & cloud database!'),
+        content: Text('Restock batch verified and updated in store inventory & cloud database!'),
         backgroundColor: AppColors.statusGreen,
       ),
     );
@@ -88,7 +88,7 @@ class _ReceivingVerificationScreenState extends State<ReceivingVerificationScree
             _buildVerificationCard(
               context: context,
               product: 'Sauvage Eau de Parfum (100ml)',
-              roi: '📷 Camera 1: Layer A (Top - Slot A) • Code: AA1',
+              roi: 'Camera 1: Layer A (Top - Slot A) • Code: AA1',
               expected: 5,
               detected: 5,
               statusLabel: 'Verified Match (5/5 Bottles)',
@@ -99,7 +99,7 @@ class _ReceivingVerificationScreenState extends State<ReceivingVerificationScree
             _buildVerificationCard(
               context: context,
               product: 'Chanel Chance Eau Tendre (50ml)',
-              roi: '📷 Camera 3: Layer C (Bottom - Slot A) • Code: CA2',
+              roi: 'Camera 3: Layer C (Bottom - Slot A) • Code: CA2',
               expected: 5,
               detected: 4,
               statusLabel: 'Under Count (-1 Bottle)',

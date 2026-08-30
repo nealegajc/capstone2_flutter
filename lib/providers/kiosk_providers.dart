@@ -13,6 +13,7 @@ import '../data/models/hardware_camera_device.dart';
 import '../data/services/sqlite_service.dart';
 import '../data/services/sync_service.dart';
 import '../data/services/camera_hardware_service.dart';
+import '../data/services/network_service.dart';
 
 final sqliteServiceProvider = Provider<SqliteService>((ref) {
   return SqliteService.instance;
@@ -22,99 +23,66 @@ final syncServiceProvider = ChangeNotifierProvider<SyncService>((ref) {
   return SyncService.instance;
 });
 
-/// Dynamic Inventory Records Provider with 5s Auto-Refresh
-final liveInventoryProvider = FutureProvider.autoDispose.family<List<InventoryRecordModel>, String?>((ref, branch) async {
-  final timer = Timer.periodic(const Duration(seconds: 5), (_) {
-    ref.invalidateSelf();
-  });
-  ref.onDispose(() => timer.cancel());
+final networkServiceProvider = ChangeNotifierProvider<NetworkService>((ref) {
+  return NetworkService.instance;
+});
 
+final networkStatusProvider = Provider<NetworkStatus>((ref) {
+  final netService = ref.watch(networkServiceProvider);
+  return netService.status;
+});
+
+/// Dynamic Inventory Records Provider
+final liveInventoryProvider = FutureProvider.autoDispose.family<List<InventoryRecordModel>, String?>((ref, branch) async {
   final sqlite = ref.watch(sqliteServiceProvider);
   return await sqlite.getInventoryRecords(branch);
 });
 
 /// Dynamic Master Products Catalog Provider
 final masterProductsProvider = FutureProvider.autoDispose<List<ProductModel>>((ref) async {
-  final timer = Timer.periodic(const Duration(seconds: 10), (_) {
-    ref.invalidateSelf();
-  });
-  ref.onDispose(() => timer.cancel());
-
   final sqlite = ref.watch(sqliteServiceProvider);
   return await sqlite.getProducts();
 });
 
-/// Dynamic Shelf Regions (3 Cameras) Provider
+/// Dynamic Shelf Regions (6 Cameras) Provider
 final shelfRegionsProvider = FutureProvider.autoDispose.family<List<ShelfRegionModel>, String>((ref, branch) async {
   final sqlite = ref.watch(sqliteServiceProvider);
   return await sqlite.getShelfRegions(branch);
 });
 
-/// Dynamic Active Alerts Provider with 4s Auto-Refresh
+/// Dynamic Active Alerts Provider
 final liveAlertsProvider = FutureProvider.autoDispose.family<List<AlertModel>, String?>((ref, branch) async {
-  final timer = Timer.periodic(const Duration(seconds: 4), (_) {
-    ref.invalidateSelf();
-  });
-  ref.onDispose(() => timer.cancel());
-
   final sqlite = ref.watch(sqliteServiceProvider);
   return await sqlite.getAlerts(branch);
 });
 
-/// Dynamic Stock Movement Events Logs Provider with 4s Auto-Refresh
+/// Dynamic Stock Movement Events Logs Provider
 final stockMovementLogsProvider = FutureProvider.autoDispose.family<List<InventoryEventModel>, String?>((ref, branch) async {
-  final timer = Timer.periodic(const Duration(seconds: 4), (_) {
-    ref.invalidateSelf();
-  });
-  ref.onDispose(() => timer.cancel());
-
   final sqlite = ref.watch(sqliteServiceProvider);
   return await sqlite.getInventoryEvents(branch);
 });
 
-/// Dynamic System Activity Logs Provider with 3s Auto-Refresh
+/// Dynamic System Activity Logs Provider
 final systemActivityLogsProvider = FutureProvider.autoDispose.family<List<SystemLogModel>, String?>((ref, branch) async {
-  final timer = Timer.periodic(const Duration(seconds: 3), (_) {
-    ref.invalidateSelf();
-  });
-  ref.onDispose(() => timer.cancel());
-
   final sqlite = ref.watch(sqliteServiceProvider);
   return await sqlite.getSystemLogs(branch);
 });
 
-/// Dynamic Sync Queue Provider with 3s Auto-Refresh + SyncService State Binding
+/// Dynamic Sync Queue Provider bound to SyncService State
 final syncQueueListProvider = FutureProvider.autoDispose.family<List<SyncQueueModel>, String?>((ref, branch) async {
-  // Automatically re-fetch whenever SyncService notifies of queue changes / completions
   ref.watch(syncServiceProvider);
-
-  final timer = Timer.periodic(const Duration(seconds: 3), (_) {
-    ref.invalidateSelf();
-  });
-  ref.onDispose(() => timer.cancel());
-
   final sqlite = ref.watch(sqliteServiceProvider);
   return await sqlite.getSyncQueue(branch);
 });
 
-/// Dynamic Restock Records Provider with 5s Auto-Refresh
+/// Dynamic Restock Records Provider
 final restockRecordsProvider = FutureProvider.autoDispose.family<List<RestockRecordModel>, String?>((ref, branch) async {
-  final timer = Timer.periodic(const Duration(seconds: 5), (_) {
-    ref.invalidateSelf();
-  });
-  ref.onDispose(() => timer.cancel());
-
   final sqlite = ref.watch(sqliteServiceProvider);
   return await sqlite.getRestockRecords(branch);
 });
 
-/// Dynamic Image Quality Logs Provider with 5s Auto-Refresh
+/// Dynamic Image Quality Logs Provider
 final imageQualityLogsProvider = FutureProvider.autoDispose.family<List<ImageQualityLogModel>, String?>((ref, branch) async {
-  final timer = Timer.periodic(const Duration(seconds: 5), (_) {
-    ref.invalidateSelf();
-  });
-  ref.onDispose(() => timer.cancel());
-
   final sqlite = ref.watch(sqliteServiceProvider);
   return await sqlite.getImageQualityLogs(branch);
 });

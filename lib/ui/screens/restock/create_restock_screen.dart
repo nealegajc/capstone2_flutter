@@ -58,7 +58,7 @@ class _CreateRestockScreenState extends ConsumerState<CreateRestockScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('✓ Restocked $_expectedQty bottles of ${product.name} (${product.perfumeCode}).'),
+            content: Text('Restocked $_expectedQty bottles of ${product.name} (${product.perfumeCode}).'),
             backgroundColor: AppColors.statusGreen,
           ),
         );
@@ -151,9 +151,9 @@ class _CreateRestockScreenState extends ConsumerState<CreateRestockScreen> {
                           prefixIcon: Icon(Icons.videocam_rounded),
                         ),
                         items: const [
-                          DropdownMenuItem(value: 'Layer A (Top)', child: Text('📷 Camera 1: Layer A (Top Shelf - Male)')),
-                          DropdownMenuItem(value: 'Layer B (Middle)', child: Text('📷 Camera 2: Layer B (Middle Shelf - Mixed)')),
-                          DropdownMenuItem(value: 'Layer C (Bottom)', child: Text('📷 Camera 3: Layer C (Bottom Shelf - Female)')),
+                          DropdownMenuItem(value: 'Layer A (Top)', child: Text('Camera 1: Layer A (Top Shelf - Male)')),
+                          DropdownMenuItem(value: 'Layer B (Middle)', child: Text('Camera 2: Layer B (Middle Shelf - Mixed)')),
+                          DropdownMenuItem(value: 'Layer C (Bottom)', child: Text('Camera 3: Layer C (Bottom Shelf - Female)')),
                         ],
                         onChanged: (val) {
                           if (val != null) setState(() => _selectedShelf = val);

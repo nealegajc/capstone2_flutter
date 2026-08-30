@@ -82,6 +82,21 @@ class SqliteService {
     ''');
     await _seedInitialUsersIfEmpty(db);
 
+    // Ensure shelf_regions has all necessary columns
+    try {
+      final info = await db.rawQuery('PRAGMA table_info(shelf_regions)');
+      final cols = info.map((r) => r['name'] as String).toSet();
+      if (!cols.contains('cameraPosition')) {
+        await db.execute('ALTER TABLE shelf_regions ADD COLUMN cameraPosition TEXT DEFAULT "left"');
+      }
+      if (!cols.contains('deviceNode')) {
+        await db.execute('ALTER TABLE shelf_regions ADD COLUMN deviceNode TEXT DEFAULT "/dev/video2"');
+      }
+      if (!cols.contains('bottleSize')) {
+        await db.execute('ALTER TABLE shelf_regions ADD COLUMN bottleSize TEXT DEFAULT "100ml"');
+      }
+    } catch (_) {}
+
     // Automatically purge old dummy products ('A', 'B', 'C', 'D' or legacy tests)
     // and ensure the full 60 SKUs catalog is present in SQLite.
     try {
@@ -95,7 +110,10 @@ class SqliteService {
       );
       final validCount = (validCountRes.first['c'] as num?)?.toInt() ?? 0;
 
-      if (hasOldDummy > 0 || validCount < 60) {
+      final regionCountRes = await db.rawQuery('SELECT COUNT(*) as c FROM shelf_regions');
+      final regionCount = (regionCountRes.first['c'] as num?)?.toInt() ?? 0;
+
+      if (hasOldDummy > 0 || validCount < 60 || regionCount < 12) {
         await db.delete('products');
         await db.delete('shelf_regions');
         await db.delete('inventory_records');
@@ -132,8 +150,11 @@ class SqliteService {
         assignedProductName TEXT,
         branch TEXT NOT NULL,
         cameraId INTEGER DEFAULT 1,
-        cameraName TEXT DEFAULT 'Camera 1 (Top)',
+        cameraName TEXT DEFAULT 'Camera 1A (Top Left)',
         layerName TEXT DEFAULT 'Layer A (Top)',
+        cameraPosition TEXT DEFAULT 'left',
+        deviceNode TEXT DEFAULT '/dev/video2',
+        bottleSize TEXT DEFAULT '100ml',
         left_coord REAL NOT NULL,
         right_coord REAL NOT NULL,
         top_coord REAL NOT NULL DEFAULT 0.0,
@@ -401,8 +422,14 @@ class SqliteService {
     map['left_coord'] = region.left;
     map['right_coord'] = region.right;
     map['top_coord'] = region.top;
-    map['bottom_coord'] = region.bottom;
-    await db.insert('shelf_regions', map, conflictAlgorithm: ConflictAlgorithm.replace);
+    try {
+      await db.insert('shelf_regions', map, conflictAlgorithm: ConflictAlgorithm.replace);
+    } catch (e) {
+      try {
+        await db.execute('ALTER TABLE shelf_regions ADD COLUMN bottleSize TEXT DEFAULT "100ml"');
+        await db.insert('shelf_regions', map, conflictAlgorithm: ConflictAlgorithm.replace);
+      } catch (_) {}
+    }
 
     try {
       await enqueueSyncItem(

@@ -19,7 +19,7 @@ class _ShelfAreaDetailScreenState extends State<ShelfAreaDetailScreen> {
     setState(() => _isReviewed = true);
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-        content: Text('✓ Shelf Area B - Partition verified & reviewed!'),
+        content: Text('Shelf Area B - Partition verified & reviewed!'),
         backgroundColor: AppColors.statusGreen,
       ),
     );

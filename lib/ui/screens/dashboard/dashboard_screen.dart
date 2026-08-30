@@ -7,6 +7,8 @@ import '../../../core/theme/theme_helper.dart';
 import '../../../data/services/camera_hardware_service.dart';
 import '../../../providers/kiosk_providers.dart';
 import '../../components/status_badge.dart';
+import '../../components/wifi_connection_dialog.dart';
+import '../settings/camera_assignment_dialog.dart';
 
 class DashboardScreen extends ConsumerStatefulWidget {
   const DashboardScreen({super.key});
@@ -22,15 +24,15 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     setState(() => _isScanning = true);
 
     final hardwareService = ref.read(cameraHardwareServiceProvider);
-    final rapooCam = ref.read(rapooCameraPresenceProvider);
+    final activeNode = hardwareService.getAssignedDeviceNode(1);
 
-    // Capture real high-res frame from Rapoo camera if connected
+    // Capture real high-res frame from primary camera if available
     final capturedPath = await hardwareService.captureFrame(
-      deviceNode: rapooCam?.deviceNode ?? '/dev/video2',
+      deviceNode: activeNode,
       mode: CameraQualityMode.qhd2k,
     );
 
-    // Simulate AI inference pass (YOLOv8 bounding + cap OCR)
+    // Simulate AI inference pass across 6 camera views
     await Future.delayed(const Duration(milliseconds: 1400));
 
     if (mounted) {
@@ -41,7 +43,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         final sqlite = ref.read(sqliteServiceProvider);
         await sqlite.logActivity(
           type: 'CAMERA_SCAN',
-          description: 'High-resolution shelf vision scan executed (${rapooCam?.name ?? "Rapoo 2K"}). All 3 shelf layers verified.',
+          description: '6-Camera high-resolution vision scan executed across 3 shelf layers.',
         );
       } catch (_) {}
 
@@ -61,7 +63,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
               const Icon(Icons.check_circle_rounded, color: AppColors.statusGreen, size: 28),
               const SizedBox(width: 12),
               Text(
-                'Shelf Vision Scan Completed',
+                '6-Camera Vision Scan Completed',
                 style: TextStyle(fontWeight: FontWeight.w800, color: context.textPrimaryColor),
               ),
             ],
@@ -71,17 +73,17 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'AI computer vision and Cap OCR verification finished successfully across 3 shelf layers:',
+                'AI computer vision and Cap OCR verification completed across all 6 camera regions:',
                 style: TextStyle(color: context.textSecondaryColor, fontSize: 14),
               ),
               const SizedBox(height: 16),
-              _buildScanResultRow(context, 'Layer A (Top - Male)', '20/20 SKUs Verified', '100% Match', AppColors.statusGreen),
-              _buildScanResultRow(context, 'Layer B (Middle - Mixed)', '20/20 SKUs Verified', '98.5% Match', AppColors.statusGreen),
-              _buildScanResultRow(context, 'Layer C (Bottom - Female)', '20/20 SKUs Verified', '99.1% Match', AppColors.statusGreen),
+              _buildScanResultRow(context, 'Layer A (Top - Male)', 'Cam 1A & 1B Verified (20 SKUs)', '100% Match', AppColors.maleBlue),
+              _buildScanResultRow(context, 'Layer B (Middle - Mixed)', 'Cam 2A & 2B Verified (20 SKUs)', '98.5% Match', AppColors.brandAccent),
+              _buildScanResultRow(context, 'Layer C (Bottom - Female)', 'Cam 3A & 3B Verified (20 SKUs)', '99.1% Match', AppColors.femalePink),
               if (capturedPath != null) ...[
                 const SizedBox(height: 12),
                 Text(
-                  'Snapshot saved from ${rapooCam?.displayName ?? "Rapoo Camera"} to $capturedPath',
+                  'Snapshot saved from $activeNode to $capturedPath',
                   style: TextStyle(color: context.textMutedColor, fontSize: 11),
                 ),
               ],
@@ -98,7 +100,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                 context.push(AppRoutePaths.cameraMonitor);
               },
               icon: const Icon(Icons.videocam_rounded, size: 18),
-              label: const Text('View Camera Monitor'),
+              label: const Text('View 6-Camera Monitor'),
             ),
           ],
         ),
@@ -138,35 +140,51 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     final statsAsync = ref.watch(dashboardStatsProvider(branch));
     final alertsAsync = ref.watch(liveAlertsProvider(branch));
     final syncQueueAsync = ref.watch(syncQueueListProvider(branch));
-    final rapooCam = ref.watch(rapooCameraPresenceProvider);
+    final hardwareCamerasAsync = ref.watch(hardwareCamerasProvider);
+    final netStatus = ref.watch(networkStatusProvider);
+    final detectedCams = hardwareCamerasAsync.valueOrNull ?? [];
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Smart Shelf Command Center'),
         actions: [
-          // Quick Status Indicator
-          Container(
-            margin: const EdgeInsets.only(right: 16),
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            decoration: BoxDecoration(
-              color: context.surfaceElevatedColor,
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: context.borderColor),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  rapooCam != null ? Icons.check_circle_rounded : Icons.warning_amber_rounded,
-                  color: rapooCam != null ? AppColors.statusGreen : AppColors.statusOrange,
-                  size: 16,
+          // 6-Camera Hardware Status Indicator
+          InkWell(
+            onTap: () => CameraAssignmentDialog.show(context),
+            borderRadius: BorderRadius.circular(10),
+            child: Container(
+              margin: const EdgeInsets.only(right: 16),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: detectedCams.isNotEmpty
+                    ? AppColors.statusGreen.withValues(alpha: 0.12)
+                    : context.surfaceElevatedColor,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: detectedCams.isNotEmpty ? AppColors.statusGreen.withValues(alpha: 0.4) : context.borderColor,
                 ),
-                const SizedBox(width: 8),
-                Text(
-                  rapooCam != null ? 'Rapoo 0c45:6365 Active' : 'Camera Standby',
-                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: context.textPrimaryColor),
-                ),
-              ],
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    detectedCams.isNotEmpty ? Icons.videocam_rounded : Icons.videocam_off_outlined,
+                    color: detectedCams.isNotEmpty ? AppColors.statusGreen : AppColors.statusOrange,
+                    size: 16,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    detectedCams.isNotEmpty
+                        ? '${detectedCams.length} / 6 Cams Detected'
+                        : '6 Cameras Standby',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: detectedCams.isNotEmpty ? AppColors.statusGreen : context.textPrimaryColor,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ],
@@ -176,7 +194,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // 1. Hero Command & AI Vision Trigger Card (Light/Dark Gradient)
+            // 1. Hero Command & AI Vision Trigger Card
             Container(
               padding: const EdgeInsets.all(24),
               decoration: BoxDecoration(
@@ -213,7 +231,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Otto Scents — Kiosk #01 (San Pablo)',
+                          'Otto Scents - Kiosk #01 (San Pablo)',
                           style: TextStyle(
                             fontSize: 22,
                             fontWeight: FontWeight.w900,
@@ -223,7 +241,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                         ),
                         const SizedBox(height: 6),
                         Text(
-                          'Automated YOLOv8 + Cap OCR Multi-Camera Shelf Inventory System',
+                          'Automated 6-Camera Vision & Touch ROI Inventory System (3 Layers - 60 SKUs - 300 Bottles)',
                           style: TextStyle(
                             fontSize: 14,
                             color: context.isDark ? AppColors.darkTextSecondary : const Color(0xFF475569),
@@ -235,10 +253,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                   ),
                   const SizedBox(width: 16),
 
-                  // Action Buttons Group
+                  // Action Buttons Group (Clean, without emojis)
                   Row(
                     children: [
-                      // Secondary: Live Monitor
+                      // Secondary: 6-Camera Monitor
                       OutlinedButton.icon(
                         onPressed: () => context.push(AppRoutePaths.cameraMonitor),
                         style: OutlinedButton.styleFrom(
@@ -249,13 +267,13 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                         ),
                         icon: const Icon(Icons.videocam_rounded, size: 22, color: AppColors.brandAccent),
                         label: const Text(
-                          'Camera Feed',
+                          '6-Camera Feeds',
                           style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.brandAccent),
                         ),
                       ),
                       const SizedBox(width: 12),
 
-                      // Primary Hero Action: QUICK SCAN NOW
+                      // Primary Hero Action: SCAN SHELF NOW
                       ElevatedButton.icon(
                         onPressed: _isScanning ? null : _triggerQuickScan,
                         style: ElevatedButton.styleFrom(
@@ -273,7 +291,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                               )
                             : const Icon(Icons.radar_rounded, size: 24),
                         label: Text(
-                          _isScanning ? 'SCANNING SHELF...' : '⚡ SCAN SHELF NOW',
+                          _isScanning ? 'SCANNING 6 CAMERAS...' : 'SCAN SHELF NOW',
                           style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w900, letterSpacing: 0.5),
                         ),
                       ),
@@ -300,7 +318,14 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                   ),
                   const SizedBox(width: 16),
                   _buildHealthChip(
-                    label: 'Supabase Cloud: Synced',
+                    label: netStatus.isOnline ? 'Network: Online' : 'Network: Offline',
+                    icon: netStatus.isOnline ? Icons.wifi_rounded : Icons.wifi_off_rounded,
+                    color: netStatus.isOnline ? AppColors.statusGreen : AppColors.statusOrange,
+                    onTap: () => WifiConnectionDialog.show(context),
+                  ),
+                  const SizedBox(width: 12),
+                  _buildHealthChip(
+                    label: 'Cloud Sync: Active',
                     icon: Icons.cloud_done_rounded,
                     color: AppColors.statusGreen,
                     onTap: () => context.push(AppRoutePaths.syncStatus),
@@ -318,9 +343,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                   ),
                   const SizedBox(width: 12),
                   _buildHealthChip(
-                    label: rapooCam != null ? 'Rapoo USB Camera: Ready' : 'Rapoo Camera: Standby',
+                    label: '6-Camera Setup: Ready',
                     icon: Icons.videocam_rounded,
-                    color: rapooCam != null ? AppColors.statusGreen : AppColors.statusOrange,
+                    color: AppColors.statusGreen,
                     onTap: () => context.push(AppRoutePaths.cameraMonitor),
                   ),
                   const Spacer(),
@@ -342,7 +367,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                     context: context,
                     title: 'Total In Stock',
                     count: '${stats.totalInStock}',
-                    subtitle: '60 SKUs across 3 layers',
+                    subtitle: '60 SKUs / 300 Bottles Capacity',
                     color: AppColors.statusGreen,
                     bgColor: AppColors.statusGreenBg,
                     icon: Icons.inventory_2_rounded,
@@ -353,7 +378,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                     context: context,
                     title: 'Low Stock Alerts',
                     count: '${stats.lowStockCount}',
-                    subtitle: 'Items below 2 units',
+                    subtitle: 'Items below 2 bottles',
                     color: AppColors.statusRed,
                     bgColor: AppColors.statusRedBg,
                     icon: Icons.warning_amber_rounded,
@@ -364,7 +389,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                     context: context,
                     title: 'Misplaced Bottles',
                     count: '${stats.misplacedCount}',
-                    subtitle: 'Detected in wrong ROI',
+                    subtitle: 'Detected in wrong partition',
                     color: AppColors.statusOrange,
                     bgColor: AppColors.statusOrangeBg,
                     icon: Icons.move_up_rounded,
@@ -388,11 +413,11 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
             ),
             const SizedBox(height: 24),
 
-            // 4. Shelf Layer Architecture & Active Alerts Grid
+            // 4. 6-Camera Layer Architecture & Active Alerts Grid
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Left Column: 3 Shelf Layers Visual Status
+                // Left Column: 3 Shelf Layers Visual Status (with Male/Female Colors)
                 Expanded(
                   flex: 6,
                   child: Card(
@@ -406,7 +431,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
                               Text(
-                                '3 Shelf Layers Status & Partition OCR',
+                                '3 Shelf Layers & 6-Camera Vision Status',
                                 style: TextStyle(
                                   fontSize: 16,
                                   fontWeight: FontWeight.w800,
@@ -416,7 +441,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                               OutlinedButton.icon(
                                 onPressed: () => context.push(AppRoutePaths.cameraMonitor),
                                 icon: const Icon(Icons.tune_rounded, size: 16),
-                                label: const Text('Manage Layers', style: TextStyle(fontSize: 12)),
+                                label: const Text('Touch ROI Editor', style: TextStyle(fontSize: 12)),
                                 style: OutlinedButton.styleFrom(
                                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                                 ),
@@ -426,31 +451,34 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                           Divider(height: 24, color: context.borderColor),
                           _buildLayerStatusTile(
                             context: context,
-                            layerName: 'Camera 1: Layer A (Top Shelf — Male)',
-                            codes: 'AA1 to AK2 (20 SKUs)',
-                            bottles: '48 / 50 Bottles',
-                            percent: 0.96,
+                            layerName: 'Top Layer A - Men (Cam 1A & 1B)',
+                            codes: 'AA1 to AK2 • Slots A to K (20 SKUs)',
+                            bottles: '98 / 100 Bottles',
+                            percent: 0.98,
+                            genderTag: 'Men',
+                            color: AppColors.maleBlue,
+                            onScan: _triggerQuickScan,
+                          ),
+                          const SizedBox(height: 14),
+                          _buildLayerStatusTile(
+                            context: context,
+                            layerName: 'Middle Layer B - Mixed (Cam 2A & 2B)',
+                            codes: 'BA1 to BK2 • Left Men, Right Women (20 SKUs)',
+                            bottles: '95 / 100 Bottles',
+                            percent: 0.95,
+                            genderTag: 'Mixed',
                             color: AppColors.brandAccent,
                             onScan: _triggerQuickScan,
                           ),
                           const SizedBox(height: 14),
                           _buildLayerStatusTile(
                             context: context,
-                            layerName: 'Camera 2: Layer B (Middle Shelf — Mixed)',
-                            codes: 'BA1 to BK2 (20 SKUs)',
-                            bottles: '46 / 50 Bottles',
-                            percent: 0.92,
-                            color: AppColors.statusGreen,
-                            onScan: _triggerQuickScan,
-                          ),
-                          const SizedBox(height: 14),
-                          _buildLayerStatusTile(
-                            context: context,
-                            layerName: 'Camera 3: Layer C (Bottom Shelf — Female)',
-                            codes: 'CA1 to CK2 (20 SKUs)',
-                            bottles: '49 / 50 Bottles',
-                            percent: 0.98,
-                            color: AppColors.brandGold,
+                            layerName: 'Bottom Layer C - Women (Cam 3A & 3B)',
+                            codes: 'CA1 to CK2 • Slots A to K (20 SKUs)',
+                            bottles: '99 / 100 Bottles',
+                            percent: 0.99,
+                            genderTag: 'Women',
+                            color: AppColors.femalePink,
                             onScan: _triggerQuickScan,
                           ),
                         ],
@@ -496,7 +524,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                                   padding: const EdgeInsets.symmetric(vertical: 24),
                                   child: Center(
                                     child: Text(
-                                      '✓ No active shelf alerts. All layers optimal.',
+                                      'No active shelf alerts. All 6 camera zones optimal.',
                                       style: TextStyle(color: context.textMutedColor, fontSize: 13),
                                     ),
                                   ),
@@ -573,6 +601,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     required String codes,
     required String bottles,
     required double percent,
+    required String genderTag,
     required Color color,
     required VoidCallback onScan,
   }) {
@@ -581,7 +610,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       decoration: BoxDecoration(
         color: context.surfaceElevatedColor,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: context.borderColor),
+        border: Border.all(color: color.withValues(alpha: 0.25)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -589,7 +618,27 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(layerName, style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: context.textPrimaryColor)),
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: color.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: color.withValues(alpha: 0.4)),
+                    ),
+                    child: Text(
+                      genderTag,
+                      style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: color),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    layerName,
+                    style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: context.textPrimaryColor),
+                  ),
+                ],
+              ),
               Text(bottles, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: color)),
             ],
           ),

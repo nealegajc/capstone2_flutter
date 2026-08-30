@@ -27,11 +27,17 @@ class HardwareCameraDevice {
       vendorId.toLowerCase() == '0c45' && modelId.toLowerCase() == '6365' ||
       name.toLowerCase().contains('rapoo');
 
+  bool get isBuiltInWebcam =>
+      !isRapooCamera && (deviceNode == '/dev/video0' || name.toLowerCase().contains('integrated') || name.toLowerCase().contains('built-in'));
+
   String get displayName {
     if (isRapooCamera) {
-      return 'Microdia Rapoo Camera (ID 0c45:6365)';
+      return 'Rapoo USB Webcam (0c45:6365)';
     }
-    return name.isNotEmpty ? name : 'USB Camera ($deviceNode)';
+    if (isBuiltInWebcam) {
+      return 'Laptop Integrated Webcam ($deviceNode)';
+    }
+    return name.isNotEmpty ? '$name ($deviceNode)' : 'USB Camera ($deviceNode)';
   }
 
   HardwareCameraDevice copyWith({

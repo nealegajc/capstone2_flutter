@@ -6,7 +6,7 @@ import '../models/inventory_record_model.dart';
 
 class CatalogSeedData {
   /// 30 fragrance variants (15 Male, 15 Female) × 2 sizes (100ML & 50ML) = 60 SKUs
-  /// Organized across 3 shelf layers (10 variants per layer) with 3 fixed cameras.
+  /// Organized across 3 shelf layers (10 variants per layer) with 6 mounted cameras.
   /// 3-char unambiguous codes printed on caps: [Layer A/B/C][Slot A-K skipping I][Size 1=100ml, 2=50ml]
   static final List<Map<String, dynamic>> _maleTopVariants = [
     {'slotCode': 'A', 'name': 'Bvlgari Extreme', 'brand': 'Bvlgari', 'slot': 1},
@@ -52,7 +52,7 @@ class CatalogSeedData {
   static List<ProductModel> get products {
     final List<ProductModel> list = [];
 
-    // Layer A (Top - Camera 1)
+    // Layer A (Top - Men)
     for (final v in _maleTopVariants) {
       final slotCode = v['slotCode'] as String;
       final slot = v['slot'] as int;
@@ -87,7 +87,7 @@ class CatalogSeedData {
       ));
     }
 
-    // Layer B (Middle - Camera 2)
+    // Layer B (Middle - Mixed)
     for (final v in _middleVariants) {
       final slotCode = v['slotCode'] as String;
       final slot = v['slot'] as int;
@@ -123,7 +123,7 @@ class CatalogSeedData {
       ));
     }
 
-    // Layer C (Bottom - Camera 3)
+    // Layer C (Bottom - Women)
     for (final v in _femaleBottomVariants) {
       final slotCode = v['slotCode'] as String;
       final slot = v['slot'] as int;
@@ -161,52 +161,66 @@ class CatalogSeedData {
     return list;
   }
 
-  /// 3 Shelf Regions corresponding to the 3 fixed mounted cameras on the shelf
+  /// 12 Shelf Regions corresponding to the 6 mounted cameras with dedicated 100ML & 50ML ROIs
   static List<ShelfRegionModel> getShelfRegions(String branch) {
-    return [
-      ShelfRegionModel(
-        id: 'roi_${branch}_layer_A',
-        code: 'Layer A',
-        assignedProductId: 'prod_AA1',
-        assignedProductName: 'Top Shelf (10 Male Scents - Codes AA1 to AK2)',
-        branch: branch,
-        cameraId: 1,
-        cameraName: 'Camera 1 (Top Shelf)',
-        layerName: 'Layer A (Top)',
-        left: 0.0,
-        right: 1.0,
-        top: 0.0,
-        bottom: 0.33,
-      ),
-      ShelfRegionModel(
-        id: 'roi_${branch}_layer_B',
-        code: 'Layer B',
-        assignedProductId: 'prod_BA1',
-        assignedProductName: 'Middle Shelf (5 Male + 5 Female - Codes BA1 to BK2)',
-        branch: branch,
-        cameraId: 2,
-        cameraName: 'Camera 2 (Middle Shelf)',
-        layerName: 'Layer B (Middle)',
-        left: 0.0,
-        right: 1.0,
-        top: 0.33,
-        bottom: 0.66,
-      ),
-      ShelfRegionModel(
-        id: 'roi_${branch}_layer_C',
-        code: 'Layer C',
-        assignedProductId: 'prod_CA1',
-        assignedProductName: 'Bottom Shelf (10 Female Scents - Codes CA1 to CK2)',
-        branch: branch,
-        cameraId: 3,
-        cameraName: 'Camera 3 (Bottom Shelf)',
-        layerName: 'Layer C (Bottom)',
-        left: 0.0,
-        right: 1.0,
-        top: 0.66,
-        bottom: 1.0,
-      ),
+    final List<ShelfRegionModel> regions = [];
+
+    final cameras = [
+      {'id': 1, 'name': 'Camera 1A (Top Left)', 'layer': 'Layer A (Top)', 'pos': 'left', 'node': '/dev/video0', 'code1': 'AA1-AE1', 'code2': 'AA2-AE2'},
+      {'id': 2, 'name': 'Camera 1B (Top Right)', 'layer': 'Layer A (Top)', 'pos': 'right', 'node': '/dev/video1', 'code1': 'AF1-AK1', 'code2': 'AF2-AK2'},
+      {'id': 3, 'name': 'Camera 2A (Middle Left)', 'layer': 'Layer B (Middle)', 'pos': 'left', 'node': '/dev/video2', 'code1': 'BA1-BE1', 'code2': 'BA2-BE2'},
+      {'id': 4, 'name': 'Camera 2B (Middle Right)', 'layer': 'Layer B (Middle)', 'pos': 'right', 'node': '/dev/video3', 'code1': 'BF1-BK1', 'code2': 'BF2-BK2'},
+      {'id': 5, 'name': 'Camera 3A (Bottom Left)', 'layer': 'Layer C (Bottom)', 'pos': 'left', 'node': '/dev/video4', 'code1': 'CA1-CE1', 'code2': 'CA2-CE2'},
+      {'id': 6, 'name': 'Camera 3B (Bottom Right)', 'layer': 'Layer C (Bottom)', 'pos': 'right', 'node': '/dev/video5', 'code1': 'CF1-CK1', 'code2': 'CF2-CK2'},
     ];
+
+    for (final cam in cameras) {
+      final camId = cam['id'] as int;
+      final camName = cam['name'] as String;
+      final layer = cam['layer'] as String;
+      final pos = cam['pos'] as String;
+      final node = cam['node'] as String;
+
+      // 100ML (Size 1) ROI Region
+      regions.add(ShelfRegionModel(
+        id: 'roi_${branch}_cam_${camId}_100ml',
+        code: '$camName - 100ML',
+        assignedProductId: 'prod_100ml_$camId',
+        assignedProductName: '$camName (100ML Zone • ${cam['code1']})',
+        branch: branch,
+        cameraId: camId,
+        cameraName: camName,
+        layerName: layer,
+        cameraPosition: pos,
+        deviceNode: node,
+        bottleSize: '100ml',
+        left: 0.05,
+        right: 0.95,
+        top: 0.10,
+        bottom: 0.48,
+      ));
+
+      // 50ML (Size 2) ROI Region
+      regions.add(ShelfRegionModel(
+        id: 'roi_${branch}_cam_${camId}_50ml',
+        code: '$camName - 50ML',
+        assignedProductId: 'prod_50ml_$camId',
+        assignedProductName: '$camName (50ML Zone • ${cam['code2']})',
+        branch: branch,
+        cameraId: camId,
+        cameraName: camName,
+        layerName: layer,
+        cameraPosition: pos,
+        deviceNode: node,
+        bottleSize: '50ml',
+        left: 0.05,
+        right: 0.95,
+        top: 0.52,
+        bottom: 0.90,
+      ));
+    }
+
+    return regions;
   }
 
   /// Initial inventory records for pure inventory tracking (5 recorded, 5 detected initially)
@@ -230,7 +244,7 @@ class CatalogSeedData {
     }).toList();
   }
 
-  /// Seeds all 60 products, 3 shelf layers (3 cameras), and inventory records to Supabase
+  /// Seeds all 60 products, 12 shelf regions (6 cameras × 2 sizes), and inventory records to Supabase
   static Future<void> seedToSupabase(SupabaseClient client, {String branch = 'San Pablo'}) async {
     final productsPayload = products.map((p) => p.toSupabaseMap()).toList();
     await client.from('products').upsert(productsPayload);
@@ -244,7 +258,7 @@ class CatalogSeedData {
     await client.from('inventory_records').upsert(inventoryPayload);
   }
 
-  /// Seeds all 60 products, 3 shelf layers (3 cameras), and inventory records to local SQLite
+  /// Seeds all 60 products, 12 shelf regions (6 cameras × 2 sizes), and inventory records to local SQLite
   static Future<void> seedToSqlite(Database db, {String branch = 'San Pablo'}) async {
     final batch = db.batch();
 

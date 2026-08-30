@@ -24,7 +24,17 @@ class CameraHardwareService extends ChangeNotifier {
   List<HardwareCameraDevice> _devices = [];
   Timer? _pollingTimer;
   bool _isProbing = false;
-  String? _lastCapturedRapooPath;
+  String? _lastCapturedPath;
+
+  // Camera node mapping (cameraId 1..6 -> deviceNode)
+  final Map<int, String> _cameraNodeMap = {
+    1: '/dev/video0', // Camera 1A (Top Left) default to Built-in webcam if present
+    2: '/dev/video2', // Camera 1B (Top Right) default to USB Rapoo webcam if present
+    3: '/dev/video2', // Camera 2A
+    4: '/dev/video3', // Camera 2B
+    5: '/dev/video4', // Camera 3A
+    6: '/dev/video5', // Camera 3B
+  };
 
   // Live Stream Pipeline
   Process? _streamProcess;
@@ -36,16 +46,43 @@ class CameraHardwareService extends ChangeNotifier {
   int _frameCount = 0;
   DateTime? _fpsStartTime;
   CameraQualityMode _currentQualityMode = CameraQualityMode.fhd1080p;
+  String? _activeDeviceNode;
+  int _activeCameraId = 1;
 
   List<HardwareCameraDevice> get devices => _devices;
   HardwareCameraDevice? get rapooCamera =>
       _devices.where((d) => d.isRapooCamera).firstOrNull;
-  String? get lastCapturedRapooPath => _lastCapturedRapooPath;
+  HardwareCameraDevice? get builtInWebcam =>
+      _devices.where((d) => d.isBuiltInWebcam).firstOrNull;
+  String? get lastCapturedPath => _lastCapturedPath;
   Stream<Uint8List> get frameStream => _frameStreamController.stream;
   Uint8List? get latestFrame => _latestFrame;
   bool get isStreaming => _isStreaming;
   double get currentFps => _currentFps;
   CameraQualityMode get currentQualityMode => _currentQualityMode;
+  String? get activeDeviceNode => _activeDeviceNode;
+  int get activeCameraId => _activeCameraId;
+  Map<int, String> get cameraNodeMap => Map.unmodifiable(_cameraNodeMap);
+
+  String getAssignedDeviceNode(int cameraId) {
+    return _cameraNodeMap[cameraId] ?? '/dev/video${cameraId - 1}';
+  }
+
+  void setCameraNode(int cameraId, String deviceNode) {
+    _cameraNodeMap[cameraId] = deviceNode;
+    if (_activeCameraId == cameraId) {
+      _activeDeviceNode = deviceNode;
+    }
+    notifyListeners();
+  }
+
+  void setCameraAssignments(Map<int, String> assignments) {
+    _cameraNodeMap.addAll(assignments);
+    if (_cameraNodeMap.containsKey(_activeCameraId)) {
+      _activeDeviceNode = _cameraNodeMap[_activeCameraId];
+    }
+    notifyListeners();
+  }
 
   /// Initializes periodic hardware presence polling (every 3 seconds)
   void startMonitoring({Duration interval = const Duration(seconds: 3)}) {
@@ -60,40 +97,75 @@ class CameraHardwareService extends ChangeNotifier {
     stopLiveStream();
   }
 
-  /// Sets quality mode (e.g. 2K QHD vs 1080p FHD) and restarts live stream if active
-  void setQualityMode(CameraQualityMode mode) {
-    if (_currentQualityMode != mode) {
-      _currentQualityMode = mode;
-      notifyListeners();
-      if (_isStreaming) {
-        restartLiveStream();
-      }
+  /// Sets quality mode (e.g. 2K QHD vs 1080p FHD) and restarts live stream seamlessly
+  Future<void> setQualityMode(CameraQualityMode mode) async {
+    _currentQualityMode = mode;
+    notifyListeners();
+    if (_isStreaming || _activeDeviceNode != null) {
+      final node = _activeDeviceNode ?? getAssignedDeviceNode(_activeCameraId);
+      await stopLiveStream();
+      await Future.delayed(const Duration(milliseconds: 300));
+      await startLiveStream(deviceNode: node);
     }
   }
 
-  /// Starts real-time hardware MJPEG stream via zero-copy pipeline with robust byte frame parsing
-  Future<void> startLiveStream({String? deviceNode}) async {
-    if (_isStreaming) return;
+  /// Switches active camera stream to another camera / device node seamlessly
+  Future<void> switchCamera(int cameraId, String? targetNode) async {
+    _activeCameraId = cameraId;
+    final node = targetNode ?? getAssignedDeviceNode(cameraId);
+    _activeDeviceNode = node;
 
+    await stopLiveStream();
+    await Future.delayed(const Duration(milliseconds: 300));
+    await startLiveStream(deviceNode: node);
+  }
+
+  /// Starts real-time hardware video stream via universal FFmpeg pipeline
+  Future<void> startLiveStream({String? deviceNode}) async {
     final targetDevice = deviceNode ??
-        rapooCamera?.deviceNode ??
-        (_devices.isNotEmpty ? _devices.first.deviceNode : '/dev/video2');
+        _activeDeviceNode ??
+        getAssignedDeviceNode(_activeCameraId);
+
+    if (_isStreaming) {
+      await stopLiveStream();
+      await Future.delayed(const Duration(milliseconds: 250));
+    }
+
+    _activeDeviceNode = targetDevice;
+
+    // Check if target device is a Rapoo camera or has hardware MJPEG
+    final matchedDevice = _devices.where((d) => d.deviceNode == targetDevice).firstOrNull;
+    final isHardwareMjpeg = matchedDevice?.isRapooCamera == true ||
+        matchedDevice?.name.toLowerCase().contains('rapoo') == true;
+
+    List<String> ffmpegArgs;
+    if (isHardwareMjpeg) {
+      ffmpegArgs = [
+        '-y',
+        '-f', 'v4l2',
+        '-input_format', 'mjpeg',
+        '-video_size', _currentQualityMode.resolution,
+        '-framerate', '${_currentQualityMode.framerate}',
+        '-i', targetDevice,
+        '-c:v', 'copy',
+        '-f', 'image2pipe',
+        '-',
+      ];
+    } else {
+      // Universal raw video / built-in webcam pipeline with adaptive scaling
+      ffmpegArgs = [
+        '-y',
+        '-f', 'v4l2',
+        '-i', targetDevice,
+        '-c:v', 'mjpeg',
+        '-q:v', '3',
+        '-f', 'image2pipe',
+        '-',
+      ];
+    }
 
     try {
-      _streamProcess = await Process.start(
-        'ffmpeg',
-        [
-          '-y',
-          '-f', 'v4l2',
-          '-input_format', 'mjpeg',
-          '-video_size', _currentQualityMode.resolution,
-          '-framerate', '${_currentQualityMode.framerate}',
-          '-i', targetDevice,
-          '-c:v', 'copy', // Zero CPU copy from hardware MJPEG
-          '-f', 'image2pipe',
-          '-',
-        ],
-      );
+      _streamProcess = await Process.start('ffmpeg', ffmpegArgs);
 
       _isStreaming = true;
       _frameCount = 0;
@@ -118,14 +190,12 @@ class CameraHardwareService extends ChangeNotifier {
             }
 
             if (soi == -1) {
-              // Discard garbage if no SOI
               if (buffer.length > 1) {
                 buffer.removeRange(0, buffer.length - 1);
               }
               break;
             }
 
-            // Drop any corrupted prefix before SOI
             if (soi > 0) {
               buffer.removeRange(0, soi);
             }
@@ -140,16 +210,13 @@ class CameraHardwareService extends ChangeNotifier {
             }
 
             if (eoi == -1) {
-              // Frame is incomplete; wait for more chunks
               break;
             }
 
-            // Complete, pristine JPEG frame
             final frameBytes = Uint8List.fromList(buffer.sublist(0, eoi));
             buffer.removeRange(0, eoi);
 
-            // Sanity check: valid MJPEG frame must be at least 1KB
-            if (frameBytes.length > 1000) {
+            if (frameBytes.length > 500) {
               _latestFrame = frameBytes;
               if (!_frameStreamController.isClosed) {
                 _frameStreamController.add(frameBytes);
@@ -188,18 +255,26 @@ class CameraHardwareService extends ChangeNotifier {
     }
   }
 
-  void stopLiveStream() {
-    try {
-      _streamProcess?.kill(ProcessSignal.sigterm);
-      _streamProcess = null;
-    } catch (_) {}
+  Future<void> stopLiveStream() async {
+    final proc = _streamProcess;
+    _streamProcess = null;
     _isStreaming = false;
     _currentFps = 0.0;
+
+    if (proc != null) {
+      try {
+        proc.kill(ProcessSignal.sigterm);
+        await proc.exitCode.timeout(const Duration(milliseconds: 300), onTimeout: () {
+          proc.kill(ProcessSignal.sigkill);
+          return -1;
+        });
+      } catch (_) {}
+    }
     notifyListeners();
   }
 
-  void restartLiveStream() async {
-    stopLiveStream();
+  Future<void> restartLiveStream() async {
+    await stopLiveStream();
     await Future.delayed(const Duration(milliseconds: 300));
     await startLiveStream();
   }
@@ -273,11 +348,6 @@ class CameraHardwareService extends ChangeNotifier {
               }
             } catch (_) {}
 
-            String layer = 'Layer A (Top)';
-            if (vendorId.toLowerCase() == '0c45' && modelId.toLowerCase() == '6365') {
-              layer = 'Layer A (Top - Microdia Rapoo)';
-            }
-
             discovered.add(
               HardwareCameraDevice(
                 deviceNode: devicePath,
@@ -287,7 +357,6 @@ class CameraHardwareService extends ChangeNotifier {
                 busInfo: busInfo.isNotEmpty ? busInfo : 'USB V4L2',
                 sysfsPath: entity.path,
                 isConnected: true,
-                assignedLayer: layer,
               ),
             );
           }
@@ -299,44 +368,72 @@ class CameraHardwareService extends ChangeNotifier {
       _isProbing = false;
     }
 
-    _devices = discovered;
-    notifyListeners();
+    // Check if discovered devices changed before notifying listeners
+    bool hasChanged = discovered.length != _devices.length;
+    if (!hasChanged) {
+      for (int i = 0; i < discovered.length; i++) {
+        if (discovered[i].deviceNode != _devices[i].deviceNode ||
+            discovered[i].name != _devices[i].name) {
+          hasChanged = true;
+          break;
+        }
+      }
+    }
+
+    if (hasChanged || _devices.isEmpty) {
+      _devices = discovered;
+      notifyListeners();
+    }
     return _devices;
   }
 
-  /// Captures a pristine high-resolution snapshot (2K QHD or 1080p FHD)
+  /// Captures a high-resolution snapshot from the assigned device node
   Future<String?> captureFrame({String? deviceNode, CameraQualityMode? mode}) async {
-    final quality = mode ?? _currentQualityMode;
     final targetDevice = deviceNode ??
-        rapooCamera?.deviceNode ??
-        (_devices.isNotEmpty ? _devices.first.deviceNode : '/dev/video2');
+        _activeDeviceNode ??
+        getAssignedDeviceNode(_activeCameraId);
     final outputPath = '/tmp/smart_shelf_${targetDevice.replaceAll('/', '_')}.jpg';
 
     final wasStreaming = _isStreaming;
     if (wasStreaming) {
       stopLiveStream();
-      await Future.delayed(const Duration(milliseconds: 200));
+      await Future.delayed(const Duration(milliseconds: 250));
+    }
+
+    final matchedDevice = _devices.where((d) => d.deviceNode == targetDevice).firstOrNull;
+    final isHardwareMjpeg = matchedDevice?.isRapooCamera == true;
+
+    List<String> captureArgs;
+    if (isHardwareMjpeg) {
+      final quality = mode ?? _currentQualityMode;
+      captureArgs = [
+        '-y',
+        '-f', 'v4l2',
+        '-input_format', 'mjpeg',
+        '-video_size', quality.resolution,
+        '-framerate', '${quality.framerate}',
+        '-i', targetDevice,
+        '-frames:v', '1',
+        '-update', '1',
+        outputPath,
+      ];
+    } else {
+      captureArgs = [
+        '-y',
+        '-f', 'v4l2',
+        '-i', targetDevice,
+        '-frames:v', '1',
+        '-update', '1',
+        outputPath,
+      ];
     }
 
     try {
-      await Process.run(
-        'ffmpeg',
-        [
-          '-y',
-          '-f', 'v4l2',
-          '-input_format', 'mjpeg',
-          '-video_size', quality.resolution,
-          '-framerate', '${quality.framerate}',
-          '-i', targetDevice,
-          '-frames:v', '1',
-          '-update', '1',
-          outputPath,
-        ],
-      );
+      await Process.run('ffmpeg', captureArgs);
 
       final file = File(outputPath);
       if (await file.exists() && await file.length() > 0) {
-        _lastCapturedRapooPath = outputPath;
+        _lastCapturedPath = outputPath;
         notifyListeners();
         if (wasStreaming) {
           startLiveStream(deviceNode: targetDevice);

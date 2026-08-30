@@ -1,148 +1,89 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
-import '../../../core/router/route_names.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/theme_helper.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../data/seeds/catalog_seed_data.dart';
 import '../../../data/services/sqlite_service.dart';
-import '../../../providers/auth_provider.dart';
+import '../../../providers/auto_lock_provider.dart';
+import '../../../providers/kiosk_providers.dart';
+import '../../components/wifi_connection_dialog.dart';
 import '../../components/update_pin_dialog.dart';
+import 'camera_assignment_dialog.dart';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final netStatus = ref.watch(networkStatusProvider);
+    final hardwareCamerasAsync = ref.watch(hardwareCamerasProvider);
+    final detectedCams = hardwareCamerasAsync.valueOrNull ?? [];
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Kiosk Settings & Owner Profile'),
+        title: const Text('Store & System Settings'),
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
+        padding: const EdgeInsets.all(24.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // 1. Business Owner Profile Card
-            Card(
-              color: context.surfaceColor,
-              child: Padding(
-                padding: const EdgeInsets.all(22),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 72,
-                      height: 72,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: AppColors.brandAccent.withValues(alpha: 0.15),
-                        border: Border.all(color: AppColors.brandAccent.withValues(alpha: 0.4), width: 2),
-                      ),
-                      child: const Icon(Icons.person_rounded, color: AppColors.brandAccent, size: 36),
-                    ),
-                    const SizedBox(width: 20),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Otto Scents — Store Owner',
-                            style: TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.w800,
-                              color: context.textPrimaryColor,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            'Administrator Access • San Pablo Main Branch Kiosk #01',
-                            style: TextStyle(fontSize: 14, color: context.textSecondaryColor),
-                          ),
-                        ],
-                      ),
-                    ),
-                    ElevatedButton.icon(
-                      onPressed: () {
-                        ref.read(authNotifierProvider.notifier).logout();
-                        context.go(AppRoutePaths.login);
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.statusRedBg,
-                        foregroundColor: AppColors.statusRed,
-                        side: const BorderSide(color: AppColors.statusRed, width: 1.5),
-                      ),
-                      icon: const Icon(Icons.logout_rounded, size: 20),
-                      label: const Text('Lock & Log Out'),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 20),
-
-            // 2. PIN Security & Access Control
-            Text(
-              'Security & PIN Settings',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w800,
-                color: context.textPrimaryColor,
-              ),
-            ),
-            const SizedBox(height: 10),
-
+            // 1. Store Location & Kiosk Info Card
             Card(
               color: context.surfaceColor,
               child: Padding(
                 padding: const EdgeInsets.all(20),
-                child: Row(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Icon(Icons.pin_rounded, color: AppColors.brandAccent, size: 28),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            '6-Digit Store Owner PIN',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w700,
-                              color: context.textPrimaryColor,
-                            ),
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: AppColors.brandAccent.withValues(alpha: context.isDark ? 0.15 : 0.1),
+                            borderRadius: BorderRadius.circular(12),
                           ),
-                          Text(
-                            'Assigned PIN to unlock terminal and manage inventory',
-                            style: TextStyle(fontSize: 13, color: context.textSecondaryColor),
-                          ),
-                        ],
-                      ),
-                    ),
-                    OutlinedButton.icon(
-                      onPressed: () async {
-                        final updated = await UpdatePinDialog.show(context);
-                        if (updated == true && context.mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('✓ Store Owner PIN has been successfully updated and saved!'),
-                              backgroundColor: AppColors.statusGreen,
+                          child: const Icon(Icons.storefront_rounded, color: AppColors.brandAccent, size: 28),
+                        ),
+                        const SizedBox(width: 16),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Store Information',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w800,
+                                color: context.textPrimaryColor,
+                              ),
                             ),
-                          );
-                        }
-                      },
-                      icon: const Icon(Icons.password_rounded, size: 18),
-                      label: const Text('Update PIN'),
+                            Text(
+                              'Physical location details & store branch metadata',
+                              style: TextStyle(fontSize: 13, color: context.textSecondaryColor),
+                            ),
+                          ],
+                        ),
+                      ],
                     ),
+                    Divider(height: 24, color: context.borderColor),
+                    _buildConfigRow(context, 'Store Name', 'Otto Scents Retail Kiosk'),
+                    Divider(height: 20, color: context.borderColor),
+                    _buildConfigRow(context, 'Assigned Branch', 'San Pablo Branch (Kiosk #01)'),
+                    Divider(height: 20, color: context.borderColor),
+                    _buildConfigRow(context, 'Operating Platform', 'Linux Embedded Retail OS (Ubuntu / X11)'),
+                    Divider(height: 20, color: context.borderColor),
+                    _buildConfigRow(context, 'Sync Architecture', 'Supabase Cloud + Local SQLite Fallback Buffer'),
                   ],
                 ),
               ),
             ),
             const SizedBox(height: 20),
 
-            // 3. Vision & 3-Camera Hardware Configuration
+            // 2. Wi-Fi & Internet Connectivity Section
             Text(
-              'Shelf Cameras & Computer Vision Architecture',
+              'Network & Wi-Fi Connectivity',
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.w800,
@@ -158,63 +99,44 @@ class SettingsScreen extends ConsumerWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _buildConfigRow(context, 'Fixed Mounted Cameras', '3 Cameras (1 per Shelf Layer)'),
-                    Divider(height: 20, color: context.borderColor),
-                    _buildConfigRow(context, '📷 Camera 1 (Top Layer)', '10 Male Scents (#1 to #19) • Codes AA1–AK2'),
-                    Divider(height: 20, color: context.borderColor),
-                    _buildConfigRow(context, '📷 Camera 2 (Middle Layer)', '5 Male (#21–#29) + 5 Female (#2–#12) • BA1–BK2'),
-                    Divider(height: 20, color: context.borderColor),
-                    _buildConfigRow(context, '📷 Camera 3 (Bottom Layer)', '10 Female Scents (#14 to #32) • Codes CA1–CK2'),
-                    Divider(height: 20, color: context.borderColor),
-                    _buildConfigRow(context, 'Bottle Sizes Tracked', '100ML (Size 1) & 50ML (Size 2) — 60 SKUs'),
-                    Divider(height: 20, color: context.borderColor),
-                    _buildConfigRow(context, 'Tracking Scope', 'Pure Inventory Count (No Sales / Price Free)'),
-                    const SizedBox(height: 18),
-                    SizedBox(
-                      width: double.infinity,
-                      height: 54,
-                      child: ElevatedButton.icon(
-                        onPressed: () async {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Seeding 60 Otto Scents SKUs (30 variants × 2 sizes) across 3 shelf camera layers...'),
-                              backgroundColor: AppColors.brandAccent,
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(
+                              netStatus.isOnline ? Icons.wifi_rounded : Icons.wifi_off_rounded,
+                              color: netStatus.isOnline ? AppColors.statusGreen : AppColors.statusOrange,
+                              size: 24,
                             ),
-                          );
-                          try {
-                            final client = Supabase.instance.client;
-                            await CatalogSeedData.seedToSupabase(client, branch: 'San Pablo');
-                            await SqliteService.instance.seedCatalog(branch: 'San Pablo');
-                            if (context.mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text('✓ Successfully seeded 60 Otto Scents SKUs to Supabase & SQLite!'),
-                                  backgroundColor: AppColors.statusGreen,
+                            const SizedBox(width: 12),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  netStatus.isOnline ? 'Internet Connected' : 'Offline Mode',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w800,
+                                    color: context.textPrimaryColor,
+                                  ),
                                 ),
-                              );
-                            }
-                          } catch (e) {
-                            await SqliteService.instance.seedCatalog(branch: 'San Pablo');
-                            if (context.mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text('✓ Seeded 60 SKUs locally in SQLite ($e)'),
-                                  backgroundColor: AppColors.statusGreen,
+                                Text(
+                                  netStatus.isOnline
+                                      ? 'Connected to ${netStatus.currentSsid ?? "LAN"} (${netStatus.ipAddress ?? "Online"})'
+                                      : 'No active connection. Local SQLite buffer active.',
+                                  style: TextStyle(fontSize: 13, color: context.textSecondaryColor),
                                 ),
-                              );
-                            }
-                          }
-                        },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.brandAccent,
-                          foregroundColor: Colors.white,
+                              ],
+                            ),
+                          ],
                         ),
-                        icon: const Icon(Icons.cloud_upload_rounded, size: 22),
-                        label: const Text(
-                          'SEED / RESET 60 CATALOG SKUs TO SUPABASE & LOCAL DB',
-                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                        ElevatedButton.icon(
+                          onPressed: () => WifiConnectionDialog.show(context),
+                          icon: const Icon(Icons.wifi_find_rounded, size: 18),
+                          label: const Text('Manage Wi-Fi'),
                         ),
-                      ),
+                      ],
                     ),
                   ],
                 ),
@@ -222,9 +144,9 @@ class SettingsScreen extends ConsumerWidget {
             ),
             const SizedBox(height: 20),
 
-            // 4. Navigation Shortcuts
+            // 3. Security & PIN Access Settings
             Text(
-              'System Configuration Shortcuts',
+              'Security & Access Control',
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.w800,
@@ -235,32 +157,234 @@ class SettingsScreen extends ConsumerWidget {
 
             Card(
               color: context.surfaceColor,
-              child: Column(
-                children: [
-                  ListTile(
-                    leading: const Icon(Icons.schedule_rounded, color: AppColors.brandAccent),
-                    title: Text('Camera Monitoring Schedules', style: TextStyle(fontWeight: FontWeight.w700, color: context.textPrimaryColor)),
-                    subtitle: Text('Change interval or specific daily capture times', style: TextStyle(color: context.textSecondaryColor)),
-                    trailing: Icon(Icons.chevron_right_rounded, color: context.textMutedColor),
-                    onTap: () => context.push(AppRoutePaths.schedule),
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Store 6-Digit Security PIN',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w800,
+                              color: context.textPrimaryColor,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Secures critical terminal actions like Manual Restock, ROI calibration, and Catalog changes.',
+                            style: TextStyle(fontSize: 13, color: context.textSecondaryColor),
+                          ),
+                        ],
+                      ),
+                    ),
+                    OutlinedButton.icon(
+                      onPressed: () async {
+                        final updated = await UpdatePinDialog.show(context);
+                        if (updated == true && context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Security PIN has been successfully updated and saved.'),
+                              backgroundColor: AppColors.statusGreen,
+                            ),
+                          );
+                        }
+                      },
+                      icon: const Icon(Icons.password_rounded, size: 18),
+                      label: const Text('Update PIN'),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+
+            // Inactivity Auto-Lock Card
+            Card(
+              color: context.surfaceColor,
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              const Icon(Icons.timer_outlined, color: AppColors.brandAccent, size: 20),
+                              const SizedBox(width: 8),
+                              Text(
+                                'Terminal Inactivity Auto-Lock',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w800,
+                                  color: context.textPrimaryColor,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Automatically locks the terminal and returns to the PIN login screen after an idle period. Resets on screen touch.',
+                            style: TextStyle(fontSize: 13, color: context.textSecondaryColor),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Consumer(
+                      builder: (context, ref, _) {
+                        final autoLockState = ref.watch(autoLockProvider);
+                        final notifier = ref.read(autoLockProvider.notifier);
+
+                        return Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: context.surfaceElevatedColor,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: context.borderColor, width: 1.5),
+                          ),
+                          child: DropdownButtonHideUnderline(
+                            child: DropdownButton<int>(
+                              value: autoLockState.timeoutMinutes,
+                              dropdownColor: context.surfaceElevatedColor,
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w800,
+                                color: context.textPrimaryColor,
+                              ),
+                              icon: const Icon(Icons.arrow_drop_down_rounded, color: AppColors.brandAccent),
+                              items: const [
+                                DropdownMenuItem(value: 1, child: Text('1 Minute')),
+                                DropdownMenuItem(value: 2, child: Text('2 Minutes')),
+                                DropdownMenuItem(value: 3, child: Text('3 Minutes (Default)')),
+                                DropdownMenuItem(value: 5, child: Text('5 Minutes')),
+                                DropdownMenuItem(value: 10, child: Text('10 Minutes')),
+                                DropdownMenuItem(value: 0, child: Text('Disabled (Never)')),
+                              ],
+                              onChanged: (newMinutes) async {
+                                if (newMinutes != null) {
+                                  await notifier.setTimeoutMinutes(newMinutes);
+                                  if (context.mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text(
+                                          newMinutes > 0
+                                              ? 'Inactivity auto-lock timeout updated to $newMinutes min(s).'
+                                              : 'Inactivity auto-lock disabled.',
+                                        ),
+                                        backgroundColor: AppColors.statusGreen,
+                                      ),
+                                    );
+                                  }
+                                }
+                              },
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+
+            // 4. Vision & 6-Camera Hardware Configuration
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  '6-Camera Vision & Shelf Layer Architecture',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                    color: context.textPrimaryColor,
                   ),
-                  Divider(height: 1, color: context.borderColor),
-                  ListTile(
-                    leading: const Icon(Icons.grid_view_rounded, color: AppColors.brandAccent),
-                    title: Text('Shelf ROI Partition Mapping', style: TextStyle(fontWeight: FontWeight.w700, color: context.textPrimaryColor)),
-                    subtitle: Text('Assign perfume products to shelf zones A, B, C, D', style: TextStyle(color: context.textSecondaryColor)),
-                    trailing: Icon(Icons.chevron_right_rounded, color: context.textMutedColor),
-                    onTap: () => context.push(AppRoutePaths.inventory),
-                  ),
-                  Divider(height: 1, color: context.borderColor),
-                  ListTile(
-                    leading: const Icon(Icons.help_center_rounded, color: AppColors.brandAccent),
-                    title: Text('Help & Beginner Guide', style: TextStyle(fontWeight: FontWeight.w700, color: context.textPrimaryColor)),
-                    subtitle: Text('Easy FAQ guide for common questions and status badges', style: TextStyle(color: context.textSecondaryColor)),
-                    trailing: Icon(Icons.chevron_right_rounded, color: context.textMutedColor),
-                    onTap: () => context.push(AppRoutePaths.helpGuide),
-                  ),
-                ],
+                ),
+                OutlinedButton.icon(
+                  onPressed: () => CameraAssignmentDialog.show(context),
+                  icon: const Icon(Icons.tune_rounded, size: 16),
+                  label: const Text('Assign Device Nodes'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+
+            Card(
+              color: context.surfaceColor,
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildConfigRow(context, 'Vision System Setup', '6 Cameras across 3 Shelf Layers (2 Cameras per Layer)'),
+                    Divider(height: 20, color: context.borderColor),
+                    _buildConfigRow(context, 'Top Layer A (Men)', 'Cam 1A (Slots A to E) & Cam 1B (Slots F to K) - Codes AA1 to AK2 (20 SKUs)'),
+                    Divider(height: 20, color: context.borderColor),
+                    _buildConfigRow(context, 'Middle Layer B (Mixed)', 'Cam 2A (Male Slots A to E) & Cam 2B (Female Slots F to K) - Codes BA1 to BK2 (20 SKUs)'),
+                    Divider(height: 20, color: context.borderColor),
+                    _buildConfigRow(context, 'Bottom Layer C (Women)', 'Cam 3A (Slots A to E) & Cam 3B (Slots F to K) - Codes CA1 to CK2 (20 SKUs)'),
+                    Divider(height: 20, color: context.borderColor),
+                    _buildConfigRow(context, 'Total SKUs & Capacity', '60 SKUs (30 Variants x 2 Sizes) • 300 Bottles Capacity'),
+                    Divider(height: 20, color: context.borderColor),
+                    _buildConfigRow(context, 'Connected Hardware Cameras', '${detectedCams.length} Devices Detected'),
+                    const SizedBox(height: 18),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 54,
+                      child: ElevatedButton.icon(
+                        onPressed: () async {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Seeding 60 Otto Scents SKUs (30 variants x 2 sizes) across 6 camera regions...'),
+                              backgroundColor: AppColors.brandAccent,
+                            ),
+                          );
+                          try {
+                            final client = Supabase.instance.client;
+                            await CatalogSeedData.seedToSupabase(client, branch: 'San Pablo');
+                            await SqliteService.instance.seedCatalog(branch: 'San Pablo');
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('Successfully seeded 60 Otto Scents SKUs to Supabase & SQLite.'),
+                                  backgroundColor: AppColors.statusGreen,
+                                ),
+                              );
+                            }
+                          } catch (e) {
+                            await SqliteService.instance.seedCatalog(branch: 'San Pablo');
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text('Seeded 60 SKUs locally in SQLite ($e)'),
+                                  backgroundColor: AppColors.statusGreen,
+                                ),
+                              );
+                            }
+                          }
+                        },
+                        icon: const Icon(Icons.cloud_upload_rounded, size: 22),
+                        label: const Text(
+                          'Seed / Reset 60 Otto Scents Catalog SKUs',
+                          style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.brandAccent,
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ],
@@ -270,12 +394,33 @@ class SettingsScreen extends ConsumerWidget {
   }
 
   Widget _buildConfigRow(BuildContext context, String label, String value) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Text(label, style: TextStyle(color: context.textSecondaryColor, fontSize: 14)),
-        Text(value, style: TextStyle(color: context.textPrimaryColor, fontWeight: FontWeight.w700, fontSize: 14)),
-      ],
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: context.textSecondaryColor,
+            ),
+          ),
+          Flexible(
+            child: Text(
+              value,
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w800,
+                color: context.textPrimaryColor,
+              ),
+              textAlign: TextAlign.right,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

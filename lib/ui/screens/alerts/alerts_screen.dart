@@ -35,7 +35,7 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
               if (context.mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
-                    content: Text('✓ All active alerts marked as acknowledged.'),
+                    content: Text('All active alerts marked as acknowledged.'),
                     backgroundColor: AppColors.statusGreen,
                   ),
                 );

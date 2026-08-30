@@ -199,7 +199,7 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen> {
                         Text(
                           authState.isLockedOut
                               ? 'Security Lockout Active'
-                              : 'Enter your 6-digit owner PIN to unlock the kiosk',
+                              : 'Enter your 6-digit PIN to unlock the terminal',
                           textAlign: TextAlign.center,
                           style: TextStyle(
                             color: authState.isLockedOut

@@ -23,7 +23,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
   void _saveSchedule() {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-        content: Text('✓ Monitoring capture schedule updated successfully!'),
+        content: Text('Monitoring capture schedule updated successfully!'),
         backgroundColor: AppColors.statusGreen,
       ),
     );

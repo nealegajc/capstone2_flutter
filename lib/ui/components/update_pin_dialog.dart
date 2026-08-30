@@ -275,12 +275,12 @@ class _UpdatePinDialogState extends State<UpdatePinDialog> {
 
     switch (_currentStep) {
       case UpdatePinStep.currentPin:
-        stepTitle = 'Enter Current Owner PIN';
+        stepTitle = 'Enter Current Security PIN';
         stepSubtitle = 'Authenticate using your existing 6-digit PIN';
         break;
       case UpdatePinStep.newPin:
         stepTitle = 'Enter New 6-Digit PIN';
-        stepSubtitle = 'Choose a secure 6-digit numeric PIN for the kiosk';
+        stepSubtitle = 'Choose a secure 6-digit numeric PIN for the terminal';
         break;
       case UpdatePinStep.confirmPin:
         stepTitle = 'Confirm New PIN';
@@ -306,7 +306,7 @@ class _UpdatePinDialogState extends State<UpdatePinDialog> {
                     const Icon(Icons.lock_reset_rounded, color: AppColors.brandAccent, size: 24),
                     const SizedBox(width: 10),
                     Text(
-                      'Update Owner PIN',
+                      'Update Security PIN',
                       style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: context.textPrimaryColor),
                     ),
                   ],

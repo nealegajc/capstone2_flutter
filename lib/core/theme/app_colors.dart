@@ -24,6 +24,12 @@ class AppColors {
   static const Color lightTextSecondary = Color(0xFF475569);
   static const Color lightTextMuted = Color(0xFF64748B);
 
+  // Gender / Category Colors
+  static const Color maleBlue = Color(0xFF0284C7); // Electric Sky Blue for Male Fragrances
+  static const Color maleBlueBg = Color(0x260284C7);
+  static const Color femalePink = Color(0xFFEC4899); // Vibrant Rose Pink for Female Fragrances
+  static const Color femalePinkBg = Color(0x26EC4899);
+
   // Status & Semantic Badges
   // Green = Synced / In Stock / Normal
   static const Color statusGreen = Color(0xFF10B981);

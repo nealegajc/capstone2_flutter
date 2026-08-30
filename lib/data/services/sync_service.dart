@@ -139,7 +139,7 @@ class SyncService extends ChangeNotifier {
                   {
                     'uid': payload['id'] ?? payload['uid'] ?? docId,
                     'email': payload['email'] ?? 'admin@ottoscents.com',
-                    'role': payload['role'] ?? 'owner',
+                    'role': payload['role'] ?? 'staff',
                     'branch': payload['branch'] ?? 'San Pablo',
                     'last_login': DateTime.now().toIso8601String(),
                   },
@@ -180,7 +180,7 @@ class SyncService extends ChangeNotifier {
                   'id': docId,
                   'type': payload['type'] ?? 'SYSTEM_EVENT',
                   'description': payload['description'] ?? payload['desc'] ?? '',
-                  'user': payload['user'] ?? 'Store Owner',
+                  'user': payload['user'] ?? 'Store Staff',
                   'branch': payload['branch'] ?? 'San Pablo',
                   'timestamp': payload['timestamp'] is int
                       ? DateTime.fromMillisecondsSinceEpoch(payload['timestamp'] as int).toIso8601String()
@@ -263,7 +263,7 @@ class SyncService extends ChangeNotifier {
                   'quantity': (payload['quantity'] as num?)?.toInt() ?? 1,
                   'from_branch': payload['fromBranch'] ?? payload['from_branch'] ?? '',
                   'to_branch': payload['toBranch'] ?? payload['to_branch'] ?? 'San Pablo',
-                  'requested_by': payload['requestedBy'] ?? payload['requested_by'] ?? 'Store Owner',
+                  'requested_by': payload['requestedBy'] ?? payload['requested_by'] ?? 'Store Staff',
                   'status': payload['status'] ?? 'pending',
                   'created_at': payload['createdAt'] is int
                       ? DateTime.fromMillisecondsSinceEpoch(payload['createdAt'] as int).toIso8601String()

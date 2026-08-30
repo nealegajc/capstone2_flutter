@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../data/models/product_model.dart';
 import '../../providers/auth_provider.dart';
 import '../../ui/components/kiosk_shell.dart';
 import '../../ui/screens/activity_logs/activity_logs_screen.dart';
@@ -83,8 +84,8 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: AppRoutePaths.productDetail,
             name: AppRouteNames.productDetail,
-            pageBuilder: (context, state) => const NoTransitionPage(
-              child: ProductDetailScreen(),
+            pageBuilder: (context, state) => NoTransitionPage(
+              child: ProductDetailScreen(product: state.extra as ProductModel?),
             ),
           ),
 
@@ -92,8 +93,8 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: AppRoutePaths.productForm,
             name: AppRouteNames.productForm,
-            pageBuilder: (context, state) => const NoTransitionPage(
-              child: ProductFormScreen(),
+            pageBuilder: (context, state) => NoTransitionPage(
+              child: ProductFormScreen(product: state.extra as ProductModel?),
             ),
           ),
 

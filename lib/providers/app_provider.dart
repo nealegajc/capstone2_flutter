@@ -72,7 +72,7 @@ class AppProvider extends ChangeNotifier {
   String _scanStatusText = 'Processing...';
   bool _isLiveCalibrationActive = false;
   Uint8List? _calibrationFrame;
-  List<double> _roiBoundaries = [0.0, 0.25, 0.50, 0.75, 1.0];
+  List<double> _roiBoundaries = [0.0, 0.20, 0.40, 0.60, 0.80, 1.0];
   double _roiTop = 0.15;
   double _roiBottom = 0.85;
 
