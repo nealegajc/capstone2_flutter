@@ -171,7 +171,7 @@ class SupabaseRepository {
     try {
       final client = _supabase;
       if (client == null) return;
-      await client.from('system_logs').upsert(log.toMap());
+      await client.from('system_logs').upsert(log.toSupabaseMap());
     } catch (_) {}
   }
 
@@ -238,6 +238,38 @@ class SupabaseRepository {
   // ---------------------------------------------------------------------------
   // SHELF REGIONS & PRODUCTS
   // ---------------------------------------------------------------------------
+  Stream<List<ProductModel>> streamProducts() {
+    try {
+      final client = _supabase;
+      if (client == null) return const Stream.empty();
+
+      return client
+          .from('products')
+          .stream(primaryKey: ['id'])
+          .map((data) {
+        return data.map((row) => ProductModel.fromMap(row)).toList();
+      }).handleError((_) => <ProductModel>[]);
+    } catch (_) {
+      return const Stream.empty();
+    }
+  }
+
+  Future<void> saveProduct(ProductModel product) async {
+    try {
+      final client = _supabase;
+      if (client == null) return;
+      await client.from('products').upsert(product.toSupabaseMap());
+    } catch (_) {}
+  }
+
+  Future<void> deleteProduct(String id) async {
+    try {
+      final client = _supabase;
+      if (client == null) return;
+      await client.from('products').delete().eq('id', id);
+    } catch (_) {}
+  }
+
   Stream<List<ShelfRegionModel>> streamShelfRegions(String branch) {
     try {
       final client = _supabase;
@@ -253,6 +285,14 @@ class SupabaseRepository {
     } catch (_) {
       return const Stream.empty();
     }
+  }
+
+  Future<void> saveShelfRegion(ShelfRegionModel region) async {
+    try {
+      final client = _supabase;
+      if (client == null) return;
+      await client.from('shelf_regions').upsert(region.toSupabaseMap());
+    } catch (_) {}
   }
 
   // ---------------------------------------------------------------------------

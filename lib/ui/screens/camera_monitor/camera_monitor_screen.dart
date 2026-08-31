@@ -32,7 +32,7 @@ class _CameraMonitorScreenState extends ConsumerState<CameraMonitorScreen> {
       'title': 'Layer A - Left (Top)',
       'layer': 'Layer A (Top)',
       'category': 'Men\'s Fragrances',
-      'slotCodes': ['A', 'B', 'C', 'D', 'E'],
+      'slotCodes': ['AA', 'AB', 'AC', 'AD', 'AE'],
       'codes': 'AA1-AE1 (100ml) & AA2-AE2 (50ml)',
       'variants': '5 Male Fragrance Variants',
       'capacity': '50 Bottles Max (10 SKUs × 5)',
@@ -44,7 +44,7 @@ class _CameraMonitorScreenState extends ConsumerState<CameraMonitorScreen> {
       'title': 'Layer A - Right (Top)',
       'layer': 'Layer A (Top)',
       'category': 'Men\'s Fragrances',
-      'slotCodes': ['F', 'G', 'H', 'J', 'K'],
+      'slotCodes': ['AF', 'AG', 'AH', 'AJ', 'AK'],
       'codes': 'AF1-AK1 (100ml) & AF2-AK2 (50ml)',
       'variants': '5 Male Fragrance Variants',
       'capacity': '50 Bottles Max (10 SKUs × 5)',
@@ -56,7 +56,7 @@ class _CameraMonitorScreenState extends ConsumerState<CameraMonitorScreen> {
       'title': 'Layer B - Left (Middle)',
       'layer': 'Layer B (Middle)',
       'category': 'Men\'s Fragrances',
-      'slotCodes': ['A', 'B', 'C', 'D', 'E'],
+      'slotCodes': ['BA', 'BB', 'BC', 'BD', 'BE'],
       'codes': 'BA1-BE1 (100ml) & BA2-BE2 (50ml)',
       'variants': '5 Male Fragrance Variants',
       'capacity': '50 Bottles Max (10 SKUs × 5)',
@@ -68,7 +68,7 @@ class _CameraMonitorScreenState extends ConsumerState<CameraMonitorScreen> {
       'title': 'Layer B - Right (Middle)',
       'layer': 'Layer B (Middle)',
       'category': 'Women\'s Fragrances',
-      'slotCodes': ['F', 'G', 'H', 'J', 'K'],
+      'slotCodes': ['BF', 'BG', 'BH', 'BJ', 'BK'],
       'codes': 'BF1-BK1 (100ml) & BF2-BK2 (50ml)',
       'variants': '5 Female Fragrance Variants',
       'capacity': '50 Bottles Max (10 SKUs × 5)',
@@ -80,7 +80,7 @@ class _CameraMonitorScreenState extends ConsumerState<CameraMonitorScreen> {
       'title': 'Layer C - Left (Bottom)',
       'layer': 'Layer C (Bottom)',
       'category': 'Women\'s Fragrances',
-      'slotCodes': ['A', 'B', 'C', 'D', 'E'],
+      'slotCodes': ['CA', 'CB', 'CC', 'CD', 'CE'],
       'codes': 'CA1-CE1 (100ml) & CA2-CE2 (50ml)',
       'variants': '5 Female Fragrance Variants',
       'capacity': '50 Bottles Max (10 SKUs × 5)',
@@ -92,7 +92,7 @@ class _CameraMonitorScreenState extends ConsumerState<CameraMonitorScreen> {
       'title': 'Layer C - Right (Bottom)',
       'layer': 'Layer C (Bottom)',
       'category': 'Women\'s Fragrances',
-      'slotCodes': ['F', 'G', 'H', 'J', 'K'],
+      'slotCodes': ['CF', 'CG', 'CH', 'CJ', 'CK'],
       'codes': 'CF1-CK1 (100ml) & CF2-CK2 (50ml)',
       'variants': '5 Female Fragrance Variants',
       'capacity': '50 Bottles Max (10 SKUs × 5)',
@@ -399,6 +399,13 @@ class _CameraMonitorScreenState extends ConsumerState<CameraMonitorScreen> {
     final roi = ref.watch(cameraRoiProvider(_selectedCamera));
     final roiNotifier = ref.read(cameraRoiProvider(_selectedCamera).notifier);
 
+    // Watch products to identify seasonal turned-off variants
+    final productsAsync = ref.watch(masterProductsProvider);
+    final disabledCapCodes = productsAsync.valueOrNull
+        ?.where((p) => p.isSeasonalOff)
+        .map((p) => p.perfumeCode)
+        .toSet() ?? const <String>{};
+
     final fpsText = isStreaming
         ? (hardwareService.currentFps > 0
             ? '${hardwareService.currentFps.toStringAsFixed(1)} FPS'
@@ -407,7 +414,7 @@ class _CameraMonitorScreenState extends ConsumerState<CameraMonitorScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('6-Camera Vision & Tray ROI Monitor'),
+        title: const Text('Shelf Cameras & Detection Zones'),
         actions: [
           // 1. Prominent START / STOP Live Stream Button
           ElevatedButton.icon(
@@ -428,7 +435,7 @@ class _CameraMonitorScreenState extends ConsumerState<CameraMonitorScreen> {
           ),
           const SizedBox(width: 10),
 
-          // 2. Interactive ROI Mode Switch Button
+          // 2. Interactive Detection Box Switch Button
           ElevatedButton.icon(
             onPressed: () {
               if (_isRoiEditing) {
@@ -443,7 +450,7 @@ class _CameraMonitorScreenState extends ConsumerState<CameraMonitorScreen> {
               color: Colors.white,
             ),
             label: Text(
-              _isRoiEditing ? 'Save Tray ROI' : 'Touch & Reshape ROI',
+              _isRoiEditing ? 'Save Detection Box' : 'Adjust Detection Box',
               style: const TextStyle(fontWeight: FontWeight.w800, color: Colors.white),
             ),
             style: ElevatedButton.styleFrom(
@@ -456,16 +463,56 @@ class _CameraMonitorScreenState extends ConsumerState<CameraMonitorScreen> {
             OutlinedButton.icon(
               onPressed: () => roiNotifier.reset(),
               icon: const Icon(Icons.restart_alt_rounded, size: 18),
-              label: const Text('Reset ROI'),
+              label: const Text('Reset Box'),
             ),
           ],
           const SizedBox(width: 10),
 
-          // 3. Hardware Assignment Settings Dialog
+          // 3. Turn Scanner Zone ON / OFF (Seasonal Rotation)
+          OutlinedButton.icon(
+            onPressed: () async {
+              final activeCam = _cameraInfo[_selectedCamera] ?? _cameraInfo[1]!;
+              roiNotifier.toggleEnabled();
+              await roiNotifier.save('San Pablo');
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      roi.isEnabled
+                          ? '${activeCam['name']} scanner is PAUSED for seasonal rotation.'
+                          : '${activeCam['name']} scanner is ACTIVE and monitoring stock.',
+                    ),
+                    backgroundColor: roi.isEnabled ? AppColors.statusOrange : AppColors.statusGreen,
+                    duration: const Duration(seconds: 2),
+                  ),
+                );
+              }
+            },
+            icon: Icon(
+              roi.isEnabled ? Icons.wb_sunny_outlined : Icons.check_circle_outline_rounded,
+              size: 18,
+              color: roi.isEnabled ? AppColors.statusOrange : AppColors.statusGreen,
+            ),
+            label: Text(
+              roi.isEnabled ? 'Pause Shelf Zone' : 'Resume Shelf Zone',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                color: roi.isEnabled ? AppColors.statusOrange : AppColors.statusGreen,
+              ),
+            ),
+            style: OutlinedButton.styleFrom(
+              side: BorderSide(
+                color: (roi.isEnabled ? AppColors.statusOrange : AppColors.statusGreen).withValues(alpha: 0.6),
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+
+          // 4. Hardware Assignment Settings Dialog
           OutlinedButton.icon(
             onPressed: () => CameraAssignmentDialog.show(context),
             icon: const Icon(Icons.tune_rounded, size: 18),
-            label: const Text('Assign Cameras'),
+            label: const Text('Connect Webcams'),
           ),
           const SizedBox(width: 10),
 
@@ -638,7 +685,7 @@ class _CameraMonitorScreenState extends ConsumerState<CameraMonitorScreen> {
                           // 2. Touch-Gesture Interactive ROI Overlay (Unified Tray Split into 100ml & 50ml)
                           Positioned.fill(
                             child: RoiEditorOverlay(
-                              roi: roi,
+                              roi: roi.copyWith(disabledCapCodes: disabledCapCodes),
                               cameraName: activeCam['name'] as String,
                               slotCodes: List<String>.from(activeCam['slotCodes'] as List),
                               isInteractive: _isRoiEditing,
@@ -722,7 +769,7 @@ class _CameraMonitorScreenState extends ConsumerState<CameraMonitorScreen> {
                                     Icon(Icons.touch_app_rounded, color: Colors.white, size: 16),
                                     SizedBox(width: 6),
                                     Text(
-                                      'Tray Split: Left = 100ML (Emerald) • Right = 50ML (Rose) • Drag / Scale Single Tray Box',
+                                      '5 Trays in 1 Row: Each Tray has Left = 100ML (Emerald) • Right = 50ML (Rose) • Drag / Scale ROI Box',
                                       style: TextStyle(
                                         color: Colors.white,
                                         fontSize: 11,
@@ -837,13 +884,13 @@ class _CameraMonitorScreenState extends ConsumerState<CameraMonitorScreen> {
                                   ),
                                   _buildTelemetryRow(
                                     context,
-                                    '100ML (Left Half)',
-                                    'L:${(roi.left * 100).toStringAsFixed(0)}% → ${( (roi.left + (roi.width / 2)) * 100).toStringAsFixed(0)}%',
+                                    'Tray Layout',
+                                    '5 Trays in 1 Row (Left: 100ML • Right: 50ML)',
                                   ),
                                   _buildTelemetryRow(
                                     context,
-                                    '50ML (Right Half)',
-                                    'L:${( (roi.left + (roi.width / 2)) * 100).toStringAsFixed(0)}% → ${(roi.right * 100).toStringAsFixed(0)}%',
+                                    'Each Tray Split',
+                                    'Left 100ML (Emerald) | Right 50ML (Rose)',
                                   ),
                                   Divider(height: 14, color: context.borderColor),
                                   Text(

@@ -33,6 +33,7 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
   String _selectedLayer = 'Layer A (Top)';
   int _selectedSlotPosition = 1; // 1 to 10 (Slots A to K)
   bool _createBothSizes = false;
+  bool _isSeasonalOff = false;
 
   final List<String> _slotLetters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'J', 'K'];
 
@@ -53,6 +54,7 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
       _selectedBottleSize = p.bottleSize.toLowerCase();
       _selectedLayer = p.shelfLayer;
       _selectedSlotPosition = p.slotPosition;
+      _isSeasonalOff = p.isSeasonalOff;
     } else {
       _autoGenerateCapCode();
     }
@@ -182,7 +184,7 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
           shelfLayer: _selectedLayer,
           slotPosition: _selectedSlotPosition,
           price: 0.0,
-          status: 'active',
+          status: _isSeasonalOff ? 'seasonal_off' : 'active',
         );
         // Create Size 2 (50ml)
         final p2 = ProductModel(
@@ -195,7 +197,7 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
           shelfLayer: _selectedLayer,
           slotPosition: _selectedSlotPosition,
           price: 0.0,
-          status: 'active',
+          status: _isSeasonalOff ? 'seasonal_off' : 'active',
         );
 
         await SqliteService.instance.saveProduct(p1);
@@ -211,7 +213,7 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
           shelfLayer: _selectedLayer,
           slotPosition: _selectedSlotPosition,
           price: 0.0,
-          status: 'active',
+          status: _isSeasonalOff ? 'seasonal_off' : 'active',
         );
 
         await SqliteService.instance.saveProduct(product);
@@ -689,6 +691,67 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                           controlAffinity: ListTileControlAffinity.leading,
                         ),
                       ],
+
+                      const SizedBox(height: 14),
+
+                      // Seasonal Fragrance Rotation Switch
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        decoration: BoxDecoration(
+                          color: _isSeasonalOff
+                              ? (context.isDark ? const Color(0xFF1F1A14) : const Color(0xFFFFFBEB))
+                              : context.surfaceElevatedColor,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(
+                            color: _isSeasonalOff ? AppColors.statusOrange.withValues(alpha: 0.6) : context.borderColor,
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: (_isSeasonalOff ? AppColors.statusOrange : AppColors.statusGreen).withValues(alpha: 0.15),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Icon(
+                                _isSeasonalOff ? Icons.wb_sunny_outlined : Icons.check_circle_outline_rounded,
+                                color: _isSeasonalOff ? AppColors.statusOrange : AppColors.statusGreen,
+                                size: 20,
+                              ),
+                            ),
+                            const SizedBox(width: 14),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    _isSeasonalOff ? 'Seasonal Scent (Turned Off)' : 'Active On Shelf',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w800,
+                                      fontSize: 13,
+                                      color: context.textPrimaryColor,
+                                    ),
+                                  ),
+                                  Text(
+                                    _isSeasonalOff
+                                        ? 'Paused from active shelf inventory scans.'
+                                        : 'Actively stocked and monitored on the kiosk shelf.',
+                                    style: TextStyle(fontSize: 11, color: context.textSecondaryColor),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Switch(
+                              value: !_isSeasonalOff,
+                              activeColor: AppColors.statusGreen,
+                              inactiveThumbColor: AppColors.statusOrange,
+                              onChanged: (active) => setState(() => _isSeasonalOff = !active),
+                            ),
+                          ],
+                        ),
+                      ),
 
                       const SizedBox(height: 24),
 

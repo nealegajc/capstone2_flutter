@@ -155,7 +155,9 @@ class SyncService extends ChangeNotifier {
                   'brand': payload['brand'] ?? 'Otto Scents',
                   'category': payload['category'] ?? 'Men',
                   'bottle_size': payload['bottleSize'] ?? payload['bottle_size'] ?? '50ml',
-                  'price': payload['price'] ?? 0.0,
+                  'shelf_layer': payload['shelfLayer'] ?? payload['shelf_layer'] ?? 'Layer A',
+                  'slot_position': (payload['slotPosition'] ?? payload['slot_position'] as num?)?.toInt() ?? 1,
+                  'price': (payload['price'] as num?)?.toDouble() ?? 0.0,
                   'status': payload['status'] ?? 'active',
                 });
                 break;
@@ -167,6 +169,12 @@ class SyncService extends ChangeNotifier {
                   'assigned_product_id': payload['assignedProductId'] ?? payload['assigned_product_id'],
                   'assigned_product_name': payload['assignedProductName'] ?? payload['assigned_product_name'],
                   'branch': payload['branch'] ?? 'San Pablo',
+                  'camera_id': (payload['cameraId'] ?? payload['camera_id'] as num?)?.toInt() ?? 1,
+                  'camera_name': payload['cameraName'] ?? payload['camera_name'] ?? 'Camera 1A (Top Left)',
+                  'layer_name': payload['layerName'] ?? payload['layer_name'] ?? 'Layer A (Top)',
+                  'camera_position': payload['cameraPosition'] ?? payload['camera_position'] ?? 'left',
+                  'device_node': payload['deviceNode'] ?? payload['device_node'] ?? '/dev/video2',
+                  'bottle_size': payload['bottleSize'] ?? payload['bottle_size'] ?? '100ml',
                   'left_coord': (payload['left_coord'] ?? payload['left'] as num?)?.toDouble() ?? 0.0,
                   'right_coord': (payload['right_coord'] ?? payload['right'] as num?)?.toDouble() ?? 1.0,
                   'top_coord': (payload['top_coord'] ?? payload['top'] as num?)?.toDouble() ?? 0.0,
@@ -196,7 +204,7 @@ class SyncService extends ChangeNotifier {
                   'perfume_code': payload['perfumeCode'] ?? payload['perfume_code'] ?? '',
                   'shelf_area': payload['shelfArea'] ?? payload['shelf_area'] ?? 'Layer A',
                   'branch': payload['branch'] ?? 'San Pablo',
-                  'quantity': payload['quantity'] ?? 1,
+                  'quantity': (payload['quantity'] as num?)?.toInt() ?? 1,
                   'timestamp': payload['timestamp'] is int
                       ? DateTime.fromMillisecondsSinceEpoch(payload['timestamp'] as int).toIso8601String()
                       : (payload['timestamp']?.toString() ?? DateTime.now().toIso8601String()),
@@ -212,11 +220,11 @@ class SyncService extends ChangeNotifier {
                   'category': payload['category'] ?? 'Men',
                   'branch': payload['branch'] ?? 'San Pablo',
                   'shelf': payload['shelf'] ?? payload['shelfLayer'] ?? 'Layer A',
-                  'recorded': payload['recorded'] ?? 5,
-                  'detected': payload['detected'] ?? 5,
+                  'recorded': (payload['recorded'] as num?)?.toInt() ?? 5,
+                  'detected': (payload['detected'] as num?)?.toInt() ?? 5,
                   'status': payload['status'] ?? 'normal',
                   'misplacement_details': payload['misplacementDetails'] ?? payload['misplacement_details'] ?? '',
-                  'price': payload['price'] ?? 0.0,
+                  'price': (payload['price'] as num?)?.toDouble() ?? 0.0,
                   'last_updated': DateTime.now().toIso8601String(),
                 });
                 break;
@@ -291,7 +299,12 @@ class SyncService extends ChangeNotifier {
         } catch (e) {
           _isOnline = false;
           _lastError = e.toString();
-          await _sqlite.incrementSyncRetry(id, e.toString());
+          final retryCount = (item['retryCount'] as num?)?.toInt() ?? 0;
+          if (retryCount >= 5) {
+            await _sqlite.markSyncItemStatus(id, 'failed');
+          } else {
+            await _sqlite.incrementSyncRetry(id, e.toString());
+          }
         }
       }
 
@@ -300,6 +313,7 @@ class SyncService extends ChangeNotifier {
           await _sqlite.logActivity(
             type: 'SYNC_COMPLETED',
             description: 'Cloud sync complete: $syncedCount mutation(s) synchronized with Supabase.',
+            enqueueSync: false,
           );
         } catch (_) {}
       }
@@ -319,45 +333,45 @@ class SyncService extends ChangeNotifier {
     }
   }
 
-  /// Pulls latest Supabase cloud data into local SQLite cache
+  /// Pulls latest Supabase cloud data into local SQLite cache without echo re-enqueuing
   Future<void> pullRemoteData(String branch) async {
     final client = _supabase;
     if (client == null) return;
 
     try {
-      // 1. Pull Products Catalog
+      // 1. Pull Products Catalog (pass enqueueSync: false to prevent mutation loop)
       final prodData = await client.from('products').select();
       for (final row in prodData) {
         final product = ProductModel.fromMap(row);
-        await _sqlite.saveProduct(product);
+        await _sqlite.saveProduct(product, enqueueSync: false);
       }
 
       // 2. Pull Shelf Regions
       final roiData = await client.from('shelf_regions').select().eq('branch', branch);
       for (final row in roiData) {
         final region = ShelfRegionModel.fromMap(row);
-        await _sqlite.updateShelfRegion(region);
+        await _sqlite.updateShelfRegion(region, enqueueSync: false);
       }
 
       // 3. Pull Inventory Records
       final invData = await client.from('inventory_records').select().eq('branch', branch);
       for (final row in invData) {
         final record = InventoryRecordModel.fromMap(row);
-        await _sqlite.upsertInventoryRecord(record);
+        await _sqlite.upsertInventoryRecord(record, enqueueSync: false);
       }
 
       // 4. Pull Inventory Events
       final eventsData = await client.from('inventory_events').select().eq('branch', branch).limit(50);
       for (final row in eventsData) {
         final event = InventoryEventModel.fromMap(row);
-        await _sqlite.logInventoryEvent(event);
+        await _sqlite.logInventoryEvent(event, enqueueSync: false);
       }
 
       // 5. Pull Alerts
       final alertsData = await client.from('alerts').select().eq('branch', branch).limit(50);
       for (final row in alertsData) {
         final alert = AlertModel.fromMap(row);
-        await _sqlite.insertAlert(alert);
+        await _sqlite.insertAlert(alert, enqueueSync: false);
       }
 
       // 6. Pull System Settings (including PIN if present)
@@ -366,7 +380,7 @@ class SyncService extends ChangeNotifier {
         final k = row['key'] as String?;
         final v = row['value'];
         if (k != null && v != null) {
-          await _sqlite.setSystemSetting(k, v);
+          await _sqlite.setSystemSetting(k, v, enqueueSync: false);
         }
       }
 
@@ -374,21 +388,21 @@ class SyncService extends ChangeNotifier {
       final restockData = await client.from('restock_records').select().or('to_branch.eq.$branch,from_branch.eq.$branch').limit(50);
       for (final row in restockData) {
         final restock = RestockRecordModel.fromMap(row);
-        await _sqlite.saveRestockRecord(restock);
+        await _sqlite.saveRestockRecord(restock, enqueueSync: false);
       }
 
       // 8. Pull Image Quality Logs
       final iqData = await client.from('image_quality_logs').select().eq('branch', branch).limit(50);
       for (final row in iqData) {
         final iq = ImageQualityLogModel.fromMap(row);
-        await _sqlite.logImageQuality(iq);
+        await _sqlite.logImageQuality(iq, enqueueSync: false);
       }
 
       // 9. Pull System Logs
       final logsData = await client.from('system_logs').select().eq('branch', branch).limit(50);
       for (final row in logsData) {
         final log = SystemLogModel.fromMap(row);
-        await _sqlite.logSystemActivity(log);
+        await _sqlite.logSystemActivity(log, enqueueSync: false);
       }
 
       _isOnline = true;

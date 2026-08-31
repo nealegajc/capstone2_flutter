@@ -115,7 +115,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Inventory Catalog & Cap OCR Codes'),
+        title: const Text('Fragrance Products & Inventory'),
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh_rounded),
@@ -198,6 +198,8 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
 
             if (_selectedFilter == 'men' && isFemale) return false;
             if (_selectedFilter == 'women' && !isFemale) return false;
+            if (_selectedFilter == 'active' && p.isSeasonalOff) return false;
+            if (_selectedFilter == 'seasonal_off' && !p.isSeasonalOff) return false;
             if (_selectedFilter == 'layerA' && !p.shelfLayer.contains('Layer A')) return false;
             if (_selectedFilter == 'layerB' && !p.shelfLayer.contains('Layer B')) return false;
             if (_selectedFilter == 'layerC' && !p.shelfLayer.contains('Layer C')) return false;
@@ -214,6 +216,9 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
               invMap[item.perfumeCode] = item.detected;
             }
           });
+
+          final activeCount = allItems.where((p) => p.isActive).length;
+          final seasonalOffCount = allItems.where((p) => p.isSeasonalOff).length;
 
           return Column(
             children: [
@@ -297,32 +302,38 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                     ),
                     const SizedBox(height: 12),
 
-                    // Filter Chips Row (Gender & Layer Filters)
+                    // Filter Chips Row (Gender, Availability & Layer Filters)
                     SingleChildScrollView(
                       scrollDirection: Axis.horizontal,
                       child: Row(
                         children: [
                           _buildFilterChip('all', 'All Fragrances (${allItems.length})'),
                           const SizedBox(width: 8),
+                          _buildFilterChip('active', 'Active on Shelf ($activeCount)'),
+                          const SizedBox(width: 8),
+                          _buildSeasonalFilterChip('seasonal_off', 'Seasonal / Off ($seasonalOffCount)'),
+                          const SizedBox(width: 14),
+                          Container(width: 1.5, height: 24, color: context.borderColor),
+                          const SizedBox(width: 14),
                           _buildGenderFilterChip('men', 'Men\'s Fragrances (30)', AppColors.maleBlue),
                           const SizedBox(width: 8),
                           _buildGenderFilterChip('women', 'Women\'s Fragrances (30)', AppColors.femalePink),
                           const SizedBox(width: 14),
                           Container(width: 1.5, height: 24, color: context.borderColor),
                           const SizedBox(width: 14),
-                          _buildFilterChip('layerA', 'Layer A / Top (Male)'),
+                          _buildFilterChip('layerA', 'Top Shelf (Men)'),
                           const SizedBox(width: 8),
-                          _buildFilterChip('layerB', 'Layer B / Middle (Mixed)'),
+                          _buildFilterChip('layerB', 'Middle Shelf (Mixed)'),
                           const SizedBox(width: 8),
-                          _buildFilterChip('layerC', 'Layer C / Bottom (Female)'),
+                          _buildFilterChip('layerC', 'Bottom Shelf (Women)'),
                           const SizedBox(width: 14),
                           Container(width: 1.5, height: 24, color: context.borderColor),
                           const SizedBox(width: 14),
                           _buildSizeChip('all', 'All Sizes'),
                           const SizedBox(width: 8),
-                          _buildSizeChip('100ml', '100ML (Size 1)'),
+                          _buildSizeChip('100ml', '100ml Bottles'),
                           const SizedBox(width: 8),
-                          _buildSizeChip('50ml', '50ML (Size 2)'),
+                          _buildSizeChip('50ml', '50ml Bottles'),
                         ],
                       ),
                     ),
@@ -433,6 +444,51 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
     );
   }
 
+  Widget _buildSeasonalFilterChip(String value, String label) {
+    final isSelected = _selectedFilter == value;
+    return ChoiceChip(
+      label: Text(label),
+      selected: isSelected,
+      onSelected: (_) => setState(() => _selectedFilter = value),
+      selectedColor: AppColors.statusOrange,
+      backgroundColor: context.surfaceElevatedColor,
+      labelStyle: TextStyle(
+        color: isSelected ? Colors.white : AppColors.statusOrange,
+        fontWeight: isSelected ? FontWeight.w800 : FontWeight.w700,
+        fontSize: 12,
+      ),
+      side: BorderSide(
+        color: isSelected ? AppColors.statusOrange : AppColors.statusOrange.withValues(alpha: 0.35),
+      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+    );
+  }
+
+  Future<void> _toggleVariant(ProductModel product, bool isActive) async {
+    final newStatus = isActive ? 'active' : 'seasonal_off';
+    await ref.read(sqliteServiceProvider).toggleProductStatus(
+      productId: product.id,
+      newStatus: newStatus,
+    );
+    ref.invalidate(masterProductsProvider);
+    ref.invalidate(liveInventoryProvider('San Pablo'));
+    ref.invalidate(dashboardStatsProvider('San Pablo'));
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            isActive
+                ? 'Fragrance "${product.name}" (${product.perfumeCode}) is now ACTIVE on shelf.'
+                : 'Fragrance "${product.name}" (${product.perfumeCode}) is now TURNED OFF (Seasonal rotation).',
+          ),
+          backgroundColor: isActive ? AppColors.statusGreen : AppColors.statusOrange,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
+  }
+
   Widget _buildSizeChip(String value, String label) {
     final isSelected = _selectedSize == value;
     return ChoiceChip(
@@ -469,16 +525,21 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
     required VoidCallback onEdit,
   }) {
     final isLow = currentQty <= 2;
+    final isOff = product.isSeasonalOff;
     final themeGenderColor = isFemale ? AppColors.femalePink : AppColors.maleBlue;
 
     return Card(
-      color: context.surfaceColor,
+      color: isOff
+          ? (context.isDark ? const Color(0xFF1F1A14) : const Color(0xFFFFFBEB))
+          : context.surfaceColor,
       elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
         side: BorderSide(
-          color: themeGenderColor.withValues(alpha: context.isDark ? 0.18 : 0.25),
-          width: 1.2,
+          color: isOff
+              ? AppColors.statusOrange.withValues(alpha: 0.5)
+              : themeGenderColor.withValues(alpha: context.isDark ? 0.18 : 0.25),
+          width: isOff ? 1.5 : 1.2,
         ),
       ),
       child: InkWell(
@@ -488,54 +549,63 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
           child: Row(
             children: [
-              // Alphanumeric Cap OCR Badge (Blue for Male, Pink for Female)
-              Container(
-                width: 54,
-                height: 54,
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: isFemale
-                        ? const [Color(0xFFEC4899), Color(0xFFBE185D)]
-                        : const [Color(0xFF0284C7), Color(0xFF0369A1)],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  borderRadius: BorderRadius.circular(14),
-                  boxShadow: [
-                    BoxShadow(
-                      color: themeGenderColor.withValues(alpha: 0.35),
-                      blurRadius: 10,
-                      offset: const Offset(0, 3),
+              // Alphanumeric Cap OCR Badge (Blue for Male, Pink for Female, Dimmed if Off)
+              Opacity(
+                opacity: isOff ? 0.6 : 1.0,
+                child: Container(
+                  width: 54,
+                  height: 54,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: isOff
+                          ? const [Color(0xFF6B7280), Color(0xFF4B5563)]
+                          : (isFemale
+                              ? const [Color(0xFFEC4899), Color(0xFFBE185D)]
+                              : const [Color(0xFF0284C7), Color(0xFF0369A1)]),
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
                     ),
-                  ],
-                ),
-                child: Center(
-                  child: Text(
-                    code,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w900,
-                      fontSize: 16,
-                      letterSpacing: 0.5,
+                    borderRadius: BorderRadius.circular(14),
+                    boxShadow: [
+                      BoxShadow(
+                        color: (isOff ? Colors.black26 : themeGenderColor).withValues(alpha: 0.35),
+                        blurRadius: 10,
+                        offset: const Offset(0, 3),
+                      ),
+                    ],
+                  ),
+                  child: Center(
+                    child: Text(
+                      code,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w900,
+                        fontSize: 16,
+                        letterSpacing: 0.5,
+                      ),
                     ),
                   ),
                 ),
               ),
               const SizedBox(width: 16),
 
-              // Product Info & Gender / Size Badges
+              // Product Info & Gender / Size / Seasonal Badges
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(
                       children: [
-                        Text(
-                          name,
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w800,
-                            color: context.textPrimaryColor,
+                        Flexible(
+                          child: Text(
+                            name,
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w800,
+                              color: isOff ? context.textSecondaryColor : context.textPrimaryColor,
+                              decoration: isOff ? TextDecoration.lineThrough : null,
+                            ),
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
                         const SizedBox(width: 8),
@@ -587,6 +657,33 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                             ),
                           ),
                         ),
+                        const SizedBox(width: 6),
+
+                        // Seasonal Status Badge
+                        if (isOff)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: AppColors.statusOrange.withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(color: AppColors.statusOrange.withValues(alpha: 0.5)),
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.wb_sunny_outlined, size: 12, color: AppColors.statusOrange),
+                                SizedBox(width: 4),
+                                Text(
+                                  'Seasonal Off',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w800,
+                                    color: AppColors.statusOrange,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
                       ],
                     ),
                     const SizedBox(height: 4),
@@ -599,31 +696,71 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
               ),
 
               // Stock Status Indicator
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        '$currentQty',
-                        style: TextStyle(
-                          fontSize: 22,
-                          fontWeight: FontWeight.w900,
-                          color: isLow ? AppColors.statusRed : AppColors.statusGreen,
-                        ),
-                      ),
-                      Text(
-                        ' / 5 Bottles',
-                        style: TextStyle(fontSize: 13, color: context.textMutedColor, fontWeight: FontWeight.bold),
-                      ),
-                    ],
+              if (isOff) ...[
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: AppColors.statusOrange.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(8),
                   ),
-                  const SizedBox(height: 4),
-                  StatusBadge(type: status),
+                  child: const Text(
+                    'Turned Off',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.statusOrange,
+                    ),
+                  ),
+                ),
+              ] else ...[
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          '$currentQty',
+                          style: TextStyle(
+                            fontSize: 22,
+                            fontWeight: FontWeight.w900,
+                            color: isLow ? AppColors.statusRed : AppColors.statusGreen,
+                          ),
+                        ),
+                        Text(
+                          ' / 5 Bottles',
+                          style: TextStyle(fontSize: 13, color: context.textMutedColor, fontWeight: FontWeight.bold),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    StatusBadge(type: status),
+                  ],
+                ),
+              ],
+              const SizedBox(width: 16),
+
+              // Seasonal On/Off Quick Switch
+              Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Switch(
+                    value: !isOff,
+                    activeColor: AppColors.statusGreen,
+                    inactiveThumbColor: AppColors.statusOrange,
+                    onChanged: (val) => _toggleVariant(product, val),
+                  ),
+                  Text(
+                    isOff ? 'Off' : 'Active',
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w800,
+                      color: isOff ? AppColors.statusOrange : AppColors.statusGreen,
+                    ),
+                  ),
                 ],
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 8),
 
               // Edit Shortcut Button
               IconButton(

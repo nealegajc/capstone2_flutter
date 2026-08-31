@@ -22,7 +22,7 @@ class _SyncStatusScreenState extends State<SyncStatusScreen> {
       setState(() => _isSyncing = false);
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Synchronization complete! All SQLite records are synced with Supabase.'),
+          content: Text('Backup complete! All local store records are backed up and up-to-date.'),
           backgroundColor: AppColors.statusGreen,
         ),
       );
@@ -33,18 +33,18 @@ class _SyncStatusScreenState extends State<SyncStatusScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Cloud & Supabase Synchronization Status'),
+        title: const Text('Automatic Cloud Backup & Sync'),
         actions: [
           OutlinedButton.icon(
             onPressed: () => context.push(AppRoutePaths.syncQueue),
             icon: const Icon(Icons.queue_rounded, size: 20),
-            label: const Text('Pending Queue (0)'),
+            label: const Text('Pending Cloud Updates (0)'),
           ),
           const SizedBox(width: 12),
           ElevatedButton.icon(
             onPressed: _isSyncing ? null : _triggerSync,
             icon: const Icon(Icons.sync_rounded, size: 22),
-            label: Text(_isSyncing ? 'Syncing...' : 'Sync Now'),
+            label: Text(_isSyncing ? 'Backing Up...' : 'Back Up Now'),
           ),
           const SizedBox(width: 16),
         ],
@@ -75,7 +75,7 @@ class _SyncStatusScreenState extends State<SyncStatusScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'Connected to Supabase Cloud Database',
+                            'Connected to Secure Cloud Storage',
                             style: TextStyle(
                               fontSize: 20,
                               fontWeight: FontWeight.w800,
@@ -84,7 +84,7 @@ class _SyncStatusScreenState extends State<SyncStatusScreen> {
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            'Local SQLite database is synchronized. Real-time store events are pushed automatically.',
+                            'Your store inventory and activity logs are continuously backed up in real time with offline protection.',
                             style: TextStyle(fontSize: 14, color: context.textSecondaryColor),
                           ),
                         ],
@@ -102,25 +102,25 @@ class _SyncStatusScreenState extends State<SyncStatusScreen> {
               children: [
                 _buildMetricCard(
                   context: context,
-                  title: 'Last Successful Sync',
-                  value: '2 minutes ago',
-                  detail: '60 products up to date',
+                  title: 'Last Successful Backup',
+                  value: 'Just now',
+                  detail: 'All fragrances backed up',
                   icon: Icons.access_time_rounded,
                 ),
                 const SizedBox(width: 16),
                 _buildMetricCard(
                   context: context,
-                  title: 'Pending Records in SQLite',
-                  value: '0 Records',
-                  detail: 'Queue completely synchronized',
+                  title: 'Pending Cloud Uploads',
+                  value: '0 Items',
+                  detail: 'All store data is up-to-date',
                   icon: Icons.playlist_add_check_circle_rounded,
                 ),
                 const SizedBox(width: 16),
                 _buildMetricCard(
                   context: context,
-                  title: 'Sync Error Count',
-                  value: '0 Errors',
-                  detail: '100% upload success rate',
+                  title: 'Backup Reliability',
+                  value: '100%',
+                  detail: 'Zero failed sync events',
                   icon: Icons.verified_user_rounded,
                 ),
               ],

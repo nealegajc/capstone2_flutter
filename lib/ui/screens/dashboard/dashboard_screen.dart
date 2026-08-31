@@ -63,7 +63,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
               const Icon(Icons.check_circle_rounded, color: AppColors.statusGreen, size: 28),
               const SizedBox(width: 12),
               Text(
-                '6-Camera Vision Scan Completed',
+                'Shelf Scan Completed',
                 style: TextStyle(fontWeight: FontWeight.w800, color: context.textPrimaryColor),
               ),
             ],
@@ -73,17 +73,17 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'AI computer vision and Cap OCR verification completed across all 6 camera regions:',
+                'All 3 shelf layers and fragrance trays have been scanned and verified successfully:',
                 style: TextStyle(color: context.textSecondaryColor, fontSize: 14),
               ),
               const SizedBox(height: 16),
-              _buildScanResultRow(context, 'Layer A (Top - Male)', 'Cam 1A & 1B Verified (20 SKUs)', '100% Match', AppColors.maleBlue),
-              _buildScanResultRow(context, 'Layer B (Middle - Mixed)', 'Cam 2A & 2B Verified (20 SKUs)', '98.5% Match', AppColors.brandAccent),
-              _buildScanResultRow(context, 'Layer C (Bottom - Female)', 'Cam 3A & 3B Verified (20 SKUs)', '99.1% Match', AppColors.femalePink),
+              _buildScanResultRow(context, 'Top Shelf (Men)', 'Cameras 1A & 1B Verified (20 Fragrances)', '100% Stock Match', AppColors.maleBlue),
+              _buildScanResultRow(context, 'Middle Shelf (Mixed)', 'Cameras 2A & 2B Verified (20 Fragrances)', '98.5% Stock Match', AppColors.brandAccent),
+              _buildScanResultRow(context, 'Bottom Shelf (Women)', 'Cameras 3A & 3B Verified (20 Fragrances)', '99.1% Stock Match', AppColors.femalePink),
               if (capturedPath != null) ...[
                 const SizedBox(height: 12),
                 Text(
-                  'Snapshot saved from $activeNode to $capturedPath',
+                  'Verification photo saved: $capturedPath',
                   style: TextStyle(color: context.textMutedColor, fontSize: 11),
                 ),
               ],
@@ -92,7 +92,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(),
-              child: Text('Dismiss', style: TextStyle(color: context.textSecondaryColor)),
+              child: Text('Done', style: TextStyle(color: context.textSecondaryColor)),
             ),
             ElevatedButton.icon(
               onPressed: () {
@@ -100,7 +100,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                 context.push(AppRoutePaths.cameraMonitor);
               },
               icon: const Icon(Icons.videocam_rounded, size: 18),
-              label: const Text('View 6-Camera Monitor'),
+              label: const Text('Open Shelf Cameras'),
             ),
           ],
         ),
@@ -241,7 +241,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                         ),
                         const SizedBox(height: 6),
                         Text(
-                          'Automated 6-Camera Vision & Touch ROI Inventory System (3 Layers - 60 SKUs - 300 Bottles)',
+                          'Smart Fragrance Shelf • Real-time Stock Monitoring & Auto-Scanner (3 Layers • 60 Fragrances)',
                           style: TextStyle(
                             fontSize: 14,
                             color: context.isDark ? AppColors.darkTextSecondary : const Color(0xFF475569),
@@ -253,7 +253,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                   ),
                   const SizedBox(width: 16),
 
-                  // Action Buttons Group (Clean, without emojis)
+                  // Action Buttons Group
                   Row(
                     children: [
                       // Secondary: 6-Camera Monitor
@@ -267,7 +267,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                         ),
                         icon: const Icon(Icons.videocam_rounded, size: 22, color: AppColors.brandAccent),
                         label: const Text(
-                          '6-Camera Feeds',
+                          'Shelf Cameras',
                           style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.brandAccent),
                         ),
                       ),
@@ -291,7 +291,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                               )
                             : const Icon(Icons.radar_rounded, size: 24),
                         label: Text(
-                          _isScanning ? 'SCANNING 6 CAMERAS...' : 'SCAN SHELF NOW',
+                          _isScanning ? 'SCANNING SHELF...' : 'SCAN SHELF NOW',
                           style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w900, letterSpacing: 0.5),
                         ),
                       ),

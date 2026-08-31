@@ -357,46 +357,118 @@ class SqliteService {
   }
 
   // ---------------------------------------------------------------------------
+  // ---------------------------------------------------------------------------
   // PRODUCTS CRUD
   // ---------------------------------------------------------------------------
-  Future<List<ProductModel>> getProducts() => getAllProducts();
+  Future<List<ProductModel>> getProducts({bool activeOnly = false}) => getAllProducts(activeOnly: activeOnly);
 
-  Future<List<ProductModel>> getAllProducts() async {
+  Future<List<ProductModel>> getAllProducts({bool activeOnly = false}) async {
     final db = await database;
-    final maps = await db.query('products', where: "status = 'active'");
+    final maps = activeOnly
+        ? await db.query('products', where: "status = 'active'")
+        : await db.query('products', where: "status != 'deleted'");
     return maps.map((m) => ProductModel.fromMap(m, m['id'] as String? ?? '')).toList();
   }
 
-  Future<void> saveProduct(ProductModel product) async {
+  Future<void> toggleProductStatus({
+    required String productId,
+    required String newStatus, // 'active', 'seasonal_off', etc.
+    String branch = 'San Pablo',
+  }) async {
+    final db = await database;
+    final maps = await db.query('products', where: 'id = ?', whereArgs: [productId], limit: 1);
+    if (maps.isEmpty) return;
+
+    final existing = ProductModel.fromMap(maps.first, maps.first['id'] as String? ?? '');
+    final updated = existing.copyWith(status: newStatus);
+
+    await db.update('products', {'status': newStatus}, where: 'id = ?', whereArgs: [productId]);
+
+    // Also update corresponding inventory record status if seasonal
+    try {
+      final invStatus = (newStatus == 'seasonal_off' || newStatus == 'inactive') ? 'seasonal_off' : 'normal';
+      await db.update(
+        'inventory_records',
+        {'status': invStatus},
+        where: 'perfumeCode = ? AND branch = ?',
+        whereArgs: [existing.perfumeCode, branch],
+      );
+
+      // Enqueue inventory_record sync to cloud
+      final invMaps = await db.query(
+        'inventory_records',
+        where: 'perfumeCode = ? AND branch = ?',
+        whereArgs: [existing.perfumeCode, branch],
+        limit: 1,
+      );
+      if (invMaps.isNotEmpty) {
+        final invRecord = InventoryRecordModel.fromMap(invMaps.first, invMaps.first['id'] as String? ?? '');
+        await enqueueSyncItem(
+          id: 'sync_inv_status_${invRecord.id}_${DateTime.now().millisecondsSinceEpoch}',
+          pendingEventId: invRecord.id,
+          targetCollection: 'inventory_records',
+          operation: 'UPSERT',
+          payload: invRecord.toMap(),
+          branch: branch,
+        );
+      }
+    } catch (_) {}
+
+    // Queue sync for products
+    try {
+      await enqueueSyncItem(
+        id: 'sync_prod_status_${productId}_${DateTime.now().millisecondsSinceEpoch}',
+        pendingEventId: productId,
+        targetCollection: 'products',
+        operation: 'UPSERT',
+        payload: updated.toMap(),
+        branch: branch,
+      );
+    } catch (_) {}
+
+    // Log system activity
+    final statusLabel = (newStatus == 'seasonal_off' || newStatus == 'inactive') ? 'Turned OFF (Seasonal)' : 'Turned ON (Active)';
+    await logActivity(
+      type: 'VARIANT_STATUS',
+      description: 'Perfume "${existing.name}" (${existing.perfumeCode}) $statusLabel.',
+      branch: branch,
+    );
+  }
+
+  Future<void> saveProduct(ProductModel product, {bool enqueueSync = true}) async {
     final db = await database;
     await db.insert('products', product.toMap(), conflictAlgorithm: ConflictAlgorithm.replace);
 
-    try {
-      await enqueueSyncItem(
-        id: 'sync_prod_${product.id}',
-        pendingEventId: product.id,
-        targetCollection: 'products',
-        operation: 'UPSERT',
-        payload: product.toMap(),
-        branch: 'San Pablo',
-      );
-    } catch (_) {}
+    if (enqueueSync) {
+      try {
+        await enqueueSyncItem(
+          id: 'sync_prod_${product.id}',
+          pendingEventId: product.id,
+          targetCollection: 'products',
+          operation: 'UPSERT',
+          payload: product.toMap(),
+          branch: 'San Pablo',
+        );
+      } catch (_) {}
+    }
   }
 
-  Future<void> deleteProduct(String id) async {
+  Future<void> deleteProduct(String id, {bool enqueueSync = true}) async {
     final db = await database;
     await db.delete('products', where: 'id = ?', whereArgs: [id]);
 
-    try {
-      await enqueueSyncItem(
-        id: 'sync_del_prod_${id}_${DateTime.now().millisecondsSinceEpoch}',
-        pendingEventId: id,
-        targetCollection: 'products',
-        operation: 'DELETE',
-        payload: {'id': id},
-        branch: 'San Pablo',
-      );
-    } catch (_) {}
+    if (enqueueSync) {
+      try {
+        await enqueueSyncItem(
+          id: 'sync_del_prod_${id}_${DateTime.now().millisecondsSinceEpoch}',
+          pendingEventId: id,
+          targetCollection: 'products',
+          operation: 'DELETE',
+          payload: {'id': id},
+          branch: 'San Pablo',
+        );
+      } catch (_) {}
+    }
   }
 
   Future<ProductModel?> getProductByCode(String code) async {
@@ -415,13 +487,14 @@ class SqliteService {
     return maps.map((m) => ShelfRegionModel.fromMap(m, m['id'] as String? ?? '')).toList();
   }
 
-  Future<void> updateShelfRegion(ShelfRegionModel region) async {
+  Future<void> updateShelfRegion(ShelfRegionModel region, {bool enqueueSync = true}) async {
     final db = await database;
     final map = region.toMap();
     map['id'] = region.id;
     map['left_coord'] = region.left;
     map['right_coord'] = region.right;
     map['top_coord'] = region.top;
+    map['bottom_coord'] = region.bottom;
     try {
       await db.insert('shelf_regions', map, conflictAlgorithm: ConflictAlgorithm.replace);
     } catch (e) {
@@ -431,16 +504,18 @@ class SqliteService {
       } catch (_) {}
     }
 
-    try {
-      await enqueueSyncItem(
-        id: 'sync_roi_${region.id}',
-        pendingEventId: region.id,
-        targetCollection: 'shelf_regions',
-        operation: 'UPSERT',
-        payload: region.toMap(),
-        branch: region.branch,
-      );
-    } catch (_) {}
+    if (enqueueSync) {
+      try {
+        await enqueueSyncItem(
+          id: 'sync_roi_${region.id}',
+          pendingEventId: region.id,
+          targetCollection: 'shelf_regions',
+          operation: 'UPSERT',
+          payload: region.toMap(),
+          branch: region.branch,
+        );
+      } catch (_) {}
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -459,9 +534,10 @@ class SqliteService {
     return maps.map((m) => InventoryRecordModel.fromMap(m, m['id'] as String? ?? '')).toList();
   }
 
-  Future<void> upsertInventoryRecord(InventoryRecordModel record) => saveInventoryRecord(record);
+  Future<void> upsertInventoryRecord(InventoryRecordModel record, {bool enqueueSync = true}) =>
+      saveInventoryRecord(record, enqueueSync: enqueueSync);
 
-  Future<void> saveInventoryRecord(InventoryRecordModel record) async {
+  Future<void> saveInventoryRecord(InventoryRecordModel record, {bool enqueueSync = true}) async {
     final db = await database;
     final map = record.toMap();
     map['id'] = record.id;
@@ -470,32 +546,36 @@ class SqliteService {
     }
     await db.insert('inventory_records', map, conflictAlgorithm: ConflictAlgorithm.replace);
 
-    try {
-      await enqueueSyncItem(
-        id: 'sync_inv_${record.id}',
-        pendingEventId: record.id,
-        targetCollection: 'inventory_records',
-        operation: 'UPSERT',
-        payload: record.toMap(),
-        branch: record.branch,
-      );
-    } catch (_) {}
+    if (enqueueSync) {
+      try {
+        await enqueueSyncItem(
+          id: 'sync_inv_${record.id}',
+          pendingEventId: record.id,
+          targetCollection: 'inventory_records',
+          operation: 'UPSERT',
+          payload: record.toMap(),
+          branch: record.branch,
+        );
+      } catch (_) {}
+    }
   }
 
-  Future<void> deleteInventoryRecord(String id) async {
+  Future<void> deleteInventoryRecord(String id, {bool enqueueSync = true}) async {
     final db = await database;
     await db.delete('inventory_records', where: 'id = ?', whereArgs: [id]);
 
-    try {
-      await enqueueSyncItem(
-        id: 'sync_del_inv_${id}_${DateTime.now().millisecondsSinceEpoch}',
-        pendingEventId: id,
-        targetCollection: 'inventory_records',
-        operation: 'DELETE',
-        payload: {'id': id},
-        branch: 'San Pablo',
-      );
-    } catch (_) {}
+    if (enqueueSync) {
+      try {
+        await enqueueSyncItem(
+          id: 'sync_del_inv_${id}_${DateTime.now().millisecondsSinceEpoch}',
+          pendingEventId: id,
+          targetCollection: 'inventory_records',
+          operation: 'DELETE',
+          payload: {'id': id},
+          branch: 'San Pablo',
+        );
+      } catch (_) {}
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -518,7 +598,7 @@ class SqliteService {
     return maps.map((m) => InventoryEventModel.fromMap(m, m['id'] as String? ?? '')).toList();
   }
 
-  Future<void> logInventoryEvent(InventoryEventModel event) async {
+  Future<void> logInventoryEvent(InventoryEventModel event, {bool enqueueSync = true}) async {
     final db = await database;
     final map = event.toMap();
     map['id'] = event.id;
@@ -530,16 +610,18 @@ class SqliteService {
     }
     await db.insert('inventory_events', map, conflictAlgorithm: ConflictAlgorithm.replace);
 
-    try {
-      await enqueueSyncItem(
-        id: 'sync_event_${event.id}',
-        pendingEventId: event.id,
-        targetCollection: 'inventory_events',
-        operation: 'UPSERT',
-        payload: event.toMap(),
-        branch: event.branch,
-      );
-    } catch (_) {}
+    if (enqueueSync) {
+      try {
+        await enqueueSyncItem(
+          id: 'sync_event_${event.id}',
+          pendingEventId: event.id,
+          targetCollection: 'inventory_events',
+          operation: 'UPSERT',
+          payload: event.toMap(),
+          branch: event.branch,
+        );
+      } catch (_) {}
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -556,9 +638,10 @@ class SqliteService {
     return maps.map((m) => AlertModel.fromMap(m, m['id'] as String? ?? '')).toList();
   }
 
-  Future<void> insertAlert(AlertModel alert) => saveAlert(alert);
+  Future<void> insertAlert(AlertModel alert, {bool enqueueSync = true}) =>
+      saveAlert(alert, enqueueSync: enqueueSync);
 
-  Future<void> saveAlert(AlertModel alert) async {
+  Future<void> saveAlert(AlertModel alert, {bool enqueueSync = true}) async {
     final db = await database;
     final map = alert.toMap();
     map['id'] = alert.id;
@@ -570,87 +653,131 @@ class SqliteService {
     }
     await db.insert('alerts', map, conflictAlgorithm: ConflictAlgorithm.replace);
 
-    try {
-      await enqueueSyncItem(
-        id: 'sync_alert_${alert.id}',
-        pendingEventId: alert.id,
-        targetCollection: 'alerts',
-        operation: 'UPSERT',
-        payload: alert.toMap(),
-        branch: alert.branch,
-      );
-    } catch (_) {}
+    if (enqueueSync) {
+      try {
+        await enqueueSyncItem(
+          id: 'sync_alert_${alert.id}',
+          pendingEventId: alert.id,
+          targetCollection: 'alerts',
+          operation: 'UPSERT',
+          payload: alert.toMap(),
+          branch: alert.branch,
+        );
+      } catch (_) {}
+    }
   }
 
-  Future<void> markAlertRead(String id) async {
+  Future<void> markAlertRead(String id, {bool enqueueSync = true}) async {
     final db = await database;
     await db.update('alerts', {'isRead': 1}, where: 'id = ?', whereArgs: [id]);
 
-    try {
-      await enqueueSyncItem(
-        id: 'sync_read_alert_${id}_${DateTime.now().millisecondsSinceEpoch}',
-        pendingEventId: id,
-        targetCollection: 'alerts',
-        operation: 'UPSERT',
-        payload: {'id': id, 'isRead': 1},
-        branch: 'San Pablo',
-      );
-    } catch (_) {}
+    if (enqueueSync) {
+      try {
+        await enqueueSyncItem(
+          id: 'sync_read_alert_${id}_${DateTime.now().millisecondsSinceEpoch}',
+          pendingEventId: id,
+          targetCollection: 'alerts',
+          operation: 'UPSERT',
+          payload: {'id': id, 'isRead': 1},
+          branch: 'San Pablo',
+        );
+      } catch (_) {}
+    }
   }
 
-  Future<void> markAllAlertsRead(List<String> ids) async {
+  Future<void> markAllAlertsRead(List<String> ids, {bool enqueueSync = true}) async {
     if (ids.isEmpty) return;
     final db = await database;
     final placeholders = List.filled(ids.length, '?').join(',');
     await db.rawUpdate('UPDATE alerts SET isRead = 1 WHERE id IN ($placeholders)', ids);
+
+    if (enqueueSync) {
+      for (final alertId in ids) {
+        try {
+          await enqueueSyncItem(
+            id: 'sync_read_alert_${alertId}_${DateTime.now().millisecondsSinceEpoch}',
+            pendingEventId: alertId,
+            targetCollection: 'alerts',
+            operation: 'UPSERT',
+            payload: {'id': alertId, 'isRead': 1},
+            branch: 'San Pablo',
+          );
+        } catch (_) {}
+      }
+    }
   }
 
-  Future<void> deleteAlert(String id) async {
+  Future<void> deleteAlert(String id, {bool enqueueSync = true}) async {
     final db = await database;
     await db.delete('alerts', where: 'id = ?', whereArgs: [id]);
 
-    try {
-      await enqueueSyncItem(
-        id: 'sync_del_alert_${id}_${DateTime.now().millisecondsSinceEpoch}',
-        pendingEventId: id,
-        targetCollection: 'alerts',
-        operation: 'DELETE',
-        payload: {'id': id},
-        branch: 'San Pablo',
-      );
-    } catch (_) {}
+    if (enqueueSync) {
+      try {
+        await enqueueSyncItem(
+          id: 'sync_del_alert_${id}_${DateTime.now().millisecondsSinceEpoch}',
+          pendingEventId: id,
+          targetCollection: 'alerts',
+          operation: 'DELETE',
+          payload: {'id': id},
+          branch: 'San Pablo',
+        );
+      } catch (_) {}
+    }
   }
 
-  Future<void> deleteAllReadAlerts([dynamic arg]) async {
+  Future<void> deleteAllReadAlerts([dynamic arg, bool enqueueSync = true]) async {
     final db = await database;
+    List<String> deletedIds = [];
     if (arg is List<String>) {
       if (arg.isEmpty) return;
+      deletedIds = List<String>.from(arg);
       final placeholders = List.filled(arg.length, '?').join(',');
       await db.delete('alerts', where: 'id IN ($placeholders)', whereArgs: arg);
     } else if (arg is String && arg.isNotEmpty && arg != 'All Branches') {
+      final rows = await db.query('alerts', columns: ['id'], where: 'isRead = 1 AND branch = ?', whereArgs: [arg]);
+      deletedIds = rows.map((r) => r['id'] as String).toList();
       await db.delete('alerts', where: 'isRead = 1 AND branch = ?', whereArgs: [arg]);
     } else {
+      final rows = await db.query('alerts', columns: ['id'], where: 'isRead = 1');
+      deletedIds = rows.map((r) => r['id'] as String).toList();
       await db.delete('alerts', where: 'isRead = 1');
+    }
+
+    if (enqueueSync && deletedIds.isNotEmpty) {
+      for (final alertId in deletedIds) {
+        try {
+          await enqueueSyncItem(
+            id: 'sync_del_alert_${alertId}_${DateTime.now().millisecondsSinceEpoch}',
+            pendingEventId: alertId,
+            targetCollection: 'alerts',
+            operation: 'DELETE',
+            payload: {'id': alertId},
+            branch: 'San Pablo',
+          );
+        } catch (_) {}
+      }
     }
   }
 
   // ---------------------------------------------------------------------------
   // IMAGE QUALITY LOGS CRUD
   // ---------------------------------------------------------------------------
-  Future<void> logImageQuality(ImageQualityLogModel log) async {
+  Future<void> logImageQuality(ImageQualityLogModel log, {bool enqueueSync = true}) async {
     final db = await database;
     await db.insert('image_quality_logs', log.toMap(), conflictAlgorithm: ConflictAlgorithm.replace);
 
-    try {
-      await enqueueSyncItem(
-        id: 'sync_iq_${log.id}',
-        pendingEventId: log.id,
-        targetCollection: 'image_quality_logs',
-        operation: 'UPSERT',
-        payload: log.toMap(),
-        branch: log.branch,
-      );
-    } catch (_) {}
+    if (enqueueSync) {
+      try {
+        await enqueueSyncItem(
+          id: 'sync_iq_${log.id}',
+          pendingEventId: log.id,
+          targetCollection: 'image_quality_logs',
+          operation: 'UPSERT',
+          payload: log.toMap(),
+          branch: log.branch,
+        );
+      } catch (_) {}
+    }
   }
 
   Future<List<ImageQualityLogModel>> getImageQualityLogs(String? branch, {int limit = 50}) async {
@@ -673,20 +800,22 @@ class SqliteService {
   // ---------------------------------------------------------------------------
   // RESTOCK RECORDS CRUD
   // ---------------------------------------------------------------------------
-  Future<void> saveRestockRecord(RestockRecordModel restock) async {
+  Future<void> saveRestockRecord(RestockRecordModel restock, {bool enqueueSync = true}) async {
     final db = await database;
     await db.insert('restock_records', restock.toMap(), conflictAlgorithm: ConflictAlgorithm.replace);
 
-    try {
-      await enqueueSyncItem(
-        id: 'sync_restock_${restock.id}',
-        pendingEventId: restock.id,
-        targetCollection: 'restock_records',
-        operation: 'UPSERT',
-        payload: restock.toMap(),
-        branch: restock.toBranch,
-      );
-    } catch (_) {}
+    if (enqueueSync) {
+      try {
+        await enqueueSyncItem(
+          id: 'sync_restock_${restock.id}',
+          pendingEventId: restock.id,
+          targetCollection: 'restock_records',
+          operation: 'UPSERT',
+          payload: restock.toMap(),
+          branch: restock.toBranch,
+        );
+      } catch (_) {}
+    }
   }
 
   Future<List<RestockRecordModel>> getRestockRecords(String? branch) async {
@@ -705,20 +834,22 @@ class SqliteService {
     return maps.map((m) => RestockRecordModel.fromMap(m, m['id'] as String? ?? '')).toList();
   }
 
-  Future<void> updateRestockStatus(String id, String status) async {
+  Future<void> updateRestockStatus(String id, String status, {bool enqueueSync = true}) async {
     final db = await database;
     await db.update('restock_records', {'status': status}, where: 'id = ?', whereArgs: [id]);
 
-    try {
-      await enqueueSyncItem(
-        id: 'sync_status_restock_${id}_${DateTime.now().millisecondsSinceEpoch}',
-        pendingEventId: id,
-        targetCollection: 'restock_records',
-        operation: 'UPSERT',
-        payload: {'id': id, 'status': status},
-        branch: 'San Pablo',
-      );
-    } catch (_) {}
+    if (enqueueSync) {
+      try {
+        await enqueueSyncItem(
+          id: 'sync_status_restock_${id}_${DateTime.now().millisecondsSinceEpoch}',
+          pendingEventId: id,
+          targetCollection: 'restock_records',
+          operation: 'UPSERT',
+          payload: {'id': id, 'status': status},
+          branch: 'San Pablo',
+        );
+      } catch (_) {}
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -741,20 +872,28 @@ class SqliteService {
     return maps.map((m) => SystemLogModel.fromMap(m, m['id'] as String? ?? '')).toList();
   }
 
-  Future<void> logSystemActivity(SystemLogModel log) async {
+  Future<void> logSystemActivity(SystemLogModel log, {bool enqueueSync = true}) async {
     final db = await database;
-    await db.insert('system_logs', log.toMap(), conflictAlgorithm: ConflictAlgorithm.replace);
+    final map = log.toMap();
+    map['id'] = log.id;
+    if (map['timestamp'] is String) {
+      map['timestamp'] = DateTime.tryParse(map['timestamp'] as String)?.millisecondsSinceEpoch ??
+          DateTime.now().millisecondsSinceEpoch;
+    }
+    await db.insert('system_logs', map, conflictAlgorithm: ConflictAlgorithm.replace);
 
-    try {
-      await enqueueSyncItem(
-        id: 'sync_log_${log.id}',
-        pendingEventId: log.id,
-        targetCollection: 'system_logs',
-        operation: 'UPSERT',
-        payload: log.toMap(),
-        branch: log.branch,
-      );
-    } catch (_) {}
+    if (enqueueSync) {
+      try {
+        await enqueueSyncItem(
+          id: 'sync_log_${log.id}',
+          pendingEventId: log.id,
+          targetCollection: 'system_logs',
+          operation: 'UPSERT',
+          payload: log.toMap(),
+          branch: log.branch,
+        );
+      } catch (_) {}
+    }
   }
 
   Future<void> logActivity({
@@ -762,6 +901,7 @@ class SqliteService {
     required String description,
     String user = 'Store Owner',
     String branch = 'San Pablo',
+    bool enqueueSync = true,
   }) async {
     final log = SystemLogModel(
       id: 'log_${DateTime.now().millisecondsSinceEpoch}_${type.toLowerCase()}',
@@ -771,21 +911,53 @@ class SqliteService {
       branch: branch,
       timestamp: DateTime.now(),
     );
-    await logSystemActivity(log);
+    await logSystemActivity(log, enqueueSync: enqueueSync);
   }
 
-  Future<void> deleteSystemLog(String id) async {
+  Future<void> deleteSystemLog(String id, {bool enqueueSync = true}) async {
     final db = await database;
     await db.delete('system_logs', where: 'id = ?', whereArgs: [id]);
+
+    if (enqueueSync) {
+      try {
+        await enqueueSyncItem(
+          id: 'sync_del_log_${id}_${DateTime.now().millisecondsSinceEpoch}',
+          pendingEventId: id,
+          targetCollection: 'system_logs',
+          operation: 'DELETE',
+          payload: {'id': id},
+          branch: 'San Pablo',
+        );
+      } catch (_) {}
+    }
   }
 
-  Future<void> deleteAllSystemLogs([List<String>? ids]) async {
+  Future<void> deleteAllSystemLogs([List<String>? ids, bool enqueueSync = true]) async {
     final db = await database;
+    List<String> deletedIds = [];
     if (ids != null && ids.isNotEmpty) {
+      deletedIds = List<String>.from(ids);
       final placeholders = List.filled(ids.length, '?').join(',');
       await db.delete('system_logs', where: 'id IN ($placeholders)', whereArgs: ids);
     } else {
+      final rows = await db.query('system_logs', columns: ['id']);
+      deletedIds = rows.map((r) => r['id'] as String).toList();
       await db.delete('system_logs');
+    }
+
+    if (enqueueSync && deletedIds.isNotEmpty) {
+      for (final logId in deletedIds) {
+        try {
+          await enqueueSyncItem(
+            id: 'sync_del_log_${logId}_${DateTime.now().millisecondsSinceEpoch}',
+            pendingEventId: logId,
+            targetCollection: 'system_logs',
+            operation: 'DELETE',
+            payload: {'id': logId},
+            branch: 'San Pablo',
+          );
+        } catch (_) {}
+      }
     }
   }
 
@@ -899,7 +1071,7 @@ class SqliteService {
     return result;
   }
 
-  Future<void> setSystemSetting(String key, dynamic value) async {
+  Future<void> setSystemSetting(String key, dynamic value, {bool enqueueSync = true}) async {
     final db = await database;
     final strVal = (value is String) ? value : jsonEncode(value);
     await db.insert(
@@ -909,16 +1081,18 @@ class SqliteService {
     );
 
     // Queue for cloud synchronization with Supabase
-    try {
-      await enqueueSyncItem(
-        id: 'sync_setting_${key}_${DateTime.now().millisecondsSinceEpoch}',
-        pendingEventId: key,
-        targetCollection: 'system_settings',
-        operation: 'UPSERT',
-        payload: {'key': key, 'value': strVal},
-        branch: 'San Pablo',
-      );
-    } catch (_) {}
+    if (enqueueSync) {
+      try {
+        await enqueueSyncItem(
+          id: 'sync_setting_${key}_${DateTime.now().millisecondsSinceEpoch}',
+          pendingEventId: key,
+          targetCollection: 'system_settings',
+          operation: 'UPSERT',
+          payload: {'key': key, 'value': strVal},
+          branch: 'San Pablo',
+        );
+      } catch (_) {}
+    }
   }
 
   // ---------------------------------------------------------------------------

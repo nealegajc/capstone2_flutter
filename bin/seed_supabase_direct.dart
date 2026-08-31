@@ -112,45 +112,64 @@ void main() async {
     });
   }
 
-  // Shelf Regions (3 Cameras)
-  final shelfRegions = [
-    {
-      'id': 'roi_sp_layer_A',
-      'code': 'Layer A',
-      'assigned_product_id': 'prod_AA1',
-      'assigned_product_name': 'Camera 1: Top Shelf (10 Male Scents - Cap Codes AA1 to AK2)',
-      'branch': 'San Pablo',
-      'left_coord': 0.0,
-      'right_coord': 1.0,
-      'top_coord': 0.0,
-      'bottom_coord': 0.33,
-      'status': 'active',
-    },
-    {
-      'id': 'roi_sp_layer_B',
-      'code': 'Layer B',
-      'assigned_product_id': 'prod_BA1',
-      'assigned_product_name': 'Camera 2: Middle Shelf (5 Male + 5 Female - Cap Codes BA1 to BK2)',
-      'branch': 'San Pablo',
-      'left_coord': 0.0,
-      'right_coord': 1.0,
-      'top_coord': 0.33,
-      'bottom_coord': 0.66,
-      'status': 'active',
-    },
-    {
-      'id': 'roi_sp_layer_C',
-      'code': 'Layer C',
-      'assigned_product_id': 'prod_CA1',
-      'assigned_product_name': 'Camera 3: Bottom Shelf (10 Female Scents - Cap Codes CA1 to CK2)',
-      'branch': 'San Pablo',
-      'left_coord': 0.0,
-      'right_coord': 1.0,
-      'top_coord': 0.66,
-      'bottom_coord': 1.0,
-      'status': 'active',
-    },
+  // Shelf Regions (6 Mounted Cameras × 2 Bottle Sizes = 12 Regions)
+  final cameras = [
+    {'id': 1, 'name': 'Camera 1A (Top Left)', 'layer': 'Layer A (Top)', 'pos': 'left', 'node': '/dev/video0', 'code1': 'AA1-AE1', 'code2': 'AA2-AE2'},
+    {'id': 2, 'name': 'Camera 1B (Top Right)', 'layer': 'Layer A (Top)', 'pos': 'right', 'node': '/dev/video1', 'code1': 'AF1-AK1', 'code2': 'AF2-AK2'},
+    {'id': 3, 'name': 'Camera 2A (Middle Left)', 'layer': 'Layer B (Middle)', 'pos': 'left', 'node': '/dev/video2', 'code1': 'BA1-BE1', 'code2': 'BA2-BE2'},
+    {'id': 4, 'name': 'Camera 2B (Middle Right)', 'layer': 'Layer B (Middle)', 'pos': 'right', 'node': '/dev/video3', 'code1': 'BF1-BK1', 'code2': 'BF2-BK2'},
+    {'id': 5, 'name': 'Camera 3A (Bottom Left)', 'layer': 'Layer C (Bottom)', 'pos': 'left', 'node': '/dev/video4', 'code1': 'CA1-CE1', 'code2': 'CA2-CE2'},
+    {'id': 6, 'name': 'Camera 3B (Bottom Right)', 'layer': 'Layer C (Bottom)', 'pos': 'right', 'node': '/dev/video5', 'code1': 'CF1-CK1', 'code2': 'CF2-CK2'},
   ];
+
+  final List<Map<String, dynamic>> shelfRegions = [];
+  for (final cam in cameras) {
+    final camId = cam['id'] as int;
+    final camName = cam['name'] as String;
+    final layer = cam['layer'] as String;
+    final pos = cam['pos'] as String;
+    final node = cam['node'] as String;
+
+    // 100ML (Size 1) Region
+    shelfRegions.add({
+      'id': 'roi_San_Pablo_cam_${camId}_100ml',
+      'code': '$camName - 100ML',
+      'assigned_product_id': 'prod_100ml_$camId',
+      'assigned_product_name': '$camName (100ML Zone • ${cam['code1']})',
+      'branch': 'San Pablo',
+      'camera_id': camId,
+      'camera_name': camName,
+      'layer_name': layer,
+      'camera_position': pos,
+      'device_node': node,
+      'bottle_size': '100ml',
+      'left_coord': 0.05,
+      'right_coord': 0.95,
+      'top_coord': 0.10,
+      'bottom_coord': 0.48,
+      'status': 'active',
+    });
+
+    // 50ML (Size 2) Region
+    shelfRegions.add({
+      'id': 'roi_San_Pablo_cam_${camId}_50ml',
+      'code': '$camName - 50ML',
+      'assigned_product_id': 'prod_50ml_$camId',
+      'assigned_product_name': '$camName (50ML Zone • ${cam['code2']})',
+      'branch': 'San Pablo',
+      'camera_id': camId,
+      'camera_name': camName,
+      'layer_name': layer,
+      'camera_position': pos,
+      'device_node': node,
+      'bottle_size': '50ml',
+      'left_coord': 0.05,
+      'right_coord': 0.95,
+      'top_coord': 0.52,
+      'bottom_coord': 0.90,
+      'status': 'active',
+    });
+  }
 
   Future<void> postUpsert(String table, dynamic payload) async {
     final req = await client.postUrl(Uri.parse('$url/rest/v1/$table'));
@@ -167,12 +186,12 @@ void main() async {
   print('=== RE-SEEDING PRODUCTS (60 SKUs) ===');
   await postUpsert('products', products);
 
-  print('\n=== RE-SEEDING SHELF REGIONS (3 Cameras) ===');
+  print('\n=== RE-SEEDING SHELF REGIONS (12 Regions across 6 Cameras) ===');
   await postUpsert('shelf_regions', shelfRegions);
 
   print('\n=== RE-SEEDING INVENTORY RECORDS (60 Records) ===');
   await postUpsert('inventory_records', inventory);
 
-  print('\n✓ Done! Supabase records updated without catalog numbers.');
+  print('\n✓ Done! Supabase records updated.');
   exit(0);
 }

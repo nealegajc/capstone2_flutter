@@ -47,6 +47,39 @@ class ProductModel {
     );
   }
 
+  bool get isSeasonalOff =>
+      status.toLowerCase() == 'seasonal_off' ||
+      status.toLowerCase() == 'inactive' ||
+      status.toLowerCase() == 'seasonal';
+
+  bool get isActive => !isSeasonalOff && status.toLowerCase() != 'deleted';
+
+  ProductModel copyWith({
+    String? id,
+    String? perfumeCode,
+    String? name,
+    String? brand,
+    String? category,
+    String? bottleSize,
+    String? shelfLayer,
+    int? slotPosition,
+    double? price,
+    String? status,
+  }) {
+    return ProductModel(
+      id: id ?? this.id,
+      perfumeCode: perfumeCode ?? this.perfumeCode,
+      name: name ?? this.name,
+      brand: brand ?? this.brand,
+      category: category ?? this.category,
+      bottleSize: bottleSize ?? this.bottleSize,
+      shelfLayer: shelfLayer ?? this.shelfLayer,
+      slotPosition: slotPosition ?? this.slotPosition,
+      price: price ?? this.price,
+      status: status ?? this.status,
+    );
+  }
+
   /// SQLite-compatible Map
   Map<String, dynamic> toMap() {
     return {

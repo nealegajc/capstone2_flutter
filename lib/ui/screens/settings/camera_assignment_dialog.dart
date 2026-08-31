@@ -169,8 +169,10 @@ class _CameraAssignmentDialogState extends ConsumerState<CameraAssignmentDialog>
     final hardwareCamerasAsync = ref.watch(hardwareCamerasProvider);
     final detectedDevices = hardwareCamerasAsync.valueOrNull ?? [];
 
-    // Distinct list of available node choices: detected physical devices first, then standard nodes
-    final Map<String, String> nodeLabels = {};
+    // Distinct list of available node choices: 'none' first, then detected physical devices, then standard nodes
+    final Map<String, String> nodeLabels = {
+      'none': 'None / Unassigned (N/A)',
+    };
     for (final d in detectedDevices) {
       nodeLabels[d.deviceNode] = d.displayName;
     }
@@ -182,7 +184,7 @@ class _CameraAssignmentDialogState extends ConsumerState<CameraAssignmentDialog>
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       backgroundColor: context.surfaceColor,
       child: Container(
-        width: 760,
+        width: 780,
         constraints: BoxConstraints(
           maxHeight: MediaQuery.of(context).size.height * 0.85,
         ),
@@ -218,7 +220,7 @@ class _CameraAssignmentDialogState extends ConsumerState<CameraAssignmentDialog>
                           ),
                         ),
                         Text(
-                          'Assign physical V4L2 device nodes (e.g. Built-in Webcam vs Rapoo USB) to each shelf camera',
+                          'Assign physical V4L2 device nodes to each shelf zone or set to "None (N/A)"',
                           style: TextStyle(fontSize: 12, color: context.textSecondaryColor),
                         ),
                       ],
@@ -232,6 +234,33 @@ class _CameraAssignmentDialogState extends ConsumerState<CameraAssignmentDialog>
               ],
             ),
             Divider(height: 24, color: context.borderColor),
+
+            // Informative Exclusive Binding Notice
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              margin: const EdgeInsets.only(bottom: 14),
+              decoration: BoxDecoration(
+                color: AppColors.brandAccent.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: AppColors.brandAccent.withValues(alpha: 0.3)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.swap_horiz_rounded, color: AppColors.brandAccent, size: 18),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'Flexible Camera Reassignment: Set any camera to "None (N/A)" to disconnect it, or select an in-use camera node to transfer it automatically.',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: context.textPrimaryColor,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
 
             // Camera List
             if (_isLoading)
@@ -250,20 +279,41 @@ class _CameraAssignmentDialogState extends ConsumerState<CameraAssignmentDialog>
                   itemBuilder: (context, index) {
                     final cam = _logicalCameras[index];
                     final camId = cam['id'] as int;
-                    final currentNode = _assignedNodes[camId] ?? '/dev/video${camId - 1}';
+                    final currentNode = _assignedNodes[camId] ?? 'none';
+                    final isUnassigned = currentNode == 'none' || currentNode.isEmpty;
+
+                    // Find which nodes are already assigned to other cameras
+                    final Map<String, String> nodesAssignedToOther = {};
+                    final Map<String, int> nodeToOtherCamId = {};
+                    for (final other in _logicalCameras) {
+                      final otherId = other['id'] as int;
+                      if (otherId != camId) {
+                        final assigned = _assignedNodes[otherId];
+                        if (assigned != null && assigned != 'none' && assigned.isNotEmpty) {
+                          nodesAssignedToOther[assigned] = other['name'] as String;
+                          nodeToOtherCamId[assigned] = otherId;
+                        }
+                      }
+                    }
 
                     // Check if currentNode matches a detected physical camera
-                    final physicalMatch = detectedDevices.where((d) => d.deviceNode == currentNode).firstOrNull;
+                    final physicalMatch = !isUnassigned
+                        ? detectedDevices.where((d) => d.deviceNode == currentNode).firstOrNull
+                        : null;
 
                     return Container(
                       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                       decoration: BoxDecoration(
-                        color: context.surfaceElevatedColor,
+                        color: isUnassigned
+                            ? (context.isDark ? const Color(0xFF181B20) : const Color(0xFFF3F4F6))
+                            : context.surfaceElevatedColor,
                         borderRadius: BorderRadius.circular(14),
                         border: Border.all(
-                          color: physicalMatch != null
-                              ? AppColors.statusGreen.withValues(alpha: 0.4)
-                              : context.borderColor,
+                          color: isUnassigned
+                              ? context.borderColor.withValues(alpha: 0.5)
+                              : (physicalMatch != null
+                                  ? AppColors.statusGreen.withValues(alpha: 0.4)
+                                  : context.borderColor),
                         ),
                       ),
                       child: Row(
@@ -271,13 +321,15 @@ class _CameraAssignmentDialogState extends ConsumerState<CameraAssignmentDialog>
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                             decoration: BoxDecoration(
-                              color: AppColors.brandAccent.withValues(alpha: 0.15),
+                              color: isUnassigned
+                                  ? context.textMutedColor.withValues(alpha: 0.15)
+                                  : AppColors.brandAccent.withValues(alpha: 0.15),
                               borderRadius: BorderRadius.circular(8),
                             ),
                             child: Text(
                               cam['name'] as String,
-                              style: const TextStyle(
-                                color: AppColors.brandAccent,
+                              style: TextStyle(
+                                color: isUnassigned ? context.textMutedColor : AppColors.brandAccent,
                                 fontWeight: FontWeight.w900,
                                 fontSize: 13,
                               ),
@@ -293,33 +345,35 @@ class _CameraAssignmentDialogState extends ConsumerState<CameraAssignmentDialog>
                                   style: TextStyle(
                                     fontWeight: FontWeight.w700,
                                     fontSize: 13,
-                                    color: context.textPrimaryColor,
+                                    color: isUnassigned ? context.textSecondaryColor : context.textPrimaryColor,
                                   ),
                                 ),
                                 Text(
                                   cam['variants'] as String,
-                                  style: TextStyle(fontSize: 11, color: context.textSecondaryColor),
+                                  style: TextStyle(fontSize: 11, color: context.textMutedColor),
                                 ),
                               ],
                             ),
                           ),
                           const SizedBox(width: 16),
 
-                          // Node Dropdown
+                          // Node Dropdown with None / N/A and Auto-Transfer
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                             decoration: BoxDecoration(
                               color: context.surfaceColor,
                               borderRadius: BorderRadius.circular(10),
                               border: Border.all(
-                                color: physicalMatch != null
-                                    ? AppColors.statusGreen.withValues(alpha: 0.6)
-                                    : context.borderColor,
+                                color: isUnassigned
+                                    ? context.borderColor
+                                    : (physicalMatch != null
+                                        ? AppColors.statusGreen.withValues(alpha: 0.6)
+                                        : context.borderColor),
                               ),
                             ),
                             child: DropdownButtonHideUnderline(
                               child: DropdownButton<String>(
-                                value: nodeLabels.containsKey(currentNode) ? currentNode : nodeLabels.keys.first,
+                                value: nodeLabels.containsKey(currentNode) ? currentNode : 'none',
                                 dropdownColor: context.surfaceElevatedColor,
                                 style: TextStyle(
                                   fontSize: 12,
@@ -327,19 +381,43 @@ class _CameraAssignmentDialogState extends ConsumerState<CameraAssignmentDialog>
                                   color: context.textPrimaryColor,
                                 ),
                                 items: nodeLabels.entries.map((entry) {
+                                  final isNoneChoice = entry.key == 'none';
+                                  final isAssignedToOther = !isNoneChoice && nodesAssignedToOther.containsKey(entry.key);
+                                  final assignedCamName = nodesAssignedToOther[entry.key];
                                   final isDevDetected = detectedDevices.any((d) => d.deviceNode == entry.key);
-                                  return DropdownMenuItem(
+
+                                  return DropdownMenuItem<String>(
                                     value: entry.key,
                                     child: Row(
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
                                         Icon(
-                                          isDevDetected ? Icons.check_circle_rounded : Icons.device_hub_rounded,
+                                          isNoneChoice
+                                              ? Icons.do_not_disturb_on_outlined
+                                              : (isAssignedToOther
+                                                  ? Icons.swap_horiz_rounded
+                                                  : (isDevDetected ? Icons.check_circle_rounded : Icons.device_hub_rounded)),
                                           size: 14,
-                                          color: isDevDetected ? AppColors.statusGreen : context.textMutedColor,
+                                          color: isNoneChoice
+                                              ? context.textMutedColor
+                                              : (isAssignedToOther
+                                                  ? AppColors.brandGold
+                                                  : (isDevDetected ? AppColors.statusGreen : context.textMutedColor)),
                                         ),
                                         const SizedBox(width: 8),
-                                        Text(entry.value),
+                                        Text(
+                                          isAssignedToOther
+                                              ? '${entry.value} • (In use by $assignedCamName ⇄ Transfer)'
+                                              : entry.value,
+                                          style: TextStyle(
+                                            color: isNoneChoice
+                                                ? context.textMutedColor
+                                                : (isAssignedToOther
+                                                    ? AppColors.brandGold
+                                                    : context.textPrimaryColor),
+                                            fontStyle: isNoneChoice ? FontStyle.italic : FontStyle.normal,
+                                          ),
+                                        ),
                                       ],
                                     ),
                                   );
@@ -347,6 +425,21 @@ class _CameraAssignmentDialogState extends ConsumerState<CameraAssignmentDialog>
                                 onChanged: (newNode) {
                                   if (newNode != null) {
                                     setState(() {
+                                      // If the node was assigned to another camera, auto-transfer and set other camera to 'none'
+                                      if (newNode != 'none' && nodeToOtherCamId.containsKey(newNode)) {
+                                        final otherId = nodeToOtherCamId[newNode]!;
+                                        final otherName = nodesAssignedToOther[newNode];
+                                        _assignedNodes[otherId] = 'none';
+
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(
+                                            content: Text('Transferred ${nodeLabels[newNode]} to ${cam['name']}. ($otherName is now Unassigned).'),
+                                            backgroundColor: AppColors.brandAccent,
+                                            duration: const Duration(seconds: 3),
+                                          ),
+                                        );
+                                      }
+
                                       _assignedNodes[camId] = newNode;
                                     });
                                   }

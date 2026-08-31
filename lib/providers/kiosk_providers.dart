@@ -112,8 +112,11 @@ final dashboardStatsProvider = FutureProvider.autoDispose.family<DashboardStats,
   int lowStock = 0;
   int misplaced = 0;
   int needsVerification = 0;
+  int activeItemCount = 0;
 
   for (final item in inventory) {
+    if (item.isSeasonalOff) continue;
+    activeItemCount++;
     totalInStock += item.detected;
     if (item.isLowStock) lowStock++;
     if (item.status == 'misplaced') misplaced++;
@@ -125,12 +128,14 @@ final dashboardStatsProvider = FutureProvider.autoDispose.family<DashboardStats,
     }
   }
 
+  final capacityItems = activeItemCount > 0 ? activeItemCount : inventory.length;
+
   return DashboardStats(
     totalInStock: totalInStock,
     lowStockCount: lowStock,
     misplacedCount: misplaced,
     needsVerificationCount: needsVerification,
-    totalCapacity: inventory.length * 5, // 5 max per slot
+    totalCapacity: capacityItems * 5, // 5 max bottles per active slot
   );
 });
 

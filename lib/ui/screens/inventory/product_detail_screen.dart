@@ -135,7 +135,29 @@ class ProductDetailScreen extends ConsumerWidget {
                               const SizedBox(height: 12),
                               Row(
                                 children: [
-                                  const StatusBadge(type: StatusBadgeType.good, large: true),
+                                  if (p.isSeasonalOff) ...[
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: AppColors.statusOrange.withValues(alpha: 0.15),
+                                        borderRadius: BorderRadius.circular(6),
+                                        border: Border.all(color: AppColors.statusOrange.withValues(alpha: 0.5)),
+                                      ),
+                                      child: const Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(Icons.wb_sunny_outlined, size: 14, color: AppColors.statusOrange),
+                                          SizedBox(width: 4),
+                                          Text(
+                                            'Seasonal / Turned Off',
+                                            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: AppColors.statusOrange),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ] else ...[
+                                    const StatusBadge(type: StatusBadgeType.good, large: true),
+                                  ],
                                   const SizedBox(width: 12),
                                   const StatusBadge(type: StatusBadgeType.synced, customLabel: 'Synced to Supabase'),
                                   const SizedBox(width: 12),
@@ -159,6 +181,80 @@ class ProductDetailScreen extends ConsumerWidget {
                               ),
                             ],
                           ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                // Seasonal Availability Toggle Banner Card
+                Card(
+                  color: p.isSeasonalOff
+                      ? (context.isDark ? const Color(0xFF1F1A14) : const Color(0xFFFFFBEB))
+                      : context.surfaceColor,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    side: BorderSide(
+                      color: p.isSeasonalOff
+                          ? AppColors.statusOrange.withValues(alpha: 0.6)
+                          : context.borderColor,
+                    ),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: (p.isSeasonalOff ? AppColors.statusOrange : AppColors.statusGreen).withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Icon(
+                            p.isSeasonalOff ? Icons.wb_sunny_outlined : Icons.check_circle_outline_rounded,
+                            color: p.isSeasonalOff ? AppColors.statusOrange : AppColors.statusGreen,
+                            size: 24,
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                p.isSeasonalOff ? 'Seasonal Fragrance (Turned Off)' : 'Active On Shelf',
+                                style: TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w800,
+                                  color: context.textPrimaryColor,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                p.isSeasonalOff
+                                    ? 'This seasonal variant is currently paused from active shelf scanning. Turn on to resume.'
+                                    : 'This fragrance variant is actively monitored on the shelf in its designated tray slot.',
+                                style: TextStyle(fontSize: 12, color: context.textSecondaryColor),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        Switch(
+                          value: !p.isSeasonalOff,
+                          activeColor: AppColors.statusGreen,
+                          inactiveThumbColor: AppColors.statusOrange,
+                          onChanged: (val) async {
+                            final newStatus = val ? 'active' : 'seasonal_off';
+                            await ref.read(sqliteServiceProvider).toggleProductStatus(
+                              productId: p.id,
+                              newStatus: newStatus,
+                            );
+                            ref.invalidate(masterProductsProvider);
+                            ref.invalidate(liveInventoryProvider('San Pablo'));
+                            ref.invalidate(dashboardStatsProvider('San Pablo'));
+                          },
                         ),
                       ],
                     ),

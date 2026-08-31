@@ -14,6 +14,7 @@ class ShelfRegionModel {
   final double right;
   final double top;
   final double bottom;
+  final String status;
 
   ShelfRegionModel({
     required this.id,
@@ -31,7 +32,15 @@ class ShelfRegionModel {
     this.right = 1.0,
     this.top = 0.0,
     this.bottom = 1.0,
+    this.status = 'active',
   });
+
+  bool get isSeasonalOff =>
+      status.toLowerCase() == 'seasonal_off' ||
+      status.toLowerCase() == 'inactive' ||
+      status.toLowerCase() == 'paused';
+
+  bool get isActive => !isSeasonalOff && status.toLowerCase() != 'deleted';
 
   factory ShelfRegionModel.fromMap(Map<String, dynamic> map, [String? id]) {
     final regionId = id ?? (map['id'] as String? ?? '');
@@ -55,6 +64,7 @@ class ShelfRegionModel {
       right: ((map['right_coord'] ?? map['right']) as num?)?.toDouble() ?? 1.0,
       top: ((map['top_coord'] ?? map['top']) as num?)?.toDouble() ?? 0.0,
       bottom: ((map['bottom_coord'] ?? map['bottom']) as num?)?.toDouble() ?? 1.0,
+      status: map['status'] as String? ?? 'active',
     );
   }
 
@@ -74,6 +84,7 @@ class ShelfRegionModel {
     double? right,
     double? top,
     double? bottom,
+    String? status,
   }) {
     return ShelfRegionModel(
       id: id ?? this.id,
@@ -91,6 +102,7 @@ class ShelfRegionModel {
       right: right ?? this.right,
       top: top ?? this.top,
       bottom: bottom ?? this.bottom,
+      status: status ?? this.status,
     );
   }
 
@@ -112,6 +124,7 @@ class ShelfRegionModel {
       'right_coord': right,
       'top_coord': top,
       'bottom_coord': bottom,
+      'status': status,
     };
   }
 
@@ -133,6 +146,7 @@ class ShelfRegionModel {
       'right_coord': right,
       'top_coord': top,
       'bottom_coord': bottom,
+      'status': status,
     };
   }
 }

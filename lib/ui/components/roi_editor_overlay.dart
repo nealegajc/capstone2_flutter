@@ -78,12 +78,14 @@ class _RoiEditorOverlayState extends State<RoiEditorOverlay> {
                 painter: _TrayRoiPainter(
                   roiRect: roiRect,
                   isInteractive: widget.isInteractive,
+                  isEnabled: widget.roi.isEnabled,
+                  disabledCapCodes: widget.roi.disabledCapCodes,
                   slotCodes: widget.slotCodes,
                 ),
               ),
 
               // 2. Background Multi-touch Pinch Detector for Touchscreen
-              if (widget.isInteractive)
+              if (widget.isInteractive && widget.roi.isEnabled)
                 Positioned.fill(
                   child: GestureDetector(
                     behavior: HitTestBehavior.translucent,
@@ -107,7 +109,7 @@ class _RoiEditorOverlayState extends State<RoiEditorOverlay> {
                 ),
 
               // 3. Move Body (Inside the ROI Box)
-              if (widget.isInteractive)
+              if (widget.isInteractive && widget.roi.isEnabled)
                 Positioned(
                   left: math.max(0.0, roiRect.left + 16),
                   top: math.max(0.0, roiRect.top + 16),
@@ -138,7 +140,10 @@ class _RoiEditorOverlayState extends State<RoiEditorOverlay> {
                   decoration: BoxDecoration(
                     color: Colors.black.withValues(alpha: 0.90),
                     borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: AppColors.brandAccent, width: 1.5),
+                    border: Border.all(
+                      color: widget.roi.isEnabled ? AppColors.brandAccent : AppColors.statusOrange,
+                      width: 1.5,
+                    ),
                     boxShadow: [
                       BoxShadow(
                         color: Colors.black.withValues(alpha: 0.5),
@@ -149,12 +154,18 @@ class _RoiEditorOverlayState extends State<RoiEditorOverlay> {
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(Icons.shelves, size: 14, color: AppColors.brandAccent),
+                      Icon(
+                        widget.roi.isEnabled ? Icons.shelves : Icons.wb_sunny_outlined,
+                        size: 14,
+                        color: widget.roi.isEnabled ? AppColors.brandAccent : AppColors.statusOrange,
+                      ),
                       const SizedBox(width: 6),
                       Text(
-                        '${widget.cameraName} Trays • Left: 100ML | Right: 50ML (${(widget.roi.width * 100).toStringAsFixed(0)}% × ${(widget.roi.height * 100).toStringAsFixed(0)}%)',
-                        style: const TextStyle(
-                          color: Colors.white,
+                        widget.roi.isEnabled
+                            ? '${widget.cameraName} • Left = 100ML | Right = 50ML'
+                            : '${widget.cameraName} SCANNER PAUSED (SEASONAL)',
+                        style: TextStyle(
+                          color: widget.roi.isEnabled ? Colors.white : AppColors.statusOrange,
                           fontWeight: FontWeight.w900,
                           fontSize: 11,
                         ),
@@ -165,7 +176,7 @@ class _RoiEditorOverlayState extends State<RoiEditorOverlay> {
               ),
 
               // 5. Interactive Touch Handles (Corners & Edges)
-              if (widget.isInteractive) ...[
+              if (widget.isInteractive && widget.roi.isEnabled) ...[
                 // Top-Left Corner
                 _buildCornerHandle(
                   center: roiRect.topLeft,
@@ -228,8 +239,8 @@ class _RoiEditorOverlayState extends State<RoiEditorOverlay> {
     required void Function(double dx, double dy) onPan,
   }) {
     return Positioned(
-      left: center.dx - _handleTouchSize / 2,
-      top: center.dy - _handleTouchSize / 2,
+      left: center.dx - (_handleTouchSize / 2),
+      top: center.dy - (_handleTouchSize / 2),
       width: _handleTouchSize,
       height: _handleTouchSize,
       child: MouseRegion(
@@ -240,17 +251,16 @@ class _RoiEditorOverlayState extends State<RoiEditorOverlay> {
           onPanEnd: (_) => widget.onInteractionEnd?.call(),
           child: Center(
             child: Container(
-              width: 20,
-              height: 20,
+              width: 14,
+              height: 14,
               decoration: BoxDecoration(
-                color: AppColors.brandAccent,
+                color: widget.roi.isEnabled ? AppColors.brandAccent : AppColors.statusOrange,
                 shape: BoxShape.circle,
-                border: Border.all(color: Colors.white, width: 2.5),
+                border: Border.all(color: Colors.white, width: 2),
                 boxShadow: [
                   BoxShadow(
                     color: Colors.black.withValues(alpha: 0.6),
-                    blurRadius: 6,
-                    offset: const Offset(0, 2),
+                    blurRadius: 4,
                   ),
                 ],
               ),
@@ -288,11 +298,15 @@ class _RoiEditorOverlayState extends State<RoiEditorOverlay> {
 class _TrayRoiPainter extends CustomPainter {
   final Rect roiRect;
   final bool isInteractive;
+  final bool isEnabled;
+  final Set<String> disabledCapCodes;
   final List<String> slotCodes;
 
   _TrayRoiPainter({
     required this.roiRect,
     required this.isInteractive,
+    required this.isEnabled,
+    required this.disabledCapCodes,
     required this.slotCodes,
   });
 
@@ -313,73 +327,166 @@ class _TrayRoiPainter extends CustomPainter {
     path.fillType = PathFillType.evenOdd;
     canvas.drawPath(path, darkPaint);
 
-    // 2. Outer Tray ROI Border
+    // If whole ROI is disabled:
+    if (!isEnabled) {
+      final disabledBgPaint = Paint()
+        ..color = const Color(0xFF1F1A14).withValues(alpha: 0.70)
+        ..style = PaintingStyle.fill;
+      canvas.drawRect(roiRect, disabledBgPaint);
+
+      final disabledBorderPaint = Paint()
+        ..color = AppColors.statusOrange.withValues(alpha: 0.8)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.0;
+      canvas.drawRect(roiRect, disabledBorderPaint);
+
+      final textPainter = TextPainter(
+        text: const TextSpan(
+          children: [
+            TextSpan(
+              text: '🔒 SHELF DETECTION ZONE PAUSED\n',
+              style: TextStyle(
+                color: AppColors.statusOrange,
+                fontSize: 14,
+                fontWeight: FontWeight.w900,
+                shadows: [Shadow(color: Colors.black, blurRadius: 4)],
+              ),
+            ),
+            TextSpan(
+              text: 'Seasonal rotation paused • Tap "Resume Shelf Zone" to start scanning',
+              style: TextStyle(
+                color: Colors.white70,
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                shadows: [Shadow(color: Colors.black, blurRadius: 3)],
+              ),
+            ),
+          ],
+        ),
+        textAlign: TextAlign.center,
+        textDirection: TextDirection.ltr,
+      );
+      textPainter.layout();
+      textPainter.paint(
+        canvas,
+        Offset(
+          roiRect.center.dx - (textPainter.width / 2),
+          roiRect.center.dy - (textPainter.height / 2),
+        ),
+      );
+      return;
+    }
+
+    // 2. Outer Tray ROI Border (1 Single Row)
     final borderPaint = Paint()
       ..color = AppColors.brandAccent
       ..style = PaintingStyle.stroke
       ..strokeWidth = isInteractive ? 2.5 : 1.8;
     canvas.drawRect(roiRect, borderPaint);
 
-    // 3. Vertical Midline Divider (Splitting Left 100ML & Right 50ML)
-    final midX = roiRect.left + (roiRect.width / 2);
-    final midLinePaint = Paint()
+    // 3. Layout each perfume tray in 1 single row, divided into Left (100ML) and Right (50ML)
+    final trayCount = slotCodes.length;
+    final trayWidth = roiRect.width / trayCount;
+
+    final emeraldBgPaint = Paint()
+      ..color = const Color(0xFF10B981).withValues(alpha: 0.09)
+      ..style = PaintingStyle.fill;
+
+    final roseBgPaint = Paint()
+      ..color = const Color(0xFFEC4899).withValues(alpha: 0.09)
+      ..style = PaintingStyle.fill;
+
+    final offBgPaint = Paint()
+      ..color = const Color(0xFF1C1308).withValues(alpha: 0.85)
+      ..style = PaintingStyle.fill;
+
+    final offBorderPaint = Paint()
+      ..color = const Color(0xFFF59E0B).withValues(alpha: 0.70)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.5;
+
+    final trayBorderPaint = Paint()
       ..color = Colors.white.withValues(alpha: 0.85)
       ..strokeWidth = 2.0;
-    canvas.drawLine(Offset(midX, roiRect.top), Offset(midX, roiRect.bottom), midLinePaint);
 
-    // 4. Subtle Tint for Left (100ML: Emerald) & Right (50ML: Rose)
-    final leftBgPaint = Paint()
-      ..color = const Color(0xFF10B981).withValues(alpha: 0.08)
-      ..style = PaintingStyle.fill;
-    canvas.drawRect(Rect.fromLTRB(roiRect.left, roiRect.top, midX, roiRect.bottom), leftBgPaint);
-
-    final rightBgPaint = Paint()
-      ..color = const Color(0xFFEC4899).withValues(alpha: 0.08)
-      ..style = PaintingStyle.fill;
-    canvas.drawRect(Rect.fromLTRB(midX, roiRect.top, roiRect.right, roiRect.bottom), rightBgPaint);
-
-    // 5. Horizontal Partition Lines for the 5 Slot Rows
-    final slotCount = slotCodes.length;
-    final slotHeight = roiRect.height / slotCount;
-    final horizLinePaint = Paint()
-      ..color = Colors.white.withValues(alpha: 0.35)
+    final internalSplitPaint = Paint()
+      ..color = Colors.white.withValues(alpha: 0.45)
       ..strokeWidth = 1.2;
 
-    for (int i = 1; i < slotCount; i++) {
-      final y = roiRect.top + (slotHeight * i);
-      canvas.drawLine(Offset(roiRect.left, y), Offset(roiRect.right, y), horizLinePaint);
-    }
-
-    // 6. Draw 100ML (Left Half) & 50ML (Right Half) Badges and Labels
     final textPainter = TextPainter(textDirection: TextDirection.ltr);
-    final leftCenterX = roiRect.left + (roiRect.width / 4);
-    final rightCenterX = midX + (roiRect.width / 4);
+    final centerY = roiRect.top + (roiRect.height / 2);
 
-    for (int i = 0; i < slotCount; i++) {
-      final slotTop = roiRect.top + (slotHeight * i);
-      final slotCenterY = slotTop + (slotHeight / 2);
-      final letter = slotCodes[i];
+    for (int i = 0; i < trayCount; i++) {
+      final trayLeft = roiRect.left + (trayWidth * i);
+      final trayRight = trayLeft + trayWidth;
+      final trayMidX = trayLeft + (trayWidth / 2);
+      final slotPrefix = slotCodes[i].toUpperCase();
 
-      // Left Half: 100ML (Size 1) in Emerald Cyan (#10B981)
+      final leftCode = '${slotPrefix}1';
+      final rightCode = '${slotPrefix}2';
+
+      // Check if slot or variant is disabled in disabledCapCodes
+      final isLeftOff = disabledCapCodes.any((c) {
+        final upper = c.trim().toUpperCase();
+        return upper == leftCode || upper == slotPrefix;
+      });
+
+      final isRightOff = disabledCapCodes.any((c) {
+        final upper = c.trim().toUpperCase();
+        return upper == rightCode || upper == slotPrefix;
+      });
+
+      final leftRect = Rect.fromLTRB(trayLeft, roiRect.top, trayMidX, roiRect.bottom);
+      final rightRect = Rect.fromLTRB(trayMidX, roiRect.top, trayRight, roiRect.bottom);
+
+      // A. Left Half Background (100ML: Emerald Cyan or High-Contrast Dimmed Amber if Off)
+      if (isLeftOff) {
+        canvas.drawRect(leftRect, offBgPaint);
+        canvas.drawRect(leftRect, offBorderPaint);
+      } else {
+        canvas.drawRect(leftRect, emeraldBgPaint);
+      }
+
+      // B. Right Half Background (50ML: Rose Pink or High-Contrast Dimmed Amber if Off)
+      if (isRightOff) {
+        canvas.drawRect(rightRect, offBgPaint);
+        canvas.drawRect(rightRect, offBorderPaint);
+      } else {
+        canvas.drawRect(rightRect, roseBgPaint);
+      }
+
+      // C. Internal Midline for this Tray (Splitting Left 100ML & Right 50ML)
+      canvas.drawLine(Offset(trayMidX, roiRect.top), Offset(trayMidX, roiRect.bottom), internalSplitPaint);
+
+      // D. Inter-tray Separator Line between adjacent trays in the single row
+      if (i > 0) {
+        canvas.drawLine(Offset(trayLeft, roiRect.top), Offset(trayLeft, roiRect.bottom), trayBorderPaint);
+      }
+
+      // E. Left Half Text: 100ML (${slotPrefix}1)
+      final left100CenterX = (trayLeft + trayMidX) / 2;
       textPainter.text = TextSpan(
         children: [
           TextSpan(
-            text: '${letter}1\n',
-            style: const TextStyle(
-              color: Color(0xFF10B981), // Emerald Cyan
-              fontSize: 14,
+            text: '$leftCode\n',
+            style: TextStyle(
+              color: isLeftOff ? const Color(0xFFF59E0B) : const Color(0xFF10B981),
+              fontSize: 13,
               fontWeight: FontWeight.w900,
+              decoration: isLeftOff ? TextDecoration.lineThrough : null,
+              decorationColor: const Color(0xFFF59E0B),
+              decorationThickness: 2.5,
               height: 1.1,
-              shadows: [Shadow(color: Colors.black, blurRadius: 4, offset: Offset(0, 1))],
+              shadows: const [Shadow(color: Colors.black, blurRadius: 4, offset: Offset(0, 1))],
             ),
           ),
-          const TextSpan(
-            text: '100ML',
+          TextSpan(
+            text: isLeftOff ? 'OFF' : '100ML',
             style: TextStyle(
-              color: Color(0xFF6EE7B7),
-              fontSize: 10,
-              fontWeight: FontWeight.w800,
-              shadows: [Shadow(color: Colors.black, blurRadius: 3)],
+              color: isLeftOff ? const Color(0xFFF59E0B) : const Color(0xFF6EE7B7),
+              fontSize: 9,
+              fontWeight: FontWeight.w900,
+              shadows: const [Shadow(color: Colors.black, blurRadius: 3)],
             ),
           ),
         ],
@@ -388,29 +495,33 @@ class _TrayRoiPainter extends CustomPainter {
       textPainter.layout();
       textPainter.paint(
         canvas,
-        Offset(leftCenterX - (textPainter.width / 2), slotCenterY - (textPainter.height / 2)),
+        Offset(left100CenterX - (textPainter.width / 2), centerY - (textPainter.height / 2)),
       );
 
-      // Right Half: 50ML (Size 2) in Rose Pink (#EC4899)
+      // F. Right Half Text: 50ML (${slotPrefix}2)
+      final right50CenterX = (trayMidX + trayRight) / 2;
       textPainter.text = TextSpan(
         children: [
           TextSpan(
-            text: '${letter}2\n',
-            style: const TextStyle(
-              color: Color(0xFFEC4899), // Rose Pink
-              fontSize: 14,
+            text: '$rightCode\n',
+            style: TextStyle(
+              color: isRightOff ? const Color(0xFFF59E0B) : const Color(0xFFEC4899),
+              fontSize: 13,
               fontWeight: FontWeight.w900,
+              decoration: isRightOff ? TextDecoration.lineThrough : null,
+              decorationColor: const Color(0xFFF59E0B),
+              decorationThickness: 2.5,
               height: 1.1,
-              shadows: [Shadow(color: Colors.black, blurRadius: 4, offset: Offset(0, 1))],
+              shadows: const [Shadow(color: Colors.black, blurRadius: 4, offset: Offset(0, 1))],
             ),
           ),
-          const TextSpan(
-            text: '50ML',
+          TextSpan(
+            text: isRightOff ? 'OFF' : '50ML',
             style: TextStyle(
-              color: Color(0xFFF472B6),
-              fontSize: 10,
-              fontWeight: FontWeight.w800,
-              shadows: [Shadow(color: Colors.black, blurRadius: 3)],
+              color: isRightOff ? const Color(0xFFF59E0B) : const Color(0xFFF472B6),
+              fontSize: 9,
+              fontWeight: FontWeight.w900,
+              shadows: const [Shadow(color: Colors.black, blurRadius: 3)],
             ),
           ),
         ],
@@ -419,12 +530,12 @@ class _TrayRoiPainter extends CustomPainter {
       textPainter.layout();
       textPainter.paint(
         canvas,
-        Offset(rightCenterX - (textPainter.width / 2), slotCenterY - (textPainter.height / 2)),
+        Offset(right50CenterX - (textPainter.width / 2), centerY - (textPainter.height / 2)),
       );
     }
 
     // 7. Corner L-Shapes when Interactive
-    if (isInteractive) {
+    if (isInteractive && isEnabled) {
       final cornerPaint = Paint()
         ..color = AppColors.brandAccent
         ..style = PaintingStyle.stroke
@@ -455,6 +566,8 @@ class _TrayRoiPainter extends CustomPainter {
   bool shouldRepaint(covariant _TrayRoiPainter old) {
     return old.roiRect != roiRect ||
         old.isInteractive != isInteractive ||
+        old.isEnabled != isEnabled ||
+        old.disabledCapCodes != disabledCapCodes ||
         old.slotCodes != slotCodes;
   }
 }

@@ -43,7 +43,20 @@ class SystemLogModel {
     );
   }
 
+  /// SQLite-compatible Map with exact column names
   Map<String, dynamic> toMap() {
+    return {
+      'id': id,
+      'type': type,
+      'description': description,
+      'user': user,
+      'branch': branch,
+      'timestamp': timestamp.millisecondsSinceEpoch,
+    };
+  }
+
+  /// Supabase-compatible Map (snake_case/ISO-8601 timestamp)
+  Map<String, dynamic> toSupabaseMap() {
     return {
       'id': id,
       'type': type,

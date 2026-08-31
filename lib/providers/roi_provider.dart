@@ -25,6 +25,8 @@ class RoiState {
   final double right;
   final double bottom;
   final bool isEditing;
+  final bool isEnabled;
+  final Set<String> disabledCapCodes;
 
   const RoiState({
     required this.cameraId,
@@ -33,6 +35,8 @@ class RoiState {
     this.right = 0.95,
     this.bottom = 0.85,
     this.isEditing = false,
+    this.isEnabled = true,
+    this.disabledCapCodes = const {},
   });
 
   double get width => (right - left).clamp(0.01, 1.0);
@@ -52,6 +56,8 @@ class RoiState {
     double? right,
     double? bottom,
     bool? isEditing,
+    bool? isEnabled,
+    Set<String>? disabledCapCodes,
   }) {
     return RoiState(
       cameraId: cameraId ?? this.cameraId,
@@ -60,6 +66,8 @@ class RoiState {
       right: (right ?? this.right).clamp(0.01, 1.0),
       bottom: (bottom ?? this.bottom).clamp(0.01, 1.0),
       isEditing: isEditing ?? this.isEditing,
+      isEnabled: isEnabled ?? this.isEnabled,
+      disabledCapCodes: disabledCapCodes ?? this.disabledCapCodes,
     );
   }
 
@@ -70,6 +78,7 @@ class RoiState {
       top: region.top.clamp(0.0, 0.95),
       right: region.right.clamp(0.05, 1.0),
       bottom: region.bottom.clamp(0.05, 1.0),
+      isEnabled: region.isActive,
     );
   }
 }
@@ -101,6 +110,18 @@ class RoiNotifier extends StateNotifier<RoiState> {
 
   void toggleEditing() {
     state = state.copyWith(isEditing: !state.isEditing);
+  }
+
+  void setEnabled(bool enabled) {
+    state = state.copyWith(isEnabled: enabled);
+  }
+
+  void toggleEnabled() {
+    state = state.copyWith(isEnabled: !state.isEnabled);
+  }
+
+  void setDisabledCapCodes(Set<String> codes) {
+    state = state.copyWith(disabledCapCodes: codes);
   }
 
   void move(double deltaNormX, double deltaNormY) {
@@ -224,9 +245,9 @@ class RoiNotifier extends StateNotifier<RoiState> {
   void reset() {
     state = state.copyWith(
       left: 0.05,
-      top: 0.15,
+      top: 0.20,
       right: 0.95,
-      bottom: 0.85,
+      bottom: 0.80,
     );
     save('San Pablo');
   }
@@ -235,12 +256,14 @@ class RoiNotifier extends StateNotifier<RoiState> {
     try {
       final regions = await _sqlite.getShelfRegions(branch);
       final match = regions.where((r) => r.cameraId == cameraId).firstOrNull;
+      final status = state.isEnabled ? 'active' : 'seasonal_off';
       if (match != null) {
         final updated = match.copyWith(
           left: state.left,
           top: state.top,
           right: state.right,
           bottom: state.bottom,
+          status: status,
         );
         await _sqlite.updateShelfRegion(updated);
       } else {
@@ -255,6 +278,7 @@ class RoiNotifier extends StateNotifier<RoiState> {
           top: state.top,
           right: state.right,
           bottom: state.bottom,
+          status: status,
         );
         await _sqlite.updateShelfRegion(newRegion);
       }

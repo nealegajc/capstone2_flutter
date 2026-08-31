@@ -72,9 +72,9 @@ class SettingsScreen extends ConsumerWidget {
                     Divider(height: 20, color: context.borderColor),
                     _buildConfigRow(context, 'Assigned Branch', 'San Pablo Branch (Kiosk #01)'),
                     Divider(height: 20, color: context.borderColor),
-                    _buildConfigRow(context, 'Operating Platform', 'Linux Embedded Retail OS (Ubuntu / X11)'),
+                    _buildConfigRow(context, 'Operating System', 'Linux Touchscreen Retail Terminal'),
                     Divider(height: 20, color: context.borderColor),
-                    _buildConfigRow(context, 'Sync Architecture', 'Supabase Cloud + Local SQLite Fallback Buffer'),
+                    _buildConfigRow(context, 'Data Backup', 'Continuous Cloud Sync with Offline Storage Protection'),
                   ],
                 ),
               ),
@@ -124,7 +124,7 @@ class SettingsScreen extends ConsumerWidget {
                                 Text(
                                   netStatus.isOnline
                                       ? 'Connected to ${netStatus.currentSsid ?? "LAN"} (${netStatus.ipAddress ?? "Online"})'
-                                      : 'No active connection. Local SQLite buffer active.',
+                                      : 'No active connection. Local store database is active.',
                                   style: TextStyle(fontSize: 13, color: context.textSecondaryColor),
                                 ),
                               ],
@@ -159,43 +159,50 @@ class SettingsScreen extends ConsumerWidget {
               color: context.surfaceColor,
               child: Padding(
                 padding: const EdgeInsets.all(20),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                child: Column(
                   children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Store 6-Digit Security PIN',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w800,
-                              color: context.textPrimaryColor,
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(Icons.pin_rounded, color: AppColors.brandAccent, size: 24),
+                            const SizedBox(width: 12),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Manager Security PIN',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w800,
+                                    color: context.textPrimaryColor,
+                                  ),
+                                ),
+                                Text(
+                                  '6-digit PIN required to access manager settings and inventory controls',
+                                  style: TextStyle(fontSize: 13, color: context.textSecondaryColor),
+                                ),
+                              ],
                             ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            'Secures critical terminal actions like Manual Restock, ROI calibration, and Catalog changes.',
-                            style: TextStyle(fontSize: 13, color: context.textSecondaryColor),
-                          ),
-                        ],
-                      ),
-                    ),
-                    OutlinedButton.icon(
-                      onPressed: () async {
-                        final updated = await UpdatePinDialog.show(context);
-                        if (updated == true && context.mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Security PIN has been successfully updated and saved.'),
-                              backgroundColor: AppColors.statusGreen,
-                            ),
-                          );
-                        }
-                      },
-                      icon: const Icon(Icons.password_rounded, size: 18),
-                      label: const Text('Update PIN'),
+                          ],
+                        ),
+                        OutlinedButton.icon(
+                          onPressed: () async {
+                            final updated = await UpdatePinDialog.show(context);
+                            if (updated == true && context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('Security PIN has been successfully updated and saved.'),
+                                  backgroundColor: AppColors.statusGreen,
+                                ),
+                              );
+                            }
+                          },
+                          icon: const Icon(Icons.password_rounded, size: 18),
+                          label: const Text('Change PIN'),
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -301,7 +308,7 @@ class SettingsScreen extends ConsumerWidget {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  '6-Camera Vision & Shelf Layer Architecture',
+                  'Shelf Cameras & Product Setup',
                   style: TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.w800,
@@ -311,7 +318,7 @@ class SettingsScreen extends ConsumerWidget {
                 OutlinedButton.icon(
                   onPressed: () => CameraAssignmentDialog.show(context),
                   icon: const Icon(Icons.tune_rounded, size: 16),
-                  label: const Text('Assign Device Nodes'),
+                  label: const Text('Connect Webcams'),
                 ),
               ],
             ),
@@ -324,17 +331,17 @@ class SettingsScreen extends ConsumerWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _buildConfigRow(context, 'Vision System Setup', '6 Cameras across 3 Shelf Layers (2 Cameras per Layer)'),
+                    _buildConfigRow(context, 'Camera Layout', '6 Cameras across 3 Shelf Layers (2 Cameras per Layer)'),
                     Divider(height: 20, color: context.borderColor),
-                    _buildConfigRow(context, 'Top Layer A (Men)', 'Cam 1A (Slots A to E) & Cam 1B (Slots F to K) - Codes AA1 to AK2 (20 SKUs)'),
+                    _buildConfigRow(context, 'Top Layer (Men)', 'Cameras 1A & 1B (Left: Slots A–E, Right: Slots F–K • 20 Fragrances)'),
                     Divider(height: 20, color: context.borderColor),
-                    _buildConfigRow(context, 'Middle Layer B (Mixed)', 'Cam 2A (Male Slots A to E) & Cam 2B (Female Slots F to K) - Codes BA1 to BK2 (20 SKUs)'),
+                    _buildConfigRow(context, 'Middle Layer (Mixed)', 'Cameras 2A & 2B (Left: Men A–E, Right: Women F–K • 20 Fragrances)'),
                     Divider(height: 20, color: context.borderColor),
-                    _buildConfigRow(context, 'Bottom Layer C (Women)', 'Cam 3A (Slots A to E) & Cam 3B (Slots F to K) - Codes CA1 to CK2 (20 SKUs)'),
+                    _buildConfigRow(context, 'Bottom Layer (Women)', 'Cameras 3A & 3B (Left: Slots A–E, Right: Slots F–K • 20 Fragrances)'),
                     Divider(height: 20, color: context.borderColor),
-                    _buildConfigRow(context, 'Total SKUs & Capacity', '60 SKUs (30 Variants x 2 Sizes) • 300 Bottles Capacity'),
+                    _buildConfigRow(context, 'Total Fragrances & Capacity', '60 Fragrance SKUs (30 Scents × 2 Sizes) • 300 Bottles'),
                     Divider(height: 20, color: context.borderColor),
-                    _buildConfigRow(context, 'Connected Hardware Cameras', '${detectedCams.length} Devices Detected'),
+                    _buildConfigRow(context, 'Connected Cameras', '${detectedCams.length} Devices Connected'),
                     const SizedBox(height: 18),
                     SizedBox(
                       width: double.infinity,
@@ -343,7 +350,7 @@ class SettingsScreen extends ConsumerWidget {
                         onPressed: () async {
                           ScaffoldMessenger.of(context).showSnackBar(
                             const SnackBar(
-                              content: Text('Seeding 60 Otto Scents SKUs (30 variants x 2 sizes) across 6 camera regions...'),
+                              content: Text('Restoring 60 Otto Scents fragrances (30 scents x 2 sizes)...'),
                               backgroundColor: AppColors.brandAccent,
                             ),
                           );
@@ -354,7 +361,7 @@ class SettingsScreen extends ConsumerWidget {
                             if (context.mounted) {
                               ScaffoldMessenger.of(context).showSnackBar(
                                 const SnackBar(
-                                  content: Text('Successfully seeded 60 Otto Scents SKUs to Supabase & SQLite.'),
+                                  content: Text('Successfully restored 60 Otto Scents fragrances.'),
                                   backgroundColor: AppColors.statusGreen,
                                 ),
                               );
@@ -364,7 +371,7 @@ class SettingsScreen extends ConsumerWidget {
                             if (context.mounted) {
                               ScaffoldMessenger.of(context).showSnackBar(
                                 SnackBar(
-                                  content: Text('Seeded 60 SKUs locally in SQLite ($e)'),
+                                  content: Text('Restored 60 fragrances locally ($e)'),
                                   backgroundColor: AppColors.statusGreen,
                                 ),
                               );
@@ -373,7 +380,7 @@ class SettingsScreen extends ConsumerWidget {
                         },
                         icon: const Icon(Icons.cloud_upload_rounded, size: 22),
                         label: const Text(
-                          'Seed / Reset 60 Otto Scents Catalog SKUs',
+                          'Restore & Reset 60 Otto Scents Fragrance Catalog',
                           style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
                         ),
                         style: ElevatedButton.styleFrom(

@@ -31,6 +31,8 @@ class InventoryRecordModel {
   bool get isOutOfStock => status == 'out_of_stock' || detected == 0;
   bool get isMisplaced => status == 'misplaced';
   bool get isNeedsReview => status == 'needs_review';
+  bool get isSeasonalOff => status == 'seasonal_off' || status == 'inactive';
+  bool get isActive => !isSeasonalOff && status != 'deleted';
 
   factory InventoryRecordModel.fromMap(Map<String, dynamic> map, [String? id]) {
     final recordId = id ?? (map['id'] as String? ?? '');
