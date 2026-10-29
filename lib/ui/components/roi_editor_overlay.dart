@@ -260,212 +260,7 @@ class _RoiEditorOverlayState extends State<RoiEditorOverlay> {
                   );
                 }),
 
-              // 4. Tray Info Badge at Top Left of ROI Box (or Top Left corner)
-              Positioned(
-                left: math.max(8.0, overallRect.left + 8),
-                top: math.max(
-                  8.0,
-                  overallRect.top - 36 < 8
-                      ? overallRect.top + 8
-                      : overallRect.top - 36,
-                ),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 5,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: 0.90),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(
-                      color: widget.roi.isEnabled
-                          ? AppColors.brandAccent
-                          : AppColors.statusOrange,
-                      width: 1.5,
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.5),
-                        blurRadius: 6,
-                      ),
-                    ],
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        widget.roi.isEnabled
-                            ? Icons.shelves
-                            : Icons.wb_sunny_outlined,
-                        size: 14,
-                        color: widget.roi.isEnabled
-                            ? AppColors.brandAccent
-                            : AppColors.statusOrange,
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                        widget.roi.isEnabled
-                            ? (selectedCode != null
-                                  ? (selectedCode.endsWith('1')
-                                        ? '${widget.cameraName} • Slot $selectedCode (100ML) Selected — Drag handles to align'
-                                        : (selectedCode.endsWith('2')
-                                              ? '${widget.cameraName} • Slot $selectedCode (50ML) Selected — Drag handles to align'
-                                              : '${widget.cameraName} • Tray $selectedCode (Both Sizes) Selected'))
-                                  : '${widget.cameraName} • Tap any 100ML or 50ML slot to align independently')
-                            : '${widget.cameraName} SCANNER PAUSED (SEASONAL)',
-                        style: TextStyle(
-                          color: widget.roi.isEnabled
-                              ? Colors.white
-                              : AppColors.statusOrange,
-                          fontWeight: FontWeight.w900,
-                          fontSize: 11,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-
-              // 5. Interactive Touch Tray & Size Selector Bar
-              if (widget.isInteractive && widget.roi.isEnabled)
-                Positioned(
-                  top: 10,
-                  right: 10,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 6,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.88),
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.2),
-                      ),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        // Row 1: Primary Tray Selector Chips
-                        SingleChildScrollView(
-                          scrollDirection: Axis.horizontal,
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              _buildTraySelectorChip(
-                                label: 'All Trays',
-                                isSelected: selectedCode == null,
-                                icon: Icons.select_all_rounded,
-                                onTap: () => widget.onSelectTray?.call(null),
-                              ),
-                              const SizedBox(width: 6),
-                              ...widget.slotCodes.map((code) {
-                                final isSel = selectedCode == code ||
-                                    (selectedCode != null &&
-                                        selectedCode.startsWith(code));
-                                return Padding(
-                                  padding: const EdgeInsets.only(right: 4),
-                                  child: _buildTraySelectorChip(
-                                    label: 'Tray $code',
-                                    isSelected: isSel,
-                                    onTap: () {
-                                      final isCurrentlyThis = selectedCode == code;
-                                      widget.onSelectTray?.call(
-                                        isCurrentlyThis ? null : code,
-                                      );
-                                    },
-                                  ),
-                                );
-                              }),
-                            ],
-                          ),
-                        ),
-
-                        // Row 2: Secondary Contextual Size Chips (Shown when a Tray or Slot is Selected)
-                        if (selectedCode != null) ...[
-                          const SizedBox(height: 6),
-                          () {
-                            final trayPrefix = selectedCode.length >= 2
-                                ? selectedCode.substring(0, 2)
-                                : selectedCode;
-                            final isBoth = selectedCode == trayPrefix;
-                            final is100 = selectedCode == '${trayPrefix}1';
-                            final is50 = selectedCode == '${trayPrefix}2';
-
-                            return Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                // Both Sizes
-                                _buildSubChip(
-                                  label: '$trayPrefix (Both)',
-                                  isSelected: isBoth,
-                                  onTap: () => widget.onSelectTray?.call(trayPrefix),
-                                ),
-                                const SizedBox(width: 4),
-                                // 100ML Slot
-                                _buildSubChip(
-                                  label: '${trayPrefix}1 (100ML)',
-                                  isSelected: is100,
-                                  accentColor: const Color(0xFF10B981),
-                                  onTap: () => widget.onSelectTray?.call('${trayPrefix}1'),
-                                ),
-                                const SizedBox(width: 4),
-                                // 50ML Slot
-                                _buildSubChip(
-                                  label: '${trayPrefix}2 (50ML)',
-                                  isSelected: is50,
-                                  accentColor: const Color(0xFFEC4899),
-                                  onTap: () => widget.onSelectTray?.call('${trayPrefix}2'),
-                                ),
-                                const SizedBox(width: 6),
-                                // Reset button for active selection
-                                InkWell(
-                                  onTap: () => widget.onResetTray?.call(selectedCode),
-                                  borderRadius: BorderRadius.circular(12),
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 6,
-                                      vertical: 3,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: AppColors.statusOrange.withValues(alpha: 0.2),
-                                      borderRadius: BorderRadius.circular(12),
-                                      border: Border.all(
-                                        color: AppColors.statusOrange.withValues(alpha: 0.6),
-                                      ),
-                                    ),
-                                    child: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        const Icon(
-                                          Icons.restart_alt_rounded,
-                                          size: 11,
-                                          color: AppColors.statusOrange,
-                                        ),
-                                        const SizedBox(width: 3),
-                                        Text(
-                                          'Reset $selectedCode',
-                                          style: const TextStyle(
-                                            fontSize: 9.5,
-                                            color: AppColors.statusOrange,
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            );
-                          }(),
-                        ],
-                      ],
-                    ),
-                  ),
-                ),
-
-              // 6. Interactive Touch Handles (Attached to the Selected Tray, or to All Trays if None Selected)
+              // 4. Interactive Touch Handles (Attached to the Selected Tray, or to All Trays if None Selected)
               if (widget.isInteractive && widget.roi.isEnabled) ...[
                 () {
                   final activeRect = selectedRect ?? overallRect;
@@ -696,111 +491,6 @@ class _RoiEditorOverlayState extends State<RoiEditorOverlay> {
       },
     );
   }
-
-  Widget _buildTraySelectorChip({
-    required String label,
-    required bool isSelected,
-    IconData? icon,
-    required VoidCallback onTap,
-  }) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(16),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 150),
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        decoration: BoxDecoration(
-          color: isSelected
-              ? AppColors.brandAccent
-              : Colors.white.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: isSelected
-                ? Colors.white
-                : Colors.white.withValues(alpha: 0.25),
-            width: isSelected ? 1.5 : 1.0,
-          ),
-          boxShadow: isSelected
-              ? [
-                  BoxShadow(
-                    color: AppColors.brandAccent.withValues(alpha: 0.5),
-                    blurRadius: 8,
-                    offset: const Offset(0, 2),
-                  ),
-                ]
-              : null,
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (icon != null) ...[
-              Icon(
-                icon,
-                size: 13,
-                color: isSelected ? Colors.black : Colors.white,
-              ),
-              const SizedBox(width: 4),
-            ],
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: isSelected ? FontWeight.w900 : FontWeight.w600,
-                color: isSelected ? Colors.black : Colors.white,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSubChip({
-    required String label,
-    required bool isSelected,
-    Color? accentColor,
-    required VoidCallback onTap,
-  }) {
-    final effectiveColor = accentColor ?? AppColors.brandAccent;
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 150),
-        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
-        decoration: BoxDecoration(
-          color: isSelected
-              ? effectiveColor
-              : Colors.white.withValues(alpha: 0.08),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: isSelected
-                ? Colors.white
-                : effectiveColor.withValues(alpha: 0.4),
-            width: isSelected ? 1.4 : 1.0,
-          ),
-          boxShadow: isSelected
-              ? [
-                  BoxShadow(
-                    color: effectiveColor.withValues(alpha: 0.4),
-                    blurRadius: 6,
-                    offset: const Offset(0, 1),
-                  ),
-                ]
-              : null,
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 10,
-            fontWeight: isSelected ? FontWeight.w900 : FontWeight.w600,
-            color: isSelected ? Colors.black : Colors.white,
-          ),
-        ),
-      ),
-    );
-  }
-
   Widget _buildCornerHandle({
     required Offset center,
     required MouseCursor cursor,
@@ -1282,3 +972,228 @@ class _TrayRoiPainter extends CustomPainter {
         old.slotCodes != slotCodes;
   }
 }
+
+/// Standalone Tray & Bottle Size Selector Bar for placement outside the camera video feed.
+class TraySelectorBar extends StatelessWidget {
+  final List<String> slotCodes;
+  final String? selectedCode;
+  final ValueChanged<String?> onSelectTray;
+  final ValueChanged<String>? onResetTray;
+
+  const TraySelectorBar({
+    super.key,
+    required this.slotCodes,
+    required this.selectedCode,
+    required this.onSelectTray,
+    this.onResetTray,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final trayPrefix = selectedCode != null
+        ? (selectedCode!.length >= 2 ? selectedCode!.substring(0, 2) : selectedCode!)
+        : null;
+
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _buildChip(
+            label: 'All Trays',
+            isSelected: selectedCode == null,
+            icon: Icons.select_all_rounded,
+            onTap: () => onSelectTray(null),
+          ),
+          const SizedBox(width: 6),
+          ...slotCodes.map((code) {
+            final isSel = selectedCode == code ||
+                (selectedCode != null && selectedCode!.startsWith(code));
+            return Padding(
+              padding: const EdgeInsets.only(right: 6),
+              child: _buildChip(
+                label: 'Tray $code',
+                isSelected: isSel,
+                onTap: () {
+                  final isCurrentlyThis = selectedCode == code;
+                  onSelectTray(isCurrentlyThis ? null : code);
+                },
+              ),
+            );
+          }),
+          if (trayPrefix != null) ...[
+            Container(
+              height: 20,
+              width: 1,
+              margin: const EdgeInsets.symmetric(horizontal: 6),
+              color: Colors.white24,
+            ),
+            _buildSubChip(
+              label: '$trayPrefix (Both)',
+              isSelected: selectedCode == trayPrefix,
+              onTap: () => onSelectTray(trayPrefix),
+            ),
+            const SizedBox(width: 4),
+            _buildSubChip(
+              label: '${trayPrefix}1 (100ML)',
+              isSelected: selectedCode == '${trayPrefix}1',
+              accentColor: const Color(0xFF10B981),
+              onTap: () => onSelectTray('${trayPrefix}1'),
+            ),
+            const SizedBox(width: 4),
+            _buildSubChip(
+              label: '${trayPrefix}2 (50ML)',
+              isSelected: selectedCode == '${trayPrefix}2',
+              accentColor: const Color(0xFFEC4899),
+              onTap: () => onSelectTray('${trayPrefix}2'),
+            ),
+            if (onResetTray != null) ...[
+              const SizedBox(width: 6),
+              InkWell(
+                onTap: () => onResetTray!(selectedCode!),
+                borderRadius: BorderRadius.circular(12),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: AppColors.statusOrange.withValues(alpha: 0.2),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: AppColors.statusOrange.withValues(alpha: 0.6),
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(
+                        Icons.restart_alt_rounded,
+                        size: 12,
+                        color: AppColors.statusOrange,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        'Reset $selectedCode',
+                        style: const TextStyle(
+                          fontSize: 10,
+                          color: AppColors.statusOrange,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildChip({
+    required String label,
+    required bool isSelected,
+    IconData? icon,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(14),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? AppColors.brandAccent
+              : Colors.white.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: isSelected
+                ? Colors.white
+                : Colors.white.withValues(alpha: 0.25),
+            width: isSelected ? 1.5 : 1.0,
+          ),
+          boxShadow: isSelected
+              ? [
+                  BoxShadow(
+                    color: AppColors.brandAccent.withValues(alpha: 0.45),
+                    blurRadius: 6,
+                    offset: const Offset(0, 2),
+                  ),
+                ]
+              : null,
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (icon != null) ...[
+              Icon(
+                icon,
+                size: 13,
+                color: isSelected ? Colors.black : Colors.white,
+              ),
+              const SizedBox(width: 4),
+            ],
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: isSelected ? FontWeight.w900 : FontWeight.w600,
+                color: isSelected ? Colors.black : Colors.white,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSubChip({
+    required String label,
+    required bool isSelected,
+    Color? accentColor,
+    required VoidCallback onTap,
+  }) {
+    final effectiveColor = accentColor ?? AppColors.brandAccent;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? effectiveColor
+              : Colors.white.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isSelected
+                ? Colors.white
+                : effectiveColor.withValues(alpha: 0.4),
+            width: isSelected ? 1.4 : 1.0,
+          ),
+          boxShadow: isSelected
+              ? [
+                  BoxShadow(
+                    color: effectiveColor.withValues(alpha: 0.4),
+                    blurRadius: 6,
+                    offset: const Offset(0, 2),
+                  ),
+                ]
+              : null,
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 10,
+            fontWeight: isSelected ? FontWeight.w900 : FontWeight.w700,
+            color: isSelected ? Colors.black : Colors.white,
+          ),
+        ),
+      ),
+    );
+  }
+}
+

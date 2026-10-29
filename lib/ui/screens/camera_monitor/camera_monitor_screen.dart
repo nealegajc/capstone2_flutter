@@ -730,10 +730,95 @@ class _CameraMonitorScreenState extends ConsumerState<CameraMonitorScreen> {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Left Side: Live Camera Viewport (with Single Tray ROI Overlay Split into 100ML & 50ML)
+                  // Left Side: Live Camera Viewport (Clean 16:9 AspectRatio with Controls Outside)
                   Expanded(
                     flex: 7,
-                    child: Container(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        // 1. Top Control Bar (OUTSIDE the video):
+                        Container(
+                          margin: const EdgeInsets.only(bottom: 10),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 8,
+                          ),
+                          decoration: BoxDecoration(
+                            color: context.surfaceColor,
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(color: context.borderColor),
+                          ),
+                          child: Row(
+                            children: [
+                              // Camera Status & Device Node Badge
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 5,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.black.withValues(alpha: 0.65),
+                                  borderRadius: BorderRadius.circular(10),
+                                  border: Border.all(
+                                    color: isStreaming
+                                        ? AppColors.statusGreen.withValues(
+                                            alpha: 0.6,
+                                          )
+                                        : (isConnected
+                                            ? AppColors.statusGreen.withValues(
+                                                alpha: 0.4,
+                                              )
+                                            : AppColors.statusOrange.withValues(
+                                                alpha: 0.4,
+                                              )),
+                                  ),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      Icons.circle,
+                                      color: isStreaming
+                                          ? AppColors.statusGreen
+                                          : (isConnected
+                                              ? AppColors.statusGreen
+                                              : AppColors.statusOrange),
+                                      size: 8,
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      '${activeCam['name']} • $currentDeviceNode • $fpsText',
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+
+                              // Standalone Tray & Size Selector Bar (Always accessible outside video)
+                              Expanded(
+                                child: TraySelectorBar(
+                                  slotCodes: activeSlotCodes,
+                                  selectedCode: roi.selectedTrayCode,
+                                  onSelectTray: (code) =>
+                                      roiNotifier.selectTray(code),
+                                  onResetTray: (code) => roiNotifier.resetTray(
+                                    code,
+                                    activeSlotCodes,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+
+                        // 2. Camera Viewport
+                        Expanded(
+                          child: Container(
                       decoration: BoxDecoration(
                         color: Colors.black,
                         borderRadius: BorderRadius.circular(20),
@@ -916,102 +1001,61 @@ class _CameraMonitorScreenState extends ConsumerState<CameraMonitorScreen> {
                                   ),
                                 ),
                               ),
-
-                              // 3. Live Stream Status Pill (Shows Detected Device & Node)
-                              Positioned(
-                                top: 14,
-                                left: 14,
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 12,
-                                    vertical: 6,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: Colors.black.withValues(alpha: 0.85),
-                                    borderRadius: BorderRadius.circular(20),
-                                    border: Border.all(
-                                      color: isStreaming
-                                          ? AppColors.statusGreen.withValues(
-                                              alpha: 0.6,
-                                            )
-                                          : (isConnected
-                                                ? AppColors.statusGreen
-                                                      .withValues(alpha: 0.4)
-                                                : AppColors.statusOrange
-                                                      .withValues(alpha: 0.4)),
-                                    ),
-                                  ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(
-                                        Icons.circle,
-                                        color: isStreaming
-                                            ? AppColors.statusGreen
-                                            : (isConnected
-                                                  ? AppColors.statusGreen
-                                                  : AppColors.statusOrange),
-                                        size: 8,
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Text(
-                                        '${activeCam['name']} • $currentDeviceNode • ${isConnected ? (matchedDevice?.displayName ?? "Rapow USB Camera") : "No Camera Detected"} • $fpsText',
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 11,
-                                          fontWeight: FontWeight.w800,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-
-                              // 4. Touch Gesture Help Pill when editing
-                              if (_isRoiEditing)
-                                Positioned(
-                                  bottom: 14,
-                                  left: 14,
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 12,
-                                      vertical: 6,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: AppColors.brandAccent.withValues(
-                                        alpha: 0.95,
-                                      ),
-                                      borderRadius: BorderRadius.circular(10),
-                                    ),
-                                    child: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        const Icon(
-                                          Icons.touch_app_rounded,
-                                          color: Colors.black,
-                                          size: 16,
-                                        ),
-                                        const SizedBox(width: 6),
-                                        Text(
-                                          roi.selectedTrayCode != null
-                                              ? 'Tray ${roi.selectedTrayCode} Selected: Drag 48px corner/edge handles to resize, or pan body to reposition'
-                                              : 'Detached Trays: Tap any tray chip or box to resize individually • 48px touch handles',
-                                          style: const TextStyle(
-                                            color: Colors.black,
-                                            fontSize: 11,
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ),
                             ],
                           ),
                         ),
                       ),
                     ),
                   ),
+
+                    // 3. Bottom Calibration & Gesture Status Bar (OUTSIDE the video):
+                    if (_isRoiEditing) ...[
+                      const SizedBox(height: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 7,
+                        ),
+                        decoration: BoxDecoration(
+                          color: context.surfaceColor,
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                            color: AppColors.brandAccent.withValues(
+                              alpha: 0.4,
+                            ),
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(
+                              Icons.touch_app_rounded,
+                              color: AppColors.brandAccent,
+                              size: 16,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                roi.selectedTrayCode != null
+                                    ? (roi.selectedTrayCode!.endsWith('1')
+                                        ? 'Slot ${roi.selectedTrayCode} (100ML) Selected: Drag any of the 8 blue handles to align independently'
+                                        : (roi.selectedTrayCode!.endsWith('2')
+                                            ? 'Slot ${roi.selectedTrayCode} (50ML) Selected: Drag any of the 8 blue handles to align independently'
+                                            : 'Tray ${roi.selectedTrayCode} (Both Sizes) Selected: Drag handles or pan body to reposition whole tray'))
+                                    : 'Detached Calibration: Tap any 100ML or 50ML slot directly in video to align • 8 touch handles per slot',
+                                style: TextStyle(
+                                  color: context.textPrimaryColor,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
                   const SizedBox(width: 20),
 
                   // Right Side: Camera Hardware Telemetry & ROI Calibration Panel
