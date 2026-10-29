@@ -41,8 +41,28 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       // 2. Trigger real Edge Vision AI scan (YOLO + OCR pipeline)
       final scanResult = await pythonApi.triggerManualScan('San Pablo');
       final bottlesCount = (scanResult['bottlesDetected'] as num?)?.toInt() ?? 0;
+      final rawDets = scanResult['detections'];
+      final List<Map<String, dynamic>> detectionsList = (rawDets is List)
+          ? rawDets.map((d) => Map<String, dynamic>.from(d as Map)).toList()
+          : <Map<String, dynamic>>[];
 
-      // 3. Log camera scan & shelf verification activity
+      // 3. Update SQLite inventory_records with detected counts for Camera 1
+      try {
+        final sqlite = ref.read(sqliteServiceProvider);
+        const topSlotCodes = [
+          'AA1', 'AA2', 'AB1', 'AB2', 'AC1', 'AC2', 'AD1', 'AD2', 'AE1', 'AE2'
+        ];
+        await sqlite.updateInventoryFromDetections(
+          cameraId: 1,
+          detections: detectionsList,
+          branch: 'San Pablo',
+          targetSlotCodes: topSlotCodes,
+        );
+      } catch (invErr) {
+        debugPrint('[DashboardScreen] Error updating inventory from scan: $invErr');
+      }
+
+      // 4. Log camera scan & shelf verification activity
       try {
         final sqlite = ref.read(sqliteServiceProvider);
         await sqlite.logActivity(

@@ -207,6 +207,32 @@ class _CameraMonitorScreenState extends ConsumerState<CameraMonitorScreen> {
       await hwService.captureFrame(deviceNode: node);
       final scanResult = await pythonApi.triggerManualScan('San Pablo');
       final bottles = (scanResult['bottlesDetected'] as num?)?.toInt() ?? 0;
+      final rawDets = scanResult['detections'];
+      final List<Map<String, dynamic>> detectionsList = (rawDets is List)
+          ? rawDets.map((d) => Map<String, dynamic>.from(d as Map)).toList()
+          : <Map<String, dynamic>>[];
+
+      // Update SQLite inventory_records with detected counts for this camera
+      try {
+        final slotCodes = List<String>.from(activeCam['slotCodes'] as List);
+        final fullTargetCodes = <String>[];
+        for (final base in slotCodes) {
+          fullTargetCodes.add('${base}1'); // 100ml
+          fullTargetCodes.add('${base}2'); // 50ml
+        }
+        await SqliteService.instance.updateInventoryFromDetections(
+          cameraId: _selectedCamera,
+          detections: detectionsList,
+          branch: 'San Pablo',
+          targetSlotCodes: fullTargetCodes,
+        );
+
+        // Invalidate Riverpod inventory and stats providers to refresh UI immediately
+        ref.invalidate(liveInventoryProvider);
+        ref.invalidate(dashboardStatsProvider);
+      } catch (invErr) {
+        debugPrint('[CameraMonitorScreen] Error updating inventory from scan: $invErr');
+      }
 
       await SqliteService.instance.logActivity(
         type: 'CAMERA_SCAN',
@@ -220,7 +246,7 @@ class _CameraMonitorScreenState extends ConsumerState<CameraMonitorScreen> {
           SnackBar(
             content: Text(
               scanResult['success'] == true
-                  ? 'High-speed capture & AI scan completed: $bottles bottle(s) detected on ${activeCam['name']}.'
+                  ? 'High-speed capture & AI scan completed: $bottles bottle(s) detected on ${activeCam['name']}. Counts updated.'
                   : 'Capture completed on ${activeCam['name']} (Edge AI offline: ${scanResult['message']}).',
             ),
             backgroundColor: scanResult['success'] == true

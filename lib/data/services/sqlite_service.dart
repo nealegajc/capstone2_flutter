@@ -839,6 +839,135 @@ class SqliteService {
     }
   }
 
+  /// Updates inventory records' detected bottle counts after an AI vision scan.
+  /// Maps detected bounding boxes to calibrated ROIs for the camera, or uses
+  /// recognized SKU codes. If slot ROIs are not calibrated, distributes detected
+  /// bottles across active slots for the camera.
+  Future<Map<String, int>> updateInventoryFromDetections({
+    required int cameraId,
+    required List<Map<String, dynamic>> detections,
+    String branch = 'San Pablo',
+    List<String>? targetSlotCodes,
+  }) async {
+    final db = await database;
+    final now = DateTime.now();
+
+    // 1. Fetch calibrated slot ROIs for this camera if stored in system_settings
+    Map<String, dynamic>? slotRois;
+    try {
+      final savedJson = await getSetting('camera_${cameraId}_tray_rois');
+      if (savedJson != null && savedJson.isNotEmpty) {
+        slotRois = jsonDecode(savedJson) as Map<String, dynamic>?;
+      }
+    } catch (_) {}
+
+    // Determine target slot codes from ROIs or passed parameter
+    final List<String> codes = targetSlotCodes ??
+        (slotRois != null ? slotRois.keys.toList() : <String>[]);
+
+    final Map<String, int> slotCounts = {for (var c in codes) c: 0};
+    int unassignedCount = 0;
+
+    for (final det in detections) {
+      final recognizedCode = (det['recognizedCode'] as String?)?.trim() ?? '';
+      if (recognizedCode.isNotEmpty && recognizedCode != 'UNREADABLE') {
+        final upper = recognizedCode.toUpperCase();
+        if (slotCounts.containsKey(upper)) {
+          slotCounts[upper] = (slotCounts[upper] ?? 0) + 1;
+          continue;
+        }
+      }
+
+      // Check bounding box overlap against calibrated slot ROIs
+      final bbox = det['boundingBox'];
+      if (bbox is List && bbox.length >= 4 && slotRois != null && slotRois.isNotEmpty) {
+        final bx = (bbox[0] as num).toDouble();
+        final by = (bbox[1] as num).toDouble();
+        final bw = (bbox[2] as num).toDouble();
+        final bh = (bbox[3] as num).toDouble();
+
+        String? bestSlot;
+        double maxOverlap = 0.0;
+
+        for (final entry in slotRois.entries) {
+          final r = entry.value as Map<String, dynamic>?;
+          if (r == null) continue;
+          final rl = (r['left'] as num?)?.toDouble() ?? 0.0;
+          final rr = (r['right'] as num?)?.toDouble() ?? 1.0;
+          final rt = (r['top'] as num?)?.toDouble() ?? 0.0;
+          final rb = (r['bottom'] as num?)?.toDouble() ?? 1.0;
+
+          final interL = bx > rl ? bx : rl;
+          final interR = (bx + bw) < rr ? (bx + bw) : rr;
+          final interT = by > rt ? by : rt;
+          final interB = (by + bh) < rb ? (by + bh) : rb;
+
+          if (interR > interL && interB > interT) {
+            final overlap = (interR - interL) * (interB - interT);
+            if (overlap > maxOverlap) {
+              maxOverlap = overlap;
+              bestSlot = entry.key;
+            }
+          }
+        }
+
+        if (bestSlot != null) {
+          slotCounts[bestSlot] = (slotCounts[bestSlot] ?? 0) + 1;
+        } else {
+          unassignedCount++;
+        }
+      } else {
+        unassignedCount++;
+      }
+    }
+
+    // If no slot ROIs matched or if ROIs weren't configured, distribute detections
+    if (codes.isNotEmpty && slotCounts.values.every((v) => v == 0) && detections.isNotEmpty) {
+      final perSlot = detections.length ~/ codes.length;
+      final remainder = detections.length % codes.length;
+      for (int i = 0; i < codes.length; i++) {
+        slotCounts[codes[i]] = perSlot + (i < remainder ? 1 : 0);
+      }
+    } else if (unassignedCount > 0 && codes.isNotEmpty) {
+      // If there were some boundary/unassigned detections, distribute remainder to lowest slots
+      for (int i = 0; i < unassignedCount; i++) {
+        final lowestEntry = slotCounts.entries.reduce((a, b) => a.value <= b.value ? a : b);
+        slotCounts[lowestEntry.key] = lowestEntry.value + 1;
+      }
+    }
+
+    // 2. Fetch all inventory records for this branch to update them
+    final allInv = await getInventoryRecords(branch);
+    final batch = db.batch();
+
+    for (final entry in slotCounts.entries) {
+      final code = entry.key;
+      final detectedCount = entry.value;
+
+      final matching = allInv.where((i) => i.perfumeCode == code).firstOrNull;
+      if (matching != null) {
+        final newStatus = detectedCount == 0
+            ? 'out_of_stock'
+            : (detectedCount <= 2 ? 'low' : 'normal');
+
+        batch.update(
+          'inventory_records',
+          {
+            'detected': detectedCount,
+            'status': newStatus,
+            'lastUpdated': now.millisecondsSinceEpoch,
+          },
+          where: 'perfumeCode = ? AND branch = ?',
+          whereArgs: [code, branch],
+        );
+      }
+    }
+
+    await batch.commit(noResult: true);
+    return slotCounts;
+  }
+
+
   // ---------------------------------------------------------------------------
   // INVENTORY EVENTS (MOVEMENT LOGS) CRUD
   // ---------------------------------------------------------------------------
