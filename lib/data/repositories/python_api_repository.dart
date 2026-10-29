@@ -12,6 +12,24 @@ class PythonApiRepository {
 
   PythonApiRepository({this.baseUrl = AppConstants.defaultApiBaseUrl});
 
+  Future<Map<String, dynamic>> checkHealth() async {
+    try {
+      final response = await http
+          .get(Uri.parse('$baseUrl/health'))
+          .timeout(const Duration(seconds: 2));
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body) as Map<String, dynamic>;
+        return {'isHealthy': true, ...data};
+      }
+    } catch (_) {}
+    return {
+      'isHealthy': false,
+      'status': 'offline',
+      'yolo_ready': false,
+      'ocr_ready': false,
+    };
+  }
+
   Future<Map<String, dynamic>> getHardwareStatus() async {
     try {
       final response = await http
@@ -22,11 +40,12 @@ class PythonApiRepository {
       }
     } catch (_) {}
     return {
-      'connected': true,
-      'hardwareStatus': 'Active (Local Kiosk)',
-      'cameraActive': true,
-      'yoloReady': true,
-      'ocrReady': true,
+      'connected': false,
+      'hardwareStatus': 'Offline (Local Edge Server Unreachable)',
+      'cameraActive': false,
+      'yoloReady': false,
+      'ocrReady': false,
+      'timestamp': DateTime.now().toIso8601String(),
     };
   }
 
@@ -38,23 +57,32 @@ class PythonApiRepository {
             headers: {'Content-Type': 'application/json'},
             body: jsonEncode({'branch': branch}),
           )
-          .timeout(const Duration(seconds: 10));
+          .timeout(const Duration(seconds: 15));
       if (response.statusCode == 200) {
         return jsonDecode(response.body) as Map<String, dynamic>;
+      } else {
+        return {
+          'success': false,
+          'message': 'Vision scan failed: HTTP ${response.statusCode} - ${response.body}',
+          'bottlesDetected': 0,
+          'detections': [],
+        };
       }
-    } catch (_) {}
-    return {
-      'success': true,
-      'message': 'AI Shelf Vision scan completed for $branch',
-      'bottlesDetected': 4,
-    };
+    } catch (e) {
+      return {
+        'success': false,
+        'message': 'Vision scan failed: Unable to connect to edge backend ($e)',
+        'bottlesDetected': 0,
+        'detections': [],
+      };
+    }
   }
 
   Future<List<DetectionResultModel>> getLastScanResults() async {
     try {
       final response = await http
           .get(Uri.parse('$baseUrl/scan/last-result'))
-          .timeout(const Duration(seconds: 4));
+          .timeout(const Duration(seconds: 5));
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         if (data is List) {
@@ -74,7 +102,7 @@ class PythonApiRepository {
     try {
       final response = await http
           .get(Uri.parse('$baseUrl/calibration/frame'))
-          .timeout(const Duration(seconds: 4));
+          .timeout(const Duration(seconds: 5));
       if (response.statusCode == 200) {
         final body = response.body;
         if (body.startsWith('data:image') || body.length > 100) {
@@ -129,7 +157,7 @@ class PythonApiRepository {
           .timeout(const Duration(seconds: 8));
       return response.statusCode == 200;
     } catch (_) {
-      return true;
+      return false;
     }
   }
 }

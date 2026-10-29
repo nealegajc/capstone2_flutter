@@ -25,30 +25,41 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
 
   Future<void> _triggerQuickScan() async {
     setState(() => _isScanning = true);
+    String? capturedPath;
 
-    final hardwareService = ref.read(cameraHardwareServiceProvider);
-    final activeNode = hardwareService.getAssignedDeviceNode(1);
+    try {
+      final hardwareService = ref.read(cameraHardwareServiceProvider);
+      final pythonApi = ref.read(pythonApiRepositoryProvider);
+      final activeNode = hardwareService.getAssignedDeviceNode(1);
 
-    // Capture real high-res frame from primary camera if available
-    final capturedPath = await hardwareService.captureFrame(
-      deviceNode: activeNode,
-      mode: CameraQualityMode.fhd1080p,
-    );
+      // 1. Capture physical frame snapshot if camera node accessible
+      capturedPath = await hardwareService.captureFrame(
+        deviceNode: activeNode,
+        mode: CameraQualityMode.fhd1080p,
+      );
 
-    // Simulate AI inference pass across 6 camera views
-    await Future.delayed(const Duration(milliseconds: 1400));
+      // 2. Trigger real Edge Vision AI scan (YOLO + OCR pipeline)
+      final scanResult = await pythonApi.triggerManualScan('San Pablo');
+      final bottlesCount = (scanResult['bottlesDetected'] as num?)?.toInt() ?? 0;
 
-    if (mounted) {
-      setState(() => _isScanning = false);
-
-      // Log camera scan & shelf verification activity
+      // 3. Log camera scan & shelf verification activity
       try {
         final sqlite = ref.read(sqliteServiceProvider);
         await sqlite.logActivity(
           type: 'CAMERA_SCAN',
-          description: '6-Camera high-resolution vision scan executed across 3 shelf layers.',
+          description:
+              'AI shelf scan executed across shelf layers. Detected: $bottlesCount bottle(s).',
         );
       } catch (_) {}
+    } catch (e) {
+      debugPrint('[DashboardScreen] Quick scan error: $e');
+    } finally {
+      if (mounted) {
+        setState(() => _isScanning = false);
+      }
+    }
+
+    if (mounted) {
 
       // Refresh inventory provider
       ref.invalidate(liveInventoryProvider);

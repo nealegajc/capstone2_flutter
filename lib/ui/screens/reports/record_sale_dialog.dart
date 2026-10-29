@@ -84,10 +84,7 @@ class _RecordSaleDialogState extends ConsumerState<RecordSaleDialog> {
         syncStatus: 'synced',
       );
 
-      // 1. Insert into SQLite & Sync Queue
-      await sqlite.insertSaleRecord(saleRecord);
-
-      // 2. Log Inventory Event (REMOVED / SOLD)
+      // Execute sale recording, inventory deduction, and sync queue insertion in a single atomic ACID transaction
       final eventId = 'evt_sale_${DateTime.now().millisecondsSinceEpoch}';
       final event = InventoryEventModel(
         id: eventId,
@@ -99,28 +96,12 @@ class _RecordSaleDialogState extends ConsumerState<RecordSaleDialog> {
         quantity: _quantity,
         timestamp: DateTime.now(),
       );
-      await sqlite.logInventoryEvent(event);
 
-      // 3. Update inventory record detection count if exists
-      try {
-        final records = await sqlite.getInventoryRecords(effectiveBranch);
-        final found = records
-            .where((r) => r.perfumeCode == _selectedProduct!.perfumeCode)
-            .firstOrNull;
-        if (found != null) {
-          final newDetected = (found.detected - _quantity).clamp(0, 100);
-          final newRecorded = (found.recorded - _quantity).clamp(0, 100);
-          final updatedInv = found.copyWith(
-            detected: newDetected,
-            recorded: newRecorded,
-            lastUpdated: DateTime.now(),
-            status: newDetected == 0
-                ? 'out_of_stock'
-                : (newDetected <= 2 ? 'low' : 'normal'),
-          );
-          await sqlite.upsertInventoryRecord(updatedInv);
-        }
-      } catch (_) {}
+      await sqlite.recordSaleWithInventoryDeduction(
+        saleRecord: saleRecord,
+        event: event,
+        branch: effectiveBranch,
+      );
 
       // 4. Invalidate Providers
       ref.invalidate(salesRecordsProvider);

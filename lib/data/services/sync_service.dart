@@ -458,12 +458,19 @@ class SyncService extends ChangeNotifier {
           syncedCount++;
         } catch (e) {
           _isOnline = false;
-          _lastError = e.toString();
+          _lastError = _formatSupabaseError(e);
           final retryCount = (item['retryCount'] as num?)?.toInt() ?? 0;
           if (retryCount >= 5) {
             await _sqlite.markSyncItemStatus(id, 'failed');
           } else {
             await _sqlite.incrementSyncRetry(id, e.toString());
+          }
+
+          // If failure was caused by network connectivity loss, abort immediately
+          // to preserve FIFO order and prevent exhausting retry budgets for all queued items
+          if (_isNetworkException(e)) {
+            debugPrint('[SyncService] Network dropped during queue sync. Halting queue loop.');
+            break;
           }
         }
       }
@@ -674,15 +681,21 @@ class SyncService extends ChangeNotifier {
     }
   }
 
+  bool _isNetworkException(dynamic e) {
+    final str = e.toString().toLowerCase();
+    return str.contains('socketexception') ||
+        str.contains('timeoutexception') ||
+        str.contains('clientexception') ||
+        str.contains('failed host lookup') ||
+        str.contains('connection refused') ||
+        str.contains('network is unreachable') ||
+        str.contains('handshakeexception');
+  }
+
   /// Formats raw Supabase / HTTP errors into clear, actionable messages
   String _formatSupabaseError(dynamic e) {
     final str = e.toString();
-    if (str.contains('SocketException') ||
-        str.contains('TimeoutException') ||
-        str.contains('ClientException') ||
-        str.contains('Failed host lookup') ||
-        str.contains('Connection refused') ||
-        str.contains('Network is unreachable')) {
+    if (_isNetworkException(e)) {
       return 'Supabase Cloud is unreachable ($str). If you are using Supabase Free Tier, the project may be paused due to inactivity. Please visit https://supabase.com/dashboard to unpause it.';
     }
     return str;

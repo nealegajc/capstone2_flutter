@@ -20,6 +20,7 @@ from config import (
     DEFAULT_ROI_BOTTOM,
     YOLO_CONF_THRESHOLD,
     YOLO_IOU_THRESHOLD,
+    MAX_IMAGE_RETRIES,
 )
 from quality_evaluator import QualityEvaluator
 from ocr_engine import OCREngine
@@ -80,16 +81,28 @@ class ShelfVisionPipeline:
 
     @staticmethod
     def get_available_cameras() -> List[Dict[str, Any]]:
-        """Scans /dev/video* to list connected hardware video devices."""
+        """Scans /dev/video* to list connected hardware video devices with guaranteed release."""
         cams = []
         for i in range(10):
             node = f"/dev/video{i}"
             if os.path.exists(node):
-                cap = cv2.VideoCapture(node)
-                is_opened = cap.isOpened()
-                w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)) if is_opened else 0
-                h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)) if is_opened else 0
-                cap.release()
+                cap = None
+                is_opened = False
+                w, h = 0, 0
+                try:
+                    cap = cv2.VideoCapture(node)
+                    is_opened = cap.isOpened()
+                    if is_opened:
+                        w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+                        h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                except Exception as e:
+                    logger.warning(f"Error probing camera {node}: {e}")
+                finally:
+                    if cap is not None:
+                        try:
+                            cap.release()
+                        except Exception:
+                            pass
                 cams.append({
                     "device": node,
                     "isAccessible": is_opened,
@@ -100,6 +113,7 @@ class ShelfVisionPipeline:
     def _try_open_device(self, node: str) -> Optional[np.ndarray]:
         if not os.path.exists(node):
             return None
+        cap = None
         try:
             cap = cv2.VideoCapture(node)
             if cap.isOpened():
@@ -108,28 +122,39 @@ class ShelfVisionPipeline:
                 for _ in range(3):
                     cap.read()
                 ret, captured = cap.read()
-                cap.release()
                 if ret and captured is not None and captured.size > 0:
                     return captured
         except Exception as e:
             logger.warning(f"Error querying camera at {node}: {e}")
+        finally:
+            if cap is not None:
+                try:
+                    cap.release()
+                except Exception:
+                    pass
         return None
 
     def capture_frame(self, camera_device: str = DEFAULT_CAMERA_NODE) -> Optional[np.ndarray]:
-        """Captures a single frame from the specified V4L2 camera or auto-probes devices."""
-        # 1. Try preferred camera device
-        captured = self._try_open_device(camera_device)
-        if captured is not None:
-            return captured
+        """Captures a frame from preferred camera or auto-probed device with multi-frame retries."""
+        for attempt in range(MAX_IMAGE_RETRIES):
+            # 1. Try preferred camera device
+            captured = self._try_open_device(camera_device)
+            if captured is not None:
+                # If frame is not dark, return it
+                m = QualityEvaluator.calculate_metrics(captured)
+                if not QualityEvaluator.is_zero_light(m) or attempt == MAX_IMAGE_RETRIES - 1:
+                    return captured
+                time.sleep(0.05)
+                continue
 
-        # 2. Auto-probe /dev/video* devices if preferred device was unavailable
-        for i in range(10):
-            node = f"/dev/video{i}"
-            if node != camera_device and os.path.exists(node):
-                probed = self._try_open_device(node)
-                if probed is not None:
-                    logger.info(f"Auto-selected camera device {node} for shelf capture.")
-                    return probed
+            # 2. Auto-probe /dev/video* devices if preferred device was unavailable
+            for i in range(10):
+                node = f"/dev/video{i}"
+                if node != camera_device and os.path.exists(node):
+                    probed = self._try_open_device(node)
+                    if probed is not None:
+                        logger.info(f"Auto-selected camera device {node} for shelf capture.")
+                        return probed
 
         # Fallback: create synthetic shelf frame with sample bottles if no physical camera active
         logger.warning(f"Unable to read physical camera at {camera_device}. Generating reference frame.")
@@ -144,49 +169,99 @@ class ShelfVisionPipeline:
             cv2.putText(frame, f"A{idx+1}", (cx - 20, cy + 10), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 0), 2)
         return frame
 
-    def map_to_roi(self, norm_center_x: float, norm_center_y: float) -> str:
-        """Determines which tray/shelf ROI contains the detected center coordinates."""
-        if norm_center_y < self.roi_top or norm_center_y > self.roi_bottom:
-            return "outside_shelf_roi"
+    def map_bbox_to_roi(self, norm_x: float, norm_y: float, norm_w: float, norm_h: float) -> Tuple[str, bool]:
+        """
+        Determines which tray/shelf ROI contains the detected bounding box using overlap area.
+        Handles boundary collisions and tilted/misplaced bottles. Returns (roi_id, is_boundary_collision).
+        """
+        cy = norm_y + (norm_h / 2.0)
+        # Vertical tolerance around shelf zone
+        if cy < (self.roi_top - 0.05) or cy > (self.roi_bottom + 0.05):
+            return "outside_shelf_roi", False
+
+        box_left = norm_x
+        box_right = norm_x + norm_w
+        if box_right <= box_left:
+            return "tray_unassigned", False
+
+        best_tray = "tray_unassigned"
+        max_overlap = 0.0
 
         for i in range(len(self.roi_boundaries) - 1):
             left = self.roi_boundaries[i]
             right = self.roi_boundaries[i + 1]
-            if left <= norm_center_x <= right:
+
+            # Intersection between box [box_left, box_right] and slot [left, right]
+            inter_left = max(box_left, left)
+            inter_right = min(box_right, right)
+            overlap = max(0.0, inter_right - inter_left)
+
+            if overlap > max_overlap:
+                max_overlap = overlap
                 tray_letter = chr(ord('A') + i)
-                return f"tray_{tray_letter}"
-        return "tray_unassigned"
+                best_tray = f"tray_{tray_letter}"
+
+        box_width = box_right - box_left
+        overlap_ratio = (max_overlap / box_width) if box_width > 0 else 1.0
+        # If the majority slot contains less than 65% of the bottle width, it crosses boundaries
+        is_collision = (overlap_ratio < 0.65) and (best_tray != "tray_unassigned")
+
+        return best_tray, is_collision
+
+    def map_to_roi(self, norm_center_x: float, norm_center_y: float) -> str:
+        """Determines which tray/shelf ROI contains center coordinates."""
+        roi_id, _ = self.map_bbox_to_roi(norm_center_x - 0.02, norm_center_y - 0.02, 0.04, 0.04)
+        return roi_id
 
     def run_inference(self, frame: np.ndarray, branch: str = "San Pablo") -> List[Dict[str, Any]]:
         """Executes full quality assessment, YOLO detection, and cap OCR."""
         run_id = f"run_{int(time.time())}"
         h, w = frame.shape[:2]
 
-        # 1. Quality evaluation
+        # 1. Quality evaluation with multi-frame retry check
         metrics = QualityEvaluator.calculate_metrics(frame)
         is_ok = QualityEvaluator.is_acceptable(metrics)
         processed_frame = frame
-        applied_preprocessing = []
+        applied_preprocessing: List[str] = []
+        is_acceptable = is_ok
+        status = "ACCEPTED"
 
         if not is_ok:
-            processed_frame, applied_preprocessing = QualityEvaluator.enhance_image(frame)
-            metrics = QualityEvaluator.calculate_metrics(processed_frame)
+            if QualityEvaluator.is_zero_light(metrics):
+                logger.warning("Zero-light condition detected on shelf capture.")
+                status = "STOPPED_MAX_RETRY"
+                is_acceptable = False
+            else:
+                processed_frame, applied_preprocessing = QualityEvaluator.enhance_image(frame)
+                metrics = QualityEvaluator.calculate_metrics(processed_frame)
+                if QualityEvaluator.is_acceptable(metrics):
+                    status = "ENHANCED"
+                    is_acceptable = True
+                else:
+                    status = "STOPPED_MAX_RETRY"
+                    is_acceptable = False
 
         self.last_quality_log = {
             "id": f"qa_{int(time.time())}",
             "brightness": metrics["brightness"],
             "contrast": metrics["contrast"],
             "sharpness": metrics["sharpness"],
-            "isAcceptable": True,
+            "isAcceptable": is_acceptable,
             "preprocessingApplied": applied_preprocessing or ["Standard_Acquisition"],
-            "retryCount": 0,
-            "status": "ACCEPTED" if is_ok else "ENHANCED",
+            "retryCount": 0 if is_ok else 1,
+            "status": status,
             "branch": branch,
             "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S")
         }
         self.quality_logs_history.append(self.last_quality_log)
         if len(self.quality_logs_history) > 50:
             self.quality_logs_history.pop(0)
+
+        # In severe zero-light conditions where lens is covered/unilluminated, abort detection gracefully
+        if not is_acceptable and QualityEvaluator.is_zero_light(metrics):
+            logger.warning("Aborting YOLO inference due to unrecoverable zero-light frame.")
+            self.last_detection_results = []
+            return []
 
         detections: List[Dict[str, Any]] = []
 
@@ -217,13 +292,20 @@ class ShelfVisionPipeline:
                         norm_y = round(float(y1 / h), 4)
                         norm_w = round(float((x2 - x1) / w), 4)
                         norm_h = round(float((y2 - y1) / h), 4)
-                        cx = norm_x + (norm_w / 2.0)
-                        cy = norm_y + (norm_h / 2.0)
 
                         # Crop cap region for OCR
                         crop = processed_frame[y1:y2, x1:x2]
                         recognized_code, ocr_conf = self.ocr_engine.extract_text(crop)
-                        roi_id = self.map_to_roi(cx, cy)
+                        roi_id, is_collision = self.map_bbox_to_roi(norm_x, norm_y, norm_w, norm_h)
+
+                        # Match validation
+                        is_valid_sku = self.ocr_engine.is_valid_sku_code(recognized_code)
+                        if is_valid_sku:
+                            match_res = "matched"
+                        elif recognized_code and recognized_code != "UNREADABLE":
+                            match_res = "misplaced"
+                        else:
+                            match_res = "unrecognized"
 
                         detections.append({
                             "id": f"det_{box_idx}",
@@ -232,17 +314,19 @@ class ShelfVisionPipeline:
                             "yoloConfidence": round(conf, 2),
                             "boundingBox": [norm_x, norm_y, norm_w, norm_h],
                             "roiId": roi_id,
+                            "boundaryCollision": is_collision,
                             "recognizedCode": recognized_code,
                             "ocrConfidence": ocr_conf,
-                            "matchResult": "matched" if recognized_code and recognized_code != "UNREADABLE" else "unrecognized",
+                            "matchResult": match_res,
                             "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S")
                         })
                         box_idx += 1
+                        del crop
             except Exception as e:
                 logger.error(f"Inference error: {e}")
 
-        # If no YOLO detections found, generate fallback detections from simulated frame
-        if not detections:
+        # If no YOLO detections found on reference frame, generate fallback detections
+        if not detections and is_acceptable:
             logger.info("Generating representative detection records from current shelf frame.")
             for i in range(1, 5):
                 detections.append({
@@ -252,6 +336,7 @@ class ShelfVisionPipeline:
                     "yoloConfidence": 0.94,
                     "boundingBox": [round(0.15 * i, 3), 0.35, 0.08, 0.12],
                     "roiId": f"tray_{chr(ord('A') + i - 1)}",
+                    "boundaryCollision": False,
                     "recognizedCode": f"P00{i}",
                     "ocrConfidence": 0.95,
                     "matchResult": "matched",
@@ -288,8 +373,11 @@ class ShelfVisionPipeline:
                 bh = int(bbox[3] * h)
                 code = det.get("recognizedCode", "")
                 conf = det.get("yoloConfidence", 0.0)
-                cv2.rectangle(vis, (bx, by), (bx + bw, by + bh), (255, 100, 0), 2)
-                label = f"{code} ({int(conf * 100)}%)" if code else f"Cap {int(conf * 100)}%"
-                cv2.putText(vis, label, (bx, max(20, by - 8)), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 100, 0), 2)
+                is_collision = det.get("boundaryCollision", False)
+                box_color = (0, 165, 255) if is_collision else (255, 100, 0)
+                cv2.rectangle(vis, (bx, by), (bx + bw, by + bh), box_color, 2)
+                suffix = " [EDGE]" if is_collision else ""
+                label = f"{code}{suffix} ({int(conf * 100)}%)" if code else f"Cap{suffix} {int(conf * 100)}%"
+                cv2.putText(vis, label, (bx, max(20, by - 8)), cv2.FONT_HERSHEY_SIMPLEX, 0.6, box_color, 2)
 
         return vis

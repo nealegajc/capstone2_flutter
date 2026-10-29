@@ -17,6 +17,23 @@ BASE_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 LOG_DIR="/tmp/smart-shelf-logs"
 mkdir -p "$LOG_DIR"
 
+WATCHDOG_PID=""
+
+# Log Rotation Helper: Caps log files at 10MB to avoid filling tmpfs / storage
+rotate_logs() {
+    MAX_LOG_SIZE=10485760 # 10MB
+    for logfile in "$LOG_DIR"/*.log; do
+        if [ -f "$logfile" ]; then
+            FILE_SIZE=$(stat -c%s "$logfile" 2>/dev/null || stat -f%z "$logfile" 2>/dev/null || echo 0)
+            if [ "$FILE_SIZE" -gt "$MAX_LOG_SIZE" ]; then
+                echo "Rotating $logfile (size: $FILE_SIZE bytes)..." >> "$LOG_DIR/watchdog.log"
+                mv -f "$logfile" "${logfile}.old" 2>/dev/null || true
+                touch "$logfile"
+            fi
+        fi
+    done
+}
+
 # Singleton Lock: Prevent multiple concurrent instances from conflicting on display & cameras
 LOCK_FILE="/tmp/smart-shelf-kiosk.lock"
 if [ -f "$LOCK_FILE" ]; then
@@ -32,7 +49,11 @@ echo "$$" > "$LOCK_FILE"
 
 cleanup() {
     echo "Received termination signal, shutting down kiosk processes..."
+    if [ -n "${WATCHDOG_PID:-}" ]; then
+        kill "$WATCHDOG_PID" 2>/dev/null || true
+    fi
     killall -9 smart_shelf_linux 2>/dev/null || true
+    pkill -f "uvicorn main:app" 2>/dev/null || true
     pkill -P $$ 2>/dev/null || true
     rm -f "$LOCK_FILE"
     exit 0
@@ -44,6 +65,9 @@ echo " Starting Otto Scents Smart Shelf Kiosk                   "
 echo " Base Directory: $BASE_DIR                                "
 echo " Logs Directory: $LOG_DIR                                "
 echo "=========================================================="
+
+# Unlock GNOME Keyring for unattended Remote Desktop / Screen Sharing
+echo -n "ottoscents" | gnome-keyring-daemon --unlock >/dev/null 2>&1 || true
 
 # 1. Ensure Display and Prevent Screen Sleep / Blanking
 export DISPLAY="${DISPLAY:-:0}"
@@ -142,6 +166,34 @@ if ! curl -s --max-time 2 http://127.0.0.1:8000/docs >/dev/null 2>&1; then
 else
     echo "Vision backend is already running."
 fi
+
+# Launch background watchdog for Python Vision Backend & Log Rotation
+echo "Starting background health watchdog for Vision AI backend & logs..."
+(
+    CONSECUTIVE_FAILURES=0
+    while true; do
+        sleep 15
+        rotate_logs
+        # Ping health endpoint
+        if ! curl -s --max-time 3 http://127.0.0.1:8000/health >/dev/null 2>&1; then
+            CONSECUTIVE_FAILURES=$((CONSECUTIVE_FAILURES + 1))
+            echo "[$(date '+%Y-%m-%d %H:%M:%S')] Vision health check failed ($CONSECUTIVE_FAILURES/3)" >> "$LOG_DIR/watchdog.log"
+            if [ "$CONSECUTIVE_FAILURES" -ge 3 ]; then
+                echo "[$(date '+%Y-%m-%d %H:%M:%S')] Vision backend unresponsive. Restarting..." >> "$LOG_DIR/watchdog.log"
+                fuser -k 8000/tcp 2>/dev/null || true
+                pkill -f "uvicorn main:app" 2>/dev/null || true
+                sleep 2
+                if [ -f "$BASE_DIR/vision_backend/run_server.sh" ]; then
+                    nohup bash "$BASE_DIR/vision_backend/run_server.sh" >> "$LOG_DIR/vision-backend.log" 2>&1 &
+                fi
+                CONSECUTIVE_FAILURES=0
+            fi
+        else
+            CONSECUTIVE_FAILURES=0
+        fi
+    done
+) &
+WATCHDOG_PID=$!
 
 # 4. Locate Flutter Linux Executable
 RELEASE_BUNDLE="$BASE_DIR/build/linux/x64/release/bundle"

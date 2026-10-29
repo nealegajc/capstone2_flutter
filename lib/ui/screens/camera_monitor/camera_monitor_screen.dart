@@ -202,13 +202,16 @@ class _CameraMonitorScreenState extends ConsumerState<CameraMonitorScreen> {
 
     try {
       final hwService = ref.read(cameraHardwareServiceProvider);
+      final pythonApi = ref.read(pythonApiRepositoryProvider);
       final node = _getDeviceNodeForCamera(_selectedCamera);
-      final captured = await hwService.captureFrame(deviceNode: node);
+      await hwService.captureFrame(deviceNode: node);
+      final scanResult = await pythonApi.triggerManualScan('San Pablo');
+      final bottles = (scanResult['bottlesDetected'] as num?)?.toInt() ?? 0;
 
       await SqliteService.instance.logActivity(
         type: 'CAMERA_SCAN',
         description:
-            'Tray vision scan executed on ${activeCam['name']} ($node).',
+            'Tray vision scan executed on ${activeCam['name']} ($node). Detected: $bottles bottle(s).',
         branch: 'San Pablo',
       );
 
@@ -216,11 +219,13 @@ class _CameraMonitorScreenState extends ConsumerState<CameraMonitorScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              captured != null
-                  ? 'High-speed capture & tray scan verified on ${activeCam['name']}.'
-                  : 'Scanned ${activeCam['name']} vision feed successfully.',
+              scanResult['success'] == true
+                  ? 'High-speed capture & AI scan completed: $bottles bottle(s) detected on ${activeCam['name']}.'
+                  : 'Capture completed on ${activeCam['name']} (Edge AI offline: ${scanResult['message']}).',
             ),
-            backgroundColor: AppColors.statusGreen,
+            backgroundColor: scanResult['success'] == true
+                ? AppColors.statusGreen
+                : AppColors.statusOrange,
           ),
         );
       }

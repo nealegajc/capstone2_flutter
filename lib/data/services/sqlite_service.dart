@@ -1450,13 +1450,29 @@ class SqliteService {
   // ---------------------------------------------------------------------------
   // SYNC QUEUE CRUD
   // ---------------------------------------------------------------------------
-  Future<List<Map<String, dynamic>>> getPendingSyncItems() async {
+  Future<List<Map<String, dynamic>>> getPendingSyncItems({
+    bool applyBackoff = true,
+  }) async {
     final db = await database;
-    return await db.query(
+    final allPending = await db.query(
       'sync_queue',
       where: "status = 'pending'",
       orderBy: 'createdAt ASC',
     );
+    if (!applyBackoff) return allPending;
+
+    final now = DateTime.now().millisecondsSinceEpoch;
+    return allPending.where((item) {
+      final retryCount = (item['retryCount'] as num?)?.toInt() ?? 0;
+      final lastAttempt = (item['lastAttempt'] as num?)?.toInt();
+      if (retryCount == 0 || lastAttempt == null) {
+        return true;
+      }
+      // Exponential backoff: min 5s, max 300s (5 minutes)
+      final backoffSeconds = (1 << retryCount.clamp(0, 6)) * 5;
+      final backoffMs = (backoffSeconds > 300 ? 300 : backoffSeconds) * 1000;
+      return (now - lastAttempt) >= backoffMs;
+    }).toList();
   }
 
   Future<List<SyncQueueModel>> getPendingSyncQueue() async {
@@ -1941,6 +1957,118 @@ class SqliteService {
             'Sale recorded: ${record.quantitySold}x ${record.productName} (${record.bottleSize}) for ₱${record.totalAmount.toStringAsFixed(2)}.',
         user: record.soldBy,
         branch: record.branch,
+        enqueueSync: enqueueSync,
+      );
+    }
+  }
+
+  /// Atomically records a sale, logs the inventory reduction event, updates the inventory
+  /// count, and enqueues sync tasks within a single ACID transaction to prevent race conditions.
+  Future<void> recordSaleWithInventoryDeduction({
+    required SaleRecordModel saleRecord,
+    required InventoryEventModel event,
+    required String branch,
+    bool enqueueSync = true,
+  }) async {
+    final db = await database;
+    await db.transaction((txn) async {
+      // 1. Insert sale record
+      await txn.insert(
+        'sales_records',
+        saleRecord.toMap(),
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+
+      // 2. Insert inventory event
+      final eventMap = event.toMap();
+      if (eventMap['timestamp'] is String) {
+        eventMap['timestamp'] =
+            DateTime.tryParse(eventMap['timestamp'] as String)
+                ?.millisecondsSinceEpoch ??
+            DateTime.now().millisecondsSinceEpoch;
+      }
+      await txn.insert(
+        'inventory_events',
+        eventMap,
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+
+      // 3. Deduct inventory record detection and recorded count
+      final invRows = await txn.query(
+        'inventory_records',
+        where: 'perfumeCode = ? AND branch = ?',
+        whereArgs: [saleRecord.perfumeCode, branch],
+      );
+      if (invRows.isNotEmpty) {
+        final current = InventoryRecordModel.fromMap(invRows.first);
+        final newDetected =
+            (current.detected - saleRecord.quantitySold).clamp(0, 100);
+        final newRecorded =
+            (current.recorded - saleRecord.quantitySold).clamp(0, 100);
+        final updatedInv = current.copyWith(
+          detected: newDetected,
+          recorded: newRecorded,
+          lastUpdated: DateTime.now(),
+          status: newDetected == 0
+              ? 'out_of_stock'
+              : (newDetected <= 2 ? 'low' : 'normal'),
+        );
+        await txn.insert(
+          'inventory_records',
+          updatedInv.toMap(),
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+
+        if (enqueueSync) {
+          await txn.insert('sync_queue', {
+            'id': 'sync_inv_${updatedInv.id}',
+            'pendingEventId': updatedInv.id,
+            'targetCollection': 'inventory_records',
+            'operation': 'UPSERT',
+            'payload': jsonEncode(updatedInv.toMap()),
+            'retryCount': 0,
+            'status': 'pending',
+            'branch': updatedInv.branch,
+            'createdAt': DateTime.now().millisecondsSinceEpoch,
+          }, conflictAlgorithm: ConflictAlgorithm.replace);
+        }
+      }
+
+      // 4. Atomic sync queue insertions
+      if (enqueueSync) {
+        await txn.insert('sync_queue', {
+          'id': 'sync_sale_${saleRecord.id}',
+          'pendingEventId': saleRecord.id,
+          'targetCollection': 'sales_records',
+          'operation': 'UPSERT',
+          'payload': jsonEncode(saleRecord.toMap()),
+          'retryCount': 0,
+          'status': 'pending',
+          'branch': saleRecord.branch,
+          'createdAt': DateTime.now().millisecondsSinceEpoch,
+        }, conflictAlgorithm: ConflictAlgorithm.replace);
+
+        await txn.insert('sync_queue', {
+          'id': 'sync_event_${event.id}',
+          'pendingEventId': event.id,
+          'targetCollection': 'inventory_events',
+          'operation': 'UPSERT',
+          'payload': jsonEncode(event.toMap()),
+          'retryCount': 0,
+          'status': 'pending',
+          'branch': event.branch,
+          'createdAt': DateTime.now().millisecondsSinceEpoch,
+        }, conflictAlgorithm: ConflictAlgorithm.replace);
+      }
+    });
+
+    if (enqueueSync) {
+      await logActivity(
+        type: 'SALE_TRANSACTION',
+        description:
+            'Sale recorded: ${saleRecord.quantitySold}x ${saleRecord.productName} (${saleRecord.bottleSize}) for ₱${saleRecord.totalAmount.toStringAsFixed(2)}.',
+        user: saleRecord.soldBy,
+        branch: saleRecord.branch,
         enqueueSync: enqueueSync,
       );
     }

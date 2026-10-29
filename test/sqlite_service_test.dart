@@ -3,6 +3,8 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:smart_shelf_linux/data/services/sqlite_service.dart';
 import 'package:smart_shelf_linux/data/models/system_log_model.dart';
 import 'package:smart_shelf_linux/data/models/inventory_record_model.dart';
+import 'package:smart_shelf_linux/data/models/sale_record_model.dart';
+import 'package:smart_shelf_linux/data/models/inventory_event_model.dart';
 import 'package:smart_shelf_linux/data/models/alert_model.dart';
 import 'package:smart_shelf_linux/core/constants/app_constants.dart';
 
@@ -260,6 +262,82 @@ void main() {
         branch: 'San Pablo',
       );
       expect(invModel.category, equals('Inventory'));
+    });
+
+    test('recordSaleWithInventoryDeduction atomically updates sale, event, inventory, and sync_queue', () async {
+      final initialInv = await sqliteService.getInventoryRecords('San Pablo');
+      final targetItem = initialInv.firstWhere((i) => i.perfumeCode == 'AA1');
+      final originalDetected = targetItem.detected;
+
+      final saleId = 'test_atomic_sale_${DateTime.now().millisecondsSinceEpoch}';
+      final sale = SaleRecordModel(
+        id: saleId,
+        perfumeCode: 'AA1',
+        productName: 'Bvlgari Extreme',
+        bottleSize: '100ml',
+        quantitySold: 2,
+        unitPrice: 350.0,
+        totalAmount: 700.0,
+        branch: 'San Pablo',
+        soldBy: 'Tester',
+        soldAt: DateTime.now(),
+      );
+
+      final event = InventoryEventModel(
+        id: 'test_evt_${DateTime.now().millisecondsSinceEpoch}',
+        eventType: 'REMOVED',
+        productName: 'Bvlgari Extreme',
+        perfumeCode: 'AA1',
+        shelfArea: 'Layer A',
+        branch: 'San Pablo',
+        quantity: 2,
+        timestamp: DateTime.now(),
+      );
+
+      await sqliteService.recordSaleWithInventoryDeduction(
+        saleRecord: sale,
+        event: event,
+        branch: 'San Pablo',
+      );
+
+      // Verify sales record inserted
+      final sales = await sqliteService.getSalesRecords('San Pablo');
+      expect(sales.any((s) => s.id == saleId), isTrue);
+
+      // Verify inventory count deducted
+      final updatedInv = await sqliteService.getInventoryRecords('San Pablo');
+      final updatedItem = updatedInv.firstWhere((i) => i.perfumeCode == 'AA1');
+      expect(updatedItem.detected, equals(originalDetected - 2));
+
+      // Verify sync queue entries created
+      final pendingQueue = await sqliteService.getPendingSyncItems(applyBackoff: false);
+      expect(pendingQueue.any((q) => q['id'] == 'sync_sale_$saleId'), isTrue);
+    });
+
+    test('getPendingSyncItems filters out items currently in backoff delay', () async {
+      await sqliteService.enqueueSyncItem(
+        id: 'test_backoff_item',
+        pendingEventId: 'doc_1',
+        targetCollection: 'products',
+        operation: 'UPSERT',
+        payload: {'id': 'doc_1'},
+        branch: 'San Pablo',
+      );
+
+      // Initially no retries: should be included
+      var pending = await sqliteService.getPendingSyncItems(applyBackoff: true);
+      expect(pending.any((p) => p['id'] == 'test_backoff_item'), isTrue);
+
+      // Increment retry to 2 (backoff = 20s) and simulate last attempt just now
+      await sqliteService.incrementSyncRetry('test_backoff_item', 'Simulated Network Error');
+
+      // With applyBackoff = true, recently failed item should be skipped
+      pending = await sqliteService.getPendingSyncItems(applyBackoff: true);
+      expect(pending.any((p) => p['id'] == 'test_backoff_item'), isFalse);
+
+      // With applyBackoff = false, all pending items should be returned
+      pending = await sqliteService.getPendingSyncItems(applyBackoff: false);
+      expect(pending.any((p) => p['id'] == 'test_backoff_item'), isTrue);
     });
   });
 }

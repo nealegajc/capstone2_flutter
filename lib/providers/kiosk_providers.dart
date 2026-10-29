@@ -16,6 +16,17 @@ import '../data/services/sqlite_service.dart';
 import '../data/services/sync_service.dart';
 import '../data/services/camera_hardware_service.dart';
 import '../data/services/network_service.dart';
+import '../data/repositories/python_api_repository.dart';
+
+final pythonApiRepositoryProvider = Provider<PythonApiRepository>((ref) {
+  return PythonApiRepository();
+});
+
+/// Edge Vision AI Backend Health Status Provider
+final visionBackendHealthProvider = FutureProvider.autoDispose<Map<String, dynamic>>((ref) async {
+  final repo = ref.watch(pythonApiRepositoryProvider);
+  return await repo.checkHealth();
+});
 
 final sqliteServiceProvider = Provider<SqliteService>((ref) {
   return SqliteService.instance;

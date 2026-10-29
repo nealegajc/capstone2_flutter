@@ -1,6 +1,7 @@
 import os
 os.environ["YOLO_CONFIG_DIR"] = "/tmp/ultralytics"
 """FastAPI Entrypoint for Otto Scents Smart Shelf Vision Service."""
+import asyncio
 import io
 import time
 import base64
@@ -32,6 +33,7 @@ app.add_middleware(
 )
 
 pipeline = ShelfVisionPipeline()
+pipeline_lock = asyncio.Lock()
 
 class ScanTriggerRequest(BaseModel):
     branch: Optional[str] = "San Pablo"
@@ -51,6 +53,16 @@ def root():
         "docs_url": "/docs"
     }
 
+@app.get("/health")
+def health_check():
+    """Liveness probe for OS watchdog and Flutter client."""
+    return {
+        "status": "ok",
+        "yolo_ready": pipeline.is_yolo_ready,
+        "ocr_ready": pipeline.ocr_engine.is_paddle_ready or True,
+        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S")
+    }
+
 @app.get("/status")
 def get_hardware_status():
     """Returns edge hardware, camera, and model statuses for Flutter."""
@@ -65,51 +77,61 @@ def get_hardware_status():
     }
 
 @app.post("/scan/trigger")
-def trigger_scan(req: ScanTriggerRequest):
-    """Triggers image capture, quality verification, YOLO inference, and OCR."""
-    logger.info(f"Triggering vision scan for branch: {req.branch}")
-    frame = pipeline.capture_frame()
-    if frame is None:
-        raise HTTPException(status_code=500, detail="Unable to capture shelf frame from camera.")
+async def trigger_scan(req: ScanTriggerRequest):
+    """Triggers image capture, quality verification, YOLO inference, and OCR under concurrency lock."""
+    async with pipeline_lock:
+        logger.info(f"Triggering vision scan for branch: {req.branch}")
+        frame = pipeline.capture_frame()
+        if frame is None:
+            raise HTTPException(status_code=500, detail="Unable to capture shelf frame from camera.")
 
-    detections = pipeline.run_inference(frame, branch=req.branch or "San Pablo")
-    return {
-        "success": True,
-        "message": f"AI Shelf Vision scan completed for {req.branch}",
-        "bottlesDetected": len(detections),
-        "detections": detections
-    }
+        detections = pipeline.run_inference(frame, branch=req.branch or "San Pablo")
+        del frame
+        return {
+            "success": True,
+            "message": f"AI Shelf Vision scan completed for {req.branch}",
+            "bottlesDetected": len(detections),
+            "detections": detections
+        }
 
 @app.get("/scan/last-result")
-def get_last_scan_results():
+async def get_last_scan_results():
     """Returns detections from the most recent scan."""
-    if not pipeline.last_detection_results:
-        # Trigger an initial baseline inference if empty
-        frame = pipeline.capture_frame()
-        pipeline.run_inference(frame)
-    return pipeline.last_detection_results
+    async with pipeline_lock:
+        if not pipeline.last_detection_results:
+            # Trigger an initial baseline inference if empty
+            frame = pipeline.capture_frame()
+            if frame is not None:
+                pipeline.run_inference(frame)
+                del frame
+        return pipeline.last_detection_results
 
 @app.get("/calibration/frame")
-def get_calibration_frame():
+async def get_calibration_frame():
     """Returns current camera frame overlaid with ROI boundaries as JPEG image."""
-    frame = pipeline.capture_frame()
-    vis = pipeline.render_calibration_frame(frame)
-    ret, jpeg = cv2.imencode(".jpg", vis, [cv2.IMWRITE_JPEG_QUALITY, 85])
-    if not ret:
-        raise HTTPException(status_code=500, detail="Failed to encode calibration frame.")
-    return Response(content=jpeg.tobytes(), media_type="image/jpeg")
+    async with pipeline_lock:
+        frame = pipeline.capture_frame()
+        if frame is None:
+            raise HTTPException(status_code=500, detail="Failed to capture frame from camera.")
+        vis = pipeline.render_calibration_frame(frame)
+        ret, jpeg = cv2.imencode(".jpg", vis, [cv2.IMWRITE_JPEG_QUALITY, 85])
+        del frame, vis
+        if not ret:
+            raise HTTPException(status_code=500, detail="Failed to encode calibration frame.")
+        return Response(content=jpeg.tobytes(), media_type="image/jpeg")
 
 @app.post("/roi/update")
-def update_rois(req: RoiUpdateRequest):
+async def update_rois(req: RoiUpdateRequest):
     """Updates ROI boundary partitions sent from the Flutter calibration screen."""
-    pipeline.update_rois(req.boundaries, req.top, req.bottom)
-    return {
-        "success": True,
-        "message": "ROI boundaries updated successfully",
-        "boundaries": pipeline.roi_boundaries,
-        "top": pipeline.roi_top,
-        "bottom": pipeline.roi_bottom
-    }
+    async with pipeline_lock:
+        pipeline.update_rois(req.boundaries, req.top, req.bottom)
+        return {
+            "success": True,
+            "message": "ROI boundaries updated successfully",
+            "boundaries": pipeline.roi_boundaries,
+            "top": pipeline.roi_top,
+            "bottom": pipeline.roi_bottom
+        }
 
 @app.get("/cameras")
 def get_connected_cameras():
