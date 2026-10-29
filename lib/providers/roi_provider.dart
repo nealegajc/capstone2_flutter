@@ -51,10 +51,8 @@ class RoiState {
   double get height => (bottom - top).clamp(0.01, 1.0);
   Rect get normalizedRect => Rect.fromLTRB(left, top, right, bottom);
 
-  /// Resolves the detached bounding box for each tray slot.
-  /// If customized individual boxes exist, returns them.
-  /// Otherwise, computes cleanly spaced initial detached boxes.
-  Map<String, Rect> getResolvedTrayBoxes(List<String> slotCodes) {
+  /// Resolves individual detached boxes for every bottle size slot (e.g. AA1, AA2).
+  Map<String, Rect> getResolvedSlotBoxes(List<String> slotCodes) {
     final count = slotCodes.length;
     if (count == 0) return {};
 
@@ -62,25 +60,66 @@ class RoiState {
     const double gap = 0.012; // Gap separating each detached tray
     final double totalGaps = (count - 1) * gap;
     final double availableWidth = (right - left) - totalGaps;
-    final double defaultWidth = math.max(0.04, availableWidth / count);
+    final double defaultTrayWidth = math.max(0.04, availableWidth / count);
 
     for (int i = 0; i < count; i++) {
       final code = slotCodes[i];
-      if (trayBoxes.containsKey(code)) {
-        result[code] = trayBoxes[code]!;
-      } else {
-        final double tLeft = (left + (defaultWidth + gap) * i)
-            .clamp(0.0, 0.95)
-            .toDouble();
-        final double tRight = (tLeft + defaultWidth)
-            .clamp(0.05, 1.0)
-            .toDouble();
+      final k1 = '${code}1';
+      final k2 = '${code}2';
+
+      Rect? r1 = trayBoxes[k1];
+      Rect? r2 = trayBoxes[k2];
+
+      if (r1 == null || r2 == null) {
+        // Fallback to legacy tray box or default positions
+        final legacy = trayBoxes[code];
+        final double tLeft = legacy != null
+            ? legacy.left
+            : (left + (defaultTrayWidth + gap) * i).clamp(0.0, 0.95);
+        final double tRight = legacy != null
+            ? legacy.right
+            : (tLeft + defaultTrayWidth).clamp(0.05, 1.0);
+        final double tTop = legacy != null
+            ? legacy.top
+            : top.clamp(0.0, 0.95);
+        final double tBottom = legacy != null
+            ? legacy.bottom
+            : bottom.clamp(0.05, 1.0);
+        final double tW = tRight - tLeft;
+
+        // 100ML bottles are slightly wider (~53%), 50ML bottles are ~47%
+        final double splitX = tLeft + (tW * 0.53);
+
+        r1 ??= Rect.fromLTRB(tLeft, tTop, splitX, tBottom);
+        r2 ??= Rect.fromLTRB(splitX, tTop, tRight, tBottom);
+      }
+
+      result[k1] = r1;
+      result[k2] = r2;
+    }
+    return result;
+  }
+
+  /// Resolves the envelope bounding box for each tray (union of its 100ML and 50ML slots).
+  Map<String, Rect> getResolvedTrayBoxes(List<String> slotCodes) {
+    final slotBoxes = getResolvedSlotBoxes(slotCodes);
+    final Map<String, Rect> result = {};
+    for (final code in slotCodes) {
+      final r1 = slotBoxes['${code}1'];
+      final r2 = slotBoxes['${code}2'];
+      if (r1 != null && r2 != null) {
         result[code] = Rect.fromLTRB(
-          tLeft,
-          top.clamp(0.0, 0.95).toDouble(),
-          tRight,
-          bottom.clamp(0.05, 1.0).toDouble(),
+          math.min(r1.left, r2.left),
+          math.min(r1.top, r2.top),
+          math.max(r1.right, r2.right),
+          math.max(r1.bottom, r2.bottom),
         );
+      } else if (r1 != null) {
+        result[code] = r1;
+      } else if (r2 != null) {
+        result[code] = r2;
+      } else if (trayBoxes.containsKey(code)) {
+        result[code] = trayBoxes[code]!;
       }
     }
     return result;
@@ -212,30 +251,44 @@ class RoiNotifier extends StateNotifier<RoiState> {
   }
 
   /// Moves an individual detached tray box
+  /// Moves an individual detached tray box or size slot (e.g. AA, AA1, AA2)
   void moveTray(
     String code,
     double deltaNormX,
     double deltaNormY,
     List<String> slotCodes,
-  ) {
-    final boxes = state.getResolvedTrayBoxes(slotCodes);
-    final cur = boxes[code];
-    if (cur == null) return;
+  ) => moveSlot(code, deltaNormX, deltaNormY, slotCodes);
 
-    final w = cur.width;
-    final h = cur.height;
-    final double newLeft = (cur.left + deltaNormX)
-        .clamp(0.0, math.max(0.0, 1.0 - w))
-        .toDouble();
-    final double newTop = (cur.top + deltaNormY)
-        .clamp(0.0, math.max(0.0, 1.0 - h))
-        .toDouble();
-    boxes[code] = Rect.fromLTWH(newLeft, newTop, w, h);
+  /// Moves an individual detached size slot (e.g. AA1, AA2) or grouped tray (AA)
+  void moveSlot(
+    String code,
+    double deltaNormX,
+    double deltaNormY,
+    List<String> slotCodes,
+  ) {
+    final boxes = state.getResolvedSlotBoxes(slotCodes);
+    final isSpecificSlot = code.endsWith('1') || code.endsWith('2');
+    final targetKeys = isSpecificSlot ? [code] : ['${code}1', '${code}2'];
+
+    for (final key in targetKeys) {
+      final cur = boxes[key];
+      if (cur == null) continue;
+
+      final w = cur.width;
+      final h = cur.height;
+      final double newLeft = (cur.left + deltaNormX)
+          .clamp(0.0, math.max(0.0, 1.0 - w))
+          .toDouble();
+      final double newTop = (cur.top + deltaNormY)
+          .clamp(0.0, math.max(0.0, 1.0 - h))
+          .toDouble();
+      boxes[key] = Rect.fromLTWH(newLeft, newTop, w, h);
+    }
 
     _updateEnvelopeAndState(boxes);
   }
 
-  /// Resizes an individual detached tray box from a specific corner
+  /// Resizes an individual detached tray box or size slot from a specific corner
   void resizeTrayCorner({
     required String code,
     required bool isTop,
@@ -243,82 +296,181 @@ class RoiNotifier extends StateNotifier<RoiState> {
     required double newNormX,
     required double newNormY,
     required List<String> slotCodes,
-    double minW = 0.04,
-    double minH = 0.08,
+    double minW = 0.02,
+    double minH = 0.05,
+  }) => resizeSlotCorner(
+    code: code,
+    isTop: isTop,
+    isLeft: isLeft,
+    newNormX: newNormX,
+    newNormY: newNormY,
+    slotCodes: slotCodes,
+    minW: minW,
+    minH: minH,
+  );
+
+  /// Resizes an individual detached size slot (e.g. AA1, AA2) or grouped tray from a corner
+  void resizeSlotCorner({
+    required String code,
+    required bool isTop,
+    required bool isLeft,
+    required double newNormX,
+    required double newNormY,
+    required List<String> slotCodes,
+    double minW = 0.02,
+    double minH = 0.05,
   }) {
-    final boxes = state.getResolvedTrayBoxes(slotCodes);
-    final cur = boxes[code];
-    if (cur == null) return;
+    final boxes = state.getResolvedSlotBoxes(slotCodes);
+    final isSpecificSlot = code.endsWith('1') || code.endsWith('2');
 
-    double l = cur.left;
-    double t = cur.top;
-    double r = cur.right;
-    double b = cur.bottom;
+    if (isSpecificSlot) {
+      final cur = boxes[code];
+      if (cur == null) return;
 
-    if (isLeft) {
-      l = newNormX.clamp(0.0, r - minW).toDouble();
+      double l = isLeft ? newNormX.clamp(0.0, cur.right - minW).toDouble() : cur.left;
+      double r = !isLeft ? newNormX.clamp(cur.left + minW, 1.0).toDouble() : cur.right;
+      double t = isTop ? newNormY.clamp(0.0, cur.bottom - minH).toDouble() : cur.top;
+      double b = !isTop ? newNormY.clamp(cur.top + minH, 1.0).toDouble() : cur.bottom;
+
+      boxes[code] = Rect.fromLTRB(l, t, r, b);
     } else {
-      r = newNormX.clamp(l + minW, 1.0).toDouble();
+      final k1 = '${code}1';
+      final k2 = '${code}2';
+      final r1 = boxes[k1];
+      final r2 = boxes[k2];
+      if (r1 == null || r2 == null) return;
+
+      final trayLeft = math.min(r1.left, r2.left);
+      final trayRight = math.max(r1.right, r2.right);
+      final trayTop = math.min(r1.top, r2.top);
+      final trayBottom = math.max(r1.bottom, r2.bottom);
+      final oldW = math.max(0.01, trayRight - trayLeft);
+      final oldH = math.max(0.01, trayBottom - trayTop);
+
+      final double newTL = isLeft ? newNormX.clamp(0.0, trayRight - minW * 2).toDouble() : trayLeft;
+      final double newTR = !isLeft ? newNormX.clamp(trayLeft + minW * 2, 1.0).toDouble() : trayRight;
+      final double newTT = isTop ? newNormY.clamp(0.0, trayBottom - minH).toDouble() : trayTop;
+      final double newTB = !isTop ? newNormY.clamp(trayTop + minH, 1.0).toDouble() : trayBottom;
+      final newW = newTR - newTL;
+      final newH = newTB - newTT;
+
+      for (final key in [k1, k2]) {
+        final cur = boxes[key]!;
+        final relL = (cur.left - trayLeft) / oldW;
+        final relR = (cur.right - trayLeft) / oldW;
+        final relT = (cur.top - trayTop) / oldH;
+        final relB = (cur.bottom - trayTop) / oldH;
+        boxes[key] = Rect.fromLTRB(
+          newTL + (newW * relL),
+          newTT + (newH * relT),
+          newTL + (newW * relR),
+          newTT + (newH * relB),
+        );
+      }
     }
 
-    if (isTop) {
-      t = newNormY.clamp(0.0, b - minH).toDouble();
-    } else {
-      b = newNormY.clamp(t + minH, 1.0).toDouble();
-    }
-
-    boxes[code] = Rect.fromLTRB(l, t, r, b);
     _updateEnvelopeAndState(boxes);
   }
 
-  /// Resizes an individual detached tray box along one edge
+  /// Resizes an individual detached tray box or size slot along one edge
   void resizeTrayEdge({
     required String code,
     required RoiHandleType edge,
     required double newNormValue,
     required List<String> slotCodes,
-    double minW = 0.04,
-    double minH = 0.08,
+    double minW = 0.02,
+    double minH = 0.05,
+  }) => resizeSlotEdge(
+    code: code,
+    edge: edge,
+    newNormValue: newNormValue,
+    slotCodes: slotCodes,
+    minW: minW,
+    minH: minH,
+  );
+
+  /// Resizes an individual detached size slot (e.g. AA1, AA2) or grouped tray along one edge
+  void resizeSlotEdge({
+    required String code,
+    required RoiHandleType edge,
+    required double newNormValue,
+    required List<String> slotCodes,
+    double minW = 0.02,
+    double minH = 0.05,
   }) {
-    final boxes = state.getResolvedTrayBoxes(slotCodes);
-    final cur = boxes[code];
-    if (cur == null) return;
+    final boxes = state.getResolvedSlotBoxes(slotCodes);
+    final isSpecificSlot = code.endsWith('1') || code.endsWith('2');
 
-    double l = cur.left;
-    double t = cur.top;
-    double r = cur.right;
-    double b = cur.bottom;
+    if (isSpecificSlot) {
+      final cur = boxes[code];
+      if (cur == null) return;
 
-    switch (edge) {
-      case RoiHandleType.topEdge:
-        t = newNormValue.clamp(0.0, b - minH).toDouble();
-        break;
-      case RoiHandleType.bottomEdge:
-        b = newNormValue.clamp(t + minH, 1.0).toDouble();
-        break;
-      case RoiHandleType.leftEdge:
-        l = newNormValue.clamp(0.0, r - minW).toDouble();
-        break;
-      case RoiHandleType.rightEdge:
-        r = newNormValue.clamp(l + minW, 1.0).toDouble();
-        break;
-      default:
-        return;
+      double l = cur.left;
+      double t = cur.top;
+      double r = cur.right;
+      double b = cur.bottom;
+
+      switch (edge) {
+        case RoiHandleType.topEdge:
+          t = newNormValue.clamp(0.0, b - minH).toDouble();
+          break;
+        case RoiHandleType.bottomEdge:
+          b = newNormValue.clamp(t + minH, 1.0).toDouble();
+          break;
+        case RoiHandleType.leftEdge:
+          l = newNormValue.clamp(0.0, r - minW).toDouble();
+          break;
+        case RoiHandleType.rightEdge:
+          r = newNormValue.clamp(l + minW, 1.0).toDouble();
+          break;
+        default:
+          return;
+      }
+
+      boxes[code] = Rect.fromLTRB(l, t, r, b);
+    } else {
+      final k1 = '${code}1';
+      final k2 = '${code}2';
+      final r1 = boxes[k1];
+      final r2 = boxes[k2];
+      if (r1 == null || r2 == null) return;
+
+      switch (edge) {
+        case RoiHandleType.topEdge:
+          final newT = newNormValue.clamp(0.0, math.min(r1.bottom, r2.bottom) - minH).toDouble();
+          boxes[k1] = Rect.fromLTRB(r1.left, newT, r1.right, r1.bottom);
+          boxes[k2] = Rect.fromLTRB(r2.left, newT, r2.right, r2.bottom);
+          break;
+        case RoiHandleType.bottomEdge:
+          final newB = newNormValue.clamp(math.max(r1.top, r2.top) + minH, 1.0).toDouble();
+          boxes[k1] = Rect.fromLTRB(r1.left, r1.top, r1.right, newB);
+          boxes[k2] = Rect.fromLTRB(r2.left, r2.top, r2.right, newB);
+          break;
+        case RoiHandleType.leftEdge:
+          final newL = newNormValue.clamp(0.0, r1.right - minW).toDouble();
+          boxes[k1] = Rect.fromLTRB(newL, r1.top, r1.right, r1.bottom);
+          break;
+        case RoiHandleType.rightEdge:
+          final newR = newNormValue.clamp(r2.left + minW, 1.0).toDouble();
+          boxes[k2] = Rect.fromLTRB(r2.left, r2.top, newR, r2.bottom);
+          break;
+        default:
+          return;
+      }
     }
 
-    boxes[code] = Rect.fromLTRB(l, t, r, b);
     _updateEnvelopeAndState(boxes);
   }
 
-  /// Moves all trays simultaneously, or the active individual tray if one is selected
+  /// Moves all trays simultaneously, or the active individual tray/slot if one is selected
   void move(double deltaNormX, double deltaNormY, [List<String>? slotCodes]) {
     if (state.selectedTrayCode != null && slotCodes != null) {
-      moveTray(state.selectedTrayCode!, deltaNormX, deltaNormY, slotCodes);
+      moveSlot(state.selectedTrayCode!, deltaNormX, deltaNormY, slotCodes);
       return;
     }
 
     if (slotCodes != null && slotCodes.isNotEmpty) {
-      final boxes = state.getResolvedTrayBoxes(slotCodes);
+      final boxes = state.getResolvedSlotBoxes(slotCodes);
       final newBoxes = <String, Rect>{};
       for (final entry in boxes.entries) {
         final r = entry.value;
@@ -349,7 +501,7 @@ class RoiNotifier extends StateNotifier<RoiState> {
     }
   }
 
-  /// Resizes corner of active tray or outer bounds
+  /// Resizes corner of active tray, slot, or outer bounds
   void resizeCorner({
     required bool isTop,
     required bool isLeft,
@@ -359,7 +511,7 @@ class RoiNotifier extends StateNotifier<RoiState> {
     double minSize = 0.05,
   }) {
     if (state.selectedTrayCode != null && slotCodes != null) {
-      resizeTrayCorner(
+      resizeSlotCorner(
         code: state.selectedTrayCode!,
         isTop: isTop,
         isLeft: isLeft,
@@ -390,7 +542,7 @@ class RoiNotifier extends StateNotifier<RoiState> {
     state = state.copyWith(left: l, top: t, right: r, bottom: b);
   }
 
-  /// Resizes edge of active tray or outer bounds
+  /// Resizes edge of active tray, slot, or outer bounds
   void resizeEdge({
     required RoiHandleType edge,
     required double newNormValue,
@@ -398,7 +550,7 @@ class RoiNotifier extends StateNotifier<RoiState> {
     double minSize = 0.05,
   }) {
     if (state.selectedTrayCode != null && slotCodes != null) {
-      resizeTrayEdge(
+      resizeSlotEdge(
         code: state.selectedTrayCode!,
         edge: edge,
         newNormValue: newNormValue,
@@ -479,10 +631,16 @@ class RoiNotifier extends StateNotifier<RoiState> {
     );
   }
 
-  /// Resets a single detached tray box back to proportional default
+  /// Resets a single detached size slot (e.g. AA1) or whole tray back to default
   void resetTray(String code, List<String> slotCodes) {
     final boxes = Map<String, Rect>.from(state.trayBoxes);
-    boxes.remove(code);
+    if (code.endsWith('1') || code.endsWith('2')) {
+      boxes.remove(code);
+    } else {
+      boxes.remove(code);
+      boxes.remove('${code}1');
+      boxes.remove('${code}2');
+    }
     _updateEnvelopeAndState(boxes);
   }
 
@@ -520,10 +678,10 @@ class RoiNotifier extends StateNotifier<RoiState> {
 
   Future<void> save(String branch, {List<String>? slotCodes}) async {
     try {
-      // 1. Save detailed detached tray boxes JSON to system_settings
+      // 1. Save detailed detached tray and slot boxes JSON to system_settings
       final Map<String, dynamic> toSave = {};
       final resolved = slotCodes != null
-          ? state.getResolvedTrayBoxes(slotCodes)
+          ? state.getResolvedSlotBoxes(slotCodes)
           : state.trayBoxes;
       resolved.forEach((k, r) {
         toSave[k] = {
