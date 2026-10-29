@@ -10,11 +10,13 @@ class AutoLockState {
   final int timeoutMinutes; // 0 = disabled, 1, 2, 3, 5, 10
   final int remainingSeconds;
   final bool isRunning;
+  final bool isPaused;
 
   const AutoLockState({
     this.timeoutMinutes = 3,
     this.remainingSeconds = 180,
     this.isRunning = false,
+    this.isPaused = false,
   });
 
   bool get isEnabled => timeoutMinutes > 0;
@@ -29,11 +31,13 @@ class AutoLockState {
     int? timeoutMinutes,
     int? remainingSeconds,
     bool? isRunning,
+    bool? isPaused,
   }) {
     return AutoLockState(
       timeoutMinutes: timeoutMinutes ?? this.timeoutMinutes,
       remainingSeconds: remainingSeconds ?? this.remainingSeconds,
       isRunning: isRunning ?? this.isRunning,
+      isPaused: isPaused ?? this.isPaused,
     );
   }
 }
@@ -116,6 +120,10 @@ class AutoLockNotifier extends StateNotifier<AutoLockState> {
         return;
       }
 
+      if (state.isPaused) {
+        return; // Pause lockscreen timer during active scanning or modals
+      }
+
       if (state.remainingSeconds <= 1) {
         timer.cancel();
         state = state.copyWith(remainingSeconds: 0, isRunning: false);
@@ -124,6 +132,14 @@ class AutoLockNotifier extends StateNotifier<AutoLockState> {
         state = state.copyWith(remainingSeconds: state.remainingSeconds - 1);
       }
     });
+  }
+
+  void pauseTimer() {
+    state = state.copyWith(isPaused: true);
+  }
+
+  void resumeTimer() {
+    state = state.copyWith(isPaused: false);
   }
 
   void stopTimer() {

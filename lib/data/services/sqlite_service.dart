@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' as math;
+import 'dart:ui' show Rect;
 
 import 'package:crypto/crypto.dart';
 import 'package:path/path.dart' as p;
@@ -851,8 +853,9 @@ class SqliteService {
   }) async {
     final db = await database;
     final now = DateTime.now();
+    final lowThreshold = await getLowStockThreshold();
 
-    // 1. Fetch calibrated slot ROIs for this camera if stored in system_settings
+    // 1. Fetch calibrated tray ROIs for this camera
     Map<String, dynamic>? slotRois;
     try {
       final savedJson = await getSetting('camera_${cameraId}_tray_rois');
@@ -861,100 +864,211 @@ class SqliteService {
       }
     } catch (_) {}
 
-    // Determine target slot codes from ROIs or passed parameter
-    final List<String> codes = targetSlotCodes ??
-        (slotRois != null ? slotRois.keys.toList() : <String>[]);
+    // Derive the 5 distinct tray codes (e.g. AA, AB, AC, AD, AE)
+    final Set<String> distinctTrayCodes = {};
+    if (slotRois != null && slotRois.isNotEmpty) {
+      for (final k in slotRois.keys) {
+        final clean = k.replaceAll(RegExp(r'\d+$'), '');
+        distinctTrayCodes.add(clean);
+      }
+    }
+    if (targetSlotCodes != null) {
+      for (final c in targetSlotCodes) {
+        final clean = c.replaceAll(RegExp(r'\d+$'), '');
+        distinctTrayCodes.add(clean);
+      }
+    }
+    if (distinctTrayCodes.isEmpty) {
+      distinctTrayCodes.addAll(['AA', 'AB', 'AC', 'AD', 'AE']);
+    }
+    final List<String> trayCodes = distinctTrayCodes.toList()..sort();
 
-    final Map<String, int> slotCounts = {for (var c in codes) c: 0};
-    int unassignedCount = 0;
+    // Ensure we have geometry Rect for each of the 5 physical trays
+    final Map<String, Rect> trayRects = {};
+    for (int i = 0; i < trayCodes.length; i++) {
+      final code = trayCodes[i];
+      if (slotRois != null && slotRois.containsKey(code)) {
+        final r = slotRois[code] as Map<String, dynamic>;
+        trayRects[code] = Rect.fromLTRB(
+          (r['left'] as num?)?.toDouble() ?? 0.0,
+          (r['top'] as num?)?.toDouble() ?? 0.15,
+          (r['right'] as num?)?.toDouble() ?? 1.0,
+          (r['bottom'] as num?)?.toDouble() ?? 0.85,
+        );
+      } else {
+        // Default 5 even horizontal partitions
+        final count = trayCodes.length;
+        final step = 0.90 / count;
+        final l = 0.05 + i * step + 0.008;
+        final r = 0.05 + (i + 1) * step - 0.008;
+        trayRects[code] = Rect.fromLTRB(l, 0.15, r, 0.85);
+      }
+    }
 
-    for (final det in detections) {
-      final recognizedCode = (det['recognizedCode'] as String?)?.trim() ?? '';
-      if (recognizedCode.isNotEmpty && recognizedCode != 'UNREADABLE') {
-        final upper = recognizedCode.toUpperCase();
-        if (slotCounts.containsKey(upper)) {
-          slotCounts[upper] = (slotCounts[upper] ?? 0) + 1;
-          continue;
-        }
+    // Determine target product codes (100ml size 1 and 50ml size 2 for each tray)
+    final List<String> productCodes = [];
+    if (targetSlotCodes != null && targetSlotCodes.any((c) => c.endsWith('1') || c.endsWith('2'))) {
+      productCodes.addAll(targetSlotCodes);
+    } else {
+      for (final t in trayCodes) {
+        productCodes.add('${t}1'); // 100ml
+        productCodes.add('${t}2'); // 50ml
+      }
+    }
+
+    final Map<String, int> productDetectedCounts = {for (var c in productCodes) c: 0};
+    final List<Map<String, dynamic>> misplacedItems = [];
+
+    // Spatially map each detection and evaluate SKU alignment
+    for (int detIdx = 0; detIdx < detections.length; detIdx++) {
+      final det = detections[detIdx];
+      final bbox = det['boundingBox'];
+      double bx = 0, by = 0, bw = 0, bh = 0;
+      if (bbox is List && bbox.length >= 4) {
+        bx = (bbox[0] as num).toDouble();
+        by = (bbox[1] as num).toDouble();
+        bw = (bbox[2] as num).toDouble();
+        bh = (bbox[3] as num).toDouble();
       }
 
-      // Check bounding box overlap against calibrated slot ROIs
-      final bbox = det['boundingBox'];
-      if (bbox is List && bbox.length >= 4 && slotRois != null && slotRois.isNotEmpty) {
-        final bx = (bbox[0] as num).toDouble();
-        final by = (bbox[1] as num).toDouble();
-        final bw = (bbox[2] as num).toDouble();
-        final bh = (bbox[3] as num).toDouble();
+      final detRect = Rect.fromLTWH(bx, by, bw > 0 ? bw : 0.04, bh > 0 ? bh : 0.04);
+      final detCenterX = bx + (bw > 0 ? bw / 2 : 0.02);
 
-        String? bestSlot;
-        double maxOverlap = 0.0;
-
-        for (final entry in slotRois.entries) {
-          final r = entry.value as Map<String, dynamic>?;
-          if (r == null) continue;
-          final rl = (r['left'] as num?)?.toDouble() ?? 0.0;
-          final rr = (r['right'] as num?)?.toDouble() ?? 1.0;
-          final rt = (r['top'] as num?)?.toDouble() ?? 0.0;
-          final rb = (r['bottom'] as num?)?.toDouble() ?? 1.0;
-
-          final interL = bx > rl ? bx : rl;
-          final interR = (bx + bw) < rr ? (bx + bw) : rr;
-          final interT = by > rt ? by : rt;
-          final interB = (by + bh) < rb ? (by + bh) : rb;
-
-          if (interR > interL && interB > interT) {
-            final overlap = (interR - interL) * (interB - interT);
-            if (overlap > maxOverlap) {
-              maxOverlap = overlap;
-              bestSlot = entry.key;
-            }
+      // Find best containing physical tray ROI
+      String? physicalTray;
+      double maxOverlap = 0.0;
+      for (final entry in trayRects.entries) {
+        final tr = entry.value;
+        final interL = math.max(detRect.left, tr.left);
+        final interR = math.min(detRect.right, tr.right);
+        final interT = math.max(detRect.top, tr.top);
+        final interB = math.min(detRect.bottom, tr.bottom);
+        if (interR > interL && interB > interT) {
+          final overlap = (interR - interL) * (interB - interT);
+          if (overlap > maxOverlap) {
+            maxOverlap = overlap;
+            physicalTray = entry.key;
           }
         }
+      }
 
-        if (bestSlot != null) {
-          slotCounts[bestSlot] = (slotCounts[bestSlot] ?? 0) + 1;
-        } else {
-          unassignedCount++;
+      // Fallback 1: horizontal containment
+      if (physicalTray == null) {
+        for (final entry in trayRects.entries) {
+          final tr = entry.value;
+          if (detCenterX >= tr.left && detCenterX <= tr.right) {
+            physicalTray = entry.key;
+            break;
+          }
         }
-      } else {
-        unassignedCount++;
+      }
+
+      // Fallback 2: nearest tray center
+      if (physicalTray == null && trayRects.isNotEmpty) {
+        double minDistance = double.infinity;
+        for (final entry in trayRects.entries) {
+          final tc = (entry.value.left + entry.value.right) / 2;
+          final d = (detCenterX - tc).abs();
+          if (d < minDistance) {
+            minDistance = d;
+            physicalTray = entry.key;
+          }
+        }
+      }
+
+      // Recognized SKU
+      final rawCode = (det['recognizedCode'] as String?)?.trim().toUpperCase() ?? '';
+      final String recognizedCode = (rawCode == 'UNREADABLE') ? '' : rawCode;
+
+      // Extract expected tray code from recognized SKU:
+      // e.g. AB1 -> Tray AB; AC2 -> Tray AC; P001 -> Tray AA
+      String? expectedTray;
+      String? bottleSize; // '1' = 100ml, '2' = 50ml
+      if (recognizedCode.length == 3 && RegExp(r'^[A-C][A-K][1-2]$').hasMatch(recognizedCode)) {
+        expectedTray = recognizedCode.substring(0, 2);
+        bottleSize = recognizedCode.substring(2);
+      } else if (recognizedCode.length == 2 && RegExp(r'^[A-C][A-K]$').hasMatch(recognizedCode)) {
+        expectedTray = recognizedCode;
+      }
+
+      // Detect misplacement if SKU indicates a different designated tray
+      if (expectedTray != null && physicalTray != null && expectedTray != physicalTray) {
+        det['matchResult'] = 'misplaced';
+        misplacedItems.add({
+          'recognizedCode': recognizedCode,
+          'expectedTray': expectedTray,
+          'physicalTray': physicalTray,
+          'bottleSize': bottleSize ?? '1',
+          'det': det,
+        });
+      } else if (expectedTray != null && physicalTray != null && expectedTray == physicalTray) {
+        det['matchResult'] = 'matched';
+      }
+
+      // Increment physical shelf tray stock count
+      if (physicalTray != null) {
+        final tr = trayRects[physicalTray]!;
+        // 100ml bottles reside on the left half of the tray, 50ml on the right half
+        final trayMidX = (tr.left + tr.right) / 2.0;
+        final sizeSuffix = (bottleSize != null)
+            ? bottleSize
+            : (detCenterX < trayMidX ? '1' : '2');
+        final targetProductCode = '$physicalTray$sizeSuffix';
+
+        if (productDetectedCounts.containsKey(targetProductCode)) {
+          productDetectedCounts[targetProductCode] = (productDetectedCounts[targetProductCode] ?? 0) + 1;
+        } else if (productDetectedCounts.containsKey(physicalTray)) {
+          productDetectedCounts[physicalTray] = (productDetectedCounts[physicalTray] ?? 0) + 1;
+        }
       }
     }
 
-    // If no slot ROIs matched or if ROIs weren't configured, distribute detections
-    if (codes.isNotEmpty && slotCounts.values.every((v) => v == 0) && detections.isNotEmpty) {
-      final perSlot = detections.length ~/ codes.length;
-      final remainder = detections.length % codes.length;
-      for (int i = 0; i < codes.length; i++) {
-        slotCounts[codes[i]] = perSlot + (i < remainder ? 1 : 0);
-      }
-    } else if (unassignedCount > 0 && codes.isNotEmpty) {
-      // If there were some boundary/unassigned detections, distribute remainder to lowest slots
-      for (int i = 0; i < unassignedCount; i++) {
-        final lowestEntry = slotCounts.entries.reduce((a, b) => a.value <= b.value ? a : b);
-        slotCounts[lowestEntry.key] = lowestEntry.value + 1;
+    // Fallback if no spatial hits resolved
+    if (detections.isNotEmpty && productDetectedCounts.values.every((v) => v == 0) && productCodes.isNotEmpty) {
+      final perCode = detections.length ~/ productCodes.length;
+      final remainder = detections.length % productCodes.length;
+      for (int i = 0; i < productCodes.length; i++) {
+        productDetectedCounts[productCodes[i]] = perCode + (i < remainder ? 1 : 0);
       }
     }
 
-    // 2. Fetch all inventory records for this branch to update them
+    // 2. Update inventory records and record alerts in SQLite
     final allInv = await getInventoryRecords(branch);
     final batch = db.batch();
 
-    for (final entry in slotCounts.entries) {
+    // Identify which product codes are misplaced
+    final Map<String, String> misplacedDetailsByCode = {};
+    for (final m in misplacedItems) {
+      final code = m['recognizedCode'] as String;
+      final exp = m['expectedTray'] as String;
+      final sz = m['bottleSize'] as String;
+      final phys = m['physicalTray'] as String;
+      final detail = 'Detected in Tray $phys (Expected: Tray $exp)';
+
+      misplacedDetailsByCode[code] = detail;
+      misplacedDetailsByCode['$exp$sz'] = detail;
+    }
+
+    // Update detected counts and statuses for active products
+    for (final entry in productDetectedCounts.entries) {
       final code = entry.key;
       final detectedCount = entry.value;
 
       final matching = allInv.where((i) => i.perfumeCode == code).firstOrNull;
       if (matching != null) {
-        final newStatus = detectedCount == 0
-            ? 'out_of_stock'
-            : (detectedCount <= 2 ? 'low' : 'normal');
+        final bool isItemMisplaced = misplacedDetailsByCode.containsKey(code);
+        final String newStatus = isItemMisplaced
+            ? 'misplaced'
+            : (detectedCount == 0
+                ? 'out_of_stock'
+                : (detectedCount <= lowThreshold ? 'low' : 'normal'));
 
         batch.update(
           'inventory_records',
           {
             'detected': detectedCount,
             'status': newStatus,
+            'misplacementDetails': isItemMisplaced ? (misplacedDetailsByCode[code] ?? '') : '',
             'lastUpdated': now.millisecondsSinceEpoch,
           },
           where: 'perfumeCode = ? AND branch = ?',
@@ -963,9 +1077,66 @@ class SqliteService {
       }
     }
 
+    // For any misplaced items not updated above, update their inventory_record status
+    for (int i = 0; i < misplacedItems.length; i++) {
+      final m = misplacedItems[i];
+      final code = m['recognizedCode'] as String;
+      final exp = m['expectedTray'] as String;
+      final sz = m['bottleSize'] as String;
+      final fullCode = code.length == 3 ? code : '$exp$sz';
+      final phys = m['physicalTray'] as String;
+
+      batch.update(
+        'inventory_records',
+        {
+          'status': 'misplaced',
+          'misplacementDetails': 'Detected in Tray $phys (Expected: Tray $exp)',
+          'lastUpdated': now.millisecondsSinceEpoch,
+        },
+        where: 'perfumeCode = ? AND branch = ?',
+        whereArgs: [fullCode, branch],
+      );
+
+      // Insert AlertModel into alerts table
+      final alertId = 'alert_misplaced_${fullCode}_${now.millisecondsSinceEpoch}_$i';
+      batch.insert(
+        'alerts',
+        {
+          'id': alertId,
+          'title': 'Misplaced Bottle Detected',
+          'desc': 'Bottle $fullCode was detected in Tray $phys. Expected location is Tray $exp.',
+          'branch': branch,
+          'type': 'misplaced',
+          'perfumeCode': fullCode,
+          'isRead': 0,
+          'createdAt': now.millisecondsSinceEpoch,
+        },
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+
+      // Insert inventory event movement record
+      final eventId = 'evt_misplaced_${now.millisecondsSinceEpoch}_$i';
+      batch.insert(
+        'inventory_events',
+        {
+          'id': eventId,
+          'eventType': 'MISPLACED',
+          'productName': 'Perfume $fullCode',
+          'perfumeCode': fullCode,
+          'shelfArea': 'Tray $phys',
+          'branch': branch,
+          'quantity': 1,
+          'timestamp': now.millisecondsSinceEpoch,
+          'syncStatus': 'synced',
+        },
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    }
+
     await batch.commit(noResult: true);
-    return slotCounts;
+    return productDetectedCounts;
   }
+
 
 
   // ---------------------------------------------------------------------------
@@ -1784,6 +1955,72 @@ class SqliteService {
     }
   }
 
+  Future<int> getLowStockThreshold() async {
+    final val = await getSetting('lowStockThreshold');
+    if (val != null) {
+      final parsed = int.tryParse(val);
+      if (parsed != null && parsed > 0) return parsed;
+    }
+    return 2;
+  }
+
+  Future<void> setLowStockThreshold(int threshold) async {
+    await setSystemSetting('lowStockThreshold', threshold.toString());
+    final allInv = await getInventoryRecords('San Pablo');
+    final db = await database;
+    final batch = db.batch();
+    for (final inv in allInv) {
+      if (inv.status != 'misplaced') {
+        final newStatus = inv.detected == 0
+            ? 'out_of_stock'
+            : (inv.detected <= threshold ? 'low' : 'normal');
+        if (newStatus != inv.status) {
+          batch.update(
+            'inventory_records',
+            {'status': newStatus},
+            where: 'id = ?',
+            whereArgs: [inv.id],
+          );
+        }
+      }
+    }
+    await batch.commit(noResult: true);
+  }
+
+  Future<void> verifyAndClearMisplacement({
+    required String perfumeCode,
+    String branch = 'San Pablo',
+  }) async {
+    final db = await database;
+    final lowThreshold = await getLowStockThreshold();
+    final invRows = await db.query(
+      'inventory_records',
+      where: 'perfumeCode = ? AND branch = ?',
+      whereArgs: [perfumeCode, branch],
+    );
+    if (invRows.isNotEmpty) {
+      final detected = (invRows.first['detected'] as num?)?.toInt() ?? 0;
+      final newStatus = detected == 0
+          ? 'out_of_stock'
+          : (detected <= lowThreshold ? 'low' : 'normal');
+      await db.update(
+        'inventory_records',
+        {
+          'status': newStatus,
+          'misplacementDetails': '',
+          'lastUpdated': DateTime.now().millisecondsSinceEpoch,
+        },
+        where: 'perfumeCode = ? AND branch = ?',
+        whereArgs: [perfumeCode, branch],
+      );
+    }
+    await db.delete(
+      'alerts',
+      where: 'type = ? AND perfumeCode = ? AND branch = ?',
+      whereArgs: ['misplaced', perfumeCode, branch],
+    );
+  }
+
   // ---------------------------------------------------------------------------
   // USERS CRUD (Cached local logins with hashed credentials)
   // ---------------------------------------------------------------------------
@@ -2099,6 +2336,7 @@ class SqliteService {
     required String branch,
     bool enqueueSync = true,
   }) async {
+    final lowThreshold = await getLowStockThreshold();
     final db = await database;
     await db.transaction((txn) async {
       // 1. Insert sale record
@@ -2140,7 +2378,7 @@ class SqliteService {
           lastUpdated: DateTime.now(),
           status: newDetected == 0
               ? 'out_of_stock'
-              : (newDetected <= 2 ? 'low' : 'normal'),
+              : (newDetected <= lowThreshold ? 'low' : 'normal'),
         );
         await txn.insert(
           'inventory_records',

@@ -300,8 +300,27 @@ class ShelfVisionPipeline:
 
                         # Match validation
                         is_valid_sku = self.ocr_engine.is_valid_sku_code(recognized_code)
+                        expected_slot = ""
+                        assigned_slot = ""
                         if is_valid_sku:
-                            match_res = "matched"
+                            if len(recognized_code) == 3 and recognized_code[0] in "ABC":
+                                assigned_slot = recognized_code[1]
+                            elif recognized_code.startswith("P") and len(recognized_code) == 4:
+                                try:
+                                    p_idx = int(recognized_code[1:]) - 1
+                                    if 0 <= p_idx < 5:
+                                        assigned_slot = chr(ord('A') + p_idx)
+                                except Exception:
+                                    pass
+
+                            if roi_id.startswith("tray_"):
+                                suffix = roi_id[5:]
+                                expected_slot = suffix[-1] if len(suffix) == 2 else suffix
+
+                            if expected_slot and assigned_slot and (assigned_slot != expected_slot):
+                                match_res = "misplaced"
+                            else:
+                                match_res = "matched"
                         elif recognized_code and recognized_code != "UNREADABLE":
                             match_res = "misplaced"
                         else:
@@ -318,6 +337,8 @@ class ShelfVisionPipeline:
                             "recognizedCode": recognized_code,
                             "ocrConfidence": ocr_conf,
                             "matchResult": match_res,
+                            "expectedSlot": expected_slot,
+                            "assignedSlot": assigned_slot,
                             "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S")
                         })
                         box_idx += 1

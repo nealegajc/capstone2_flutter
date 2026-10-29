@@ -190,8 +190,13 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: AppRoutePaths.alerts,
             name: AppRouteNames.alerts,
-            pageBuilder: (context, state) =>
-                const NoTransitionPage(child: AlertsScreen()),
+            pageBuilder: (context, state) {
+              final filter = state.uri.queryParameters['filter'] ??
+                  (state.extra as String?);
+              return NoTransitionPage(
+                child: AlertsScreen(initialFilter: filter),
+              );
+            },
           ),
 
           // Fig 3.31: Reports & Analytics Screen

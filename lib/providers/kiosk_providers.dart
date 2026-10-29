@@ -154,6 +154,7 @@ class DashboardStats {
   final int misplacedCount;
   final int needsVerificationCount;
   final int totalCapacity;
+  final int activeItemCount;
 
   const DashboardStats({
     required this.totalInStock,
@@ -161,6 +162,7 @@ class DashboardStats {
     required this.misplacedCount,
     required this.needsVerificationCount,
     required this.totalCapacity,
+    this.activeItemCount = 60,
   });
 }
 
@@ -199,6 +201,7 @@ final dashboardStatsProvider = FutureProvider.autoDispose
         misplacedCount: misplaced,
         needsVerificationCount: needsVerification,
         totalCapacity: capacityItems * 5, // 5 max bottles per active slot
+        activeItemCount: activeItemCount > 0 ? activeItemCount : 60,
       );
     });
 
@@ -253,3 +256,23 @@ final sunplusCameraPresenceProvider = Provider<HardwareCameraDevice?>((ref) {
     error: (_, _) => null,
   );
 });
+
+final lowStockThresholdProvider = FutureProvider.autoDispose<int>((ref) async {
+  final sqlite = ref.watch(sqliteServiceProvider);
+  return await sqlite.getLowStockThreshold();
+});
+
+final activeMisplacementsProvider = Provider.autoDispose<List<AlertModel>>((ref) {
+  final alertsAsync = ref.watch(liveAlertsProvider('San Pablo'));
+  return alertsAsync.when(
+    data: (alerts) => alerts.where((a) => a.type == 'misplaced' && !a.isRead).toList(),
+    loading: () => [],
+    error: (_, _) => [],
+  );
+});
+
+final hasActiveMisplacementProvider = Provider.autoDispose<bool>((ref) {
+  final misplacements = ref.watch(activeMisplacementsProvider);
+  return misplacements.isNotEmpty;
+});
+

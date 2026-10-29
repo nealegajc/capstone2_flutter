@@ -1,18 +1,14 @@
-"""OCR Engine with PaddleOCR and robust fallback."""
+"""OCR Engine with EasyOCR, PyTesseract, and robust circular cap sticker decoding."""
 import os
 import logging
 from typing import Tuple, List, Optional
 import numpy as np
 import cv2
+import re
 
 # Ensure writable cache directories for containerized and edge environments
-os.environ["PADDLE_PDX_CACHE_HOME"] = "/tmp/.paddlex"
-os.environ["PADDLEX_HOME"] = "/tmp/.paddlex"
-os.environ["PADDLE_HOME"] = "/tmp/.paddleocr"
-os.environ["HUB_HOME"] = "/tmp/.cache/huggingface"
+os.environ["TORCH_HOME"] = os.path.expanduser("~/.cache/torch")
 os.environ["MPLCONFIGDIR"] = "/tmp/matplotlib"
-
-import re
 
 logger = logging.getLogger("vision_backend.ocr")
 
@@ -23,73 +19,132 @@ class OCREngine:
     LEGACY_PATTERN = re.compile(r"^P\d{3}$")
 
     def __init__(self):
+        self._easyocr = None
         self._paddle = None
+        self._has_tesseract = False
         self._initialized = False
         self._init_ocr()
 
     def _init_ocr(self):
+        # 1. Try EasyOCR (best for PyTorch-based environments and arbitrary text rotations)
+        try:
+            import easyocr
+            logger.info("Initializing EasyOCR reader for cap detection...")
+            self._easyocr = easyocr.Reader(["en"], gpu=False)
+            self._initialized = True
+            logger.info("EasyOCR initialized successfully.")
+            return
+        except Exception as e:
+            logger.warning(f"EasyOCR not available: {e}")
+
+        # 2. Try PyTesseract
+        try:
+            import pytesseract
+            pytesseract.get_tesseract_version()
+            self._has_tesseract = True
+            self._initialized = True
+            logger.info("PyTesseract OCR available as fallback.")
+            return
+        except Exception as e:
+            logger.warning(f"PyTesseract not available: {e}")
+
+        # 3. Try PaddleOCR
         try:
             from paddleocr import PaddleOCR
             os.environ["PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK"] = "True"
-            # Initialize with English alphanumeric model
             try:
                 self._paddle = PaddleOCR(use_textline_orientation=True, lang='en')
             except TypeError:
                 self._paddle = PaddleOCR(use_angle_cls=True, lang='en')
             self._initialized = True
             logger.info("PaddleOCR initialized successfully.")
+            return
         except Exception as e:
-            logger.warning(f"PaddleOCR not available or failed to load: {e}. Falling back to lightweight heuristic OCR.")
-            self._initialized = False
+            logger.warning(f"PaddleOCR not available: {e}. Falling back to heuristic OCR.")
+
+    @property
+    def is_ready(self) -> bool:
+        return self._initialized
 
     @property
     def is_paddle_ready(self) -> bool:
-        return self._initialized and (self._paddle is not None)
+        return self._paddle is not None
 
     @classmethod
-    def normalize_code(cls, raw: str) -> str:
-        """Cleans and corrects common OCR alphanumeric confusions."""
-        if not raw:
+    def decode_sku(cls, raw: str) -> str:
+        """
+        Disambiguates alphanumeric characters on round cap stickers,
+        handling normal orientation and 180-degree upside down text.
+        """
+        text = "".join(ch for ch in raw if ch.isalnum()).upper()
+        if not text:
             return ""
-        cleaned = "".join(ch for ch in raw if ch.isalnum() or ch in "-_").strip().upper()
-        if not cleaned:
-            return ""
 
-        # Check legacy P001 pattern with 'O' instead of '0'
-        if cleaned.startswith("P") and len(cleaned) == 4:
-            digits = cleaned[1:].replace("O", "0").replace("D", "0").replace("Q", "0")
-            if digits.isdigit():
-                return f"P{digits}"
+        if cls.SKU_PATTERN.match(text):
+            return text
 
-        # Check standard 3-char code: [Layer A-C][Slot A-K][Size 1-2]
-        if len(cleaned) == 3:
-            layer = cleaned[0]
-            slot = cleaned[1]
-            size = cleaned[2]
+        if cls.LEGACY_PATTERN.match(text):
+            return text
 
-            # Disambiguate layer (A, B, C)
-            if layer in ("4", "@"):
-                layer = "A"
-            elif layer == "8":
-                layer = "B"
-            elif layer == "0" or layer == "O":
-                layer = "C"
+        def map_triplet(s: str) -> str:
+            if len(s) != 3:
+                return ""
+            c0, c1, c2 = s[0], s[1], s[2]
 
-            # Disambiguate slot letter (A-K excluding I)
-            if slot == "1" or slot == "I" or slot == "|":
-                slot = "J" # Closest slot to I
+            # Layer (A, B, C)
+            if c0 in ("4", "@", "R"):
+                c0 = "A"
+            elif c0 in ("8", "3"):
+                c0 = "B"
+            elif c0 in ("0", "O", "D", "Q", "G"):
+                c0 = "C"
 
-            # Disambiguate size digit (1 or 2)
-            if size in ("I", "L", "|", "/"):
-                size = "1"
-            elif size in ("Z", "S"):
-                size = "2"
+            # Slot (A-K excluding I)
+            if c1 in ("4", "@"):
+                c1 = "A"
+            elif c1 in ("8", "9", "6", "3", "E"):
+                c1 = "B"
+            elif c1 in ("0", "O", "D", "Q"):
+                c1 = "C"
+            elif c1 in ("1", "I", "|"):
+                c1 = "J"
 
-            candidate = f"{layer}{slot}{size}"
-            if cls.SKU_PATTERN.match(candidate):
-                return candidate
+            # Size (1 or 2)
+            if c2 in ("I", "L", "|", "/", "T", "7", "J", "!"):
+                c2 = "1"
+            elif c2 in ("Z", "S", "?"):
+                c2 = "2"
 
-        return cleaned
+            cand = f"{c0}{c1}{c2}"
+            return cand if cls.SKU_PATTERN.match(cand) else ""
+
+        # 1. Direct triplet substitution
+        d = map_triplet(text)
+        if d:
+            return d
+
+        # 2. 180-degree inverted triplet (read backward: Size, Slot, Layer)
+        rev = text[::-1]
+        inv = ""
+        for c in rev:
+            if c in ("Z", "S"):
+                inv += "2"
+            elif c in ("T", "L", "I", "/", "1", "7"):
+                inv += "1"
+            elif c in ("9", "6", "8", "E"):
+                inv += "B"
+            elif c in ("D", "O", "0", "Q"):
+                inv += "C"
+            elif c in ("V", "@", "4"):
+                inv += "A"
+            else:
+                inv += c
+
+        d_rev = map_triplet(inv)
+        if d_rev:
+            return d_rev
+
+        return ""
 
     @classmethod
     def is_valid_sku_code(cls, code: str) -> bool:
@@ -100,39 +155,75 @@ class OCREngine:
 
     def extract_text(self, cropped_cap_bgr: np.ndarray) -> Tuple[str, float]:
         """
-        Takes a cropped BGR image of a cap/bottle sticker and returns (recognized_text, confidence).
+        Takes a cropped BGR image of a cap sticker and returns (recognized_sku, confidence).
+        Applies circular sticker masking and rotational inspection.
         """
         if cropped_cap_bgr is None or cropped_cap_bgr.size == 0:
             return "", 0.0
 
+        h, w = cropped_cap_bgr.shape[:2]
+        if h < 12 or w < 12:
+            return "", 0.0
+
+        # Circular mask: bottle cap stickers are white circles in the center.
+        # Masking outer 30% removes dark cap edges and metallic reflections.
+        cy, cx = h // 2, w // 2
+        y, x = np.ogrid[:h, :w]
+        inner_mask = (np.sqrt((x - cx) ** 2 + (y - cy) ** 2)) < (min(cx, cy) * 0.70)
+
+        gray = cv2.cvtColor(cropped_cap_bgr, cv2.COLOR_BGR2GRAY)
+        clean = np.full((h, w), 255, dtype=np.uint8)
+        clean[inner_mask] = gray[inner_mask]
+
+        # Upscale 3x with cubic interpolation for sharp character strokes
+        scaled = cv2.resize(clean, (w * 3, h * 3), interpolation=cv2.INTER_CUBIC)
+
+        # 1. EasyOCR evaluation
+        if self._easyocr is not None:
+            # Test cardinal rotations in order of likelihood: 0°, 180°, 90°, 270°
+            rotations = [None, cv2.ROTATE_180, cv2.ROTATE_90_CLOCKWISE, cv2.ROTATE_90_COUNTERCLOCKWISE]
+            for rot in rotations:
+                curr_img = scaled if rot is None else cv2.rotate(scaled, rot)
+                try:
+                    res = self._easyocr.readtext(curr_img)
+                    for r in res:
+                        sku = self.decode_sku(r[1])
+                        if sku:
+                            conf = float(r[2]) if len(r) > 2 else 0.85
+                            return sku, round(conf, 2)
+                except Exception as e:
+                    logger.debug(f"EasyOCR attempt failed: {e}")
+
+        # 2. PyTesseract fallback
+        if self._has_tesseract:
+            import pytesseract
+            rotations = [None, cv2.ROTATE_180, cv2.ROTATE_90_CLOCKWISE, cv2.ROTATE_90_COUNTERCLOCKWISE]
+            for rot in rotations:
+                curr_img = scaled if rot is None else cv2.rotate(scaled, rot)
+                try:
+                    raw = pytesseract.image_to_string(
+                        curr_img,
+                        config="--psm 7 -c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+                    ).strip()
+                    sku = self.decode_sku(raw)
+                    if sku:
+                        return sku, 0.80
+                except Exception:
+                    pass
+
+        # 3. PaddleOCR fallback
         if self.is_paddle_ready:
             try:
-                result = self._paddle.ocr(cropped_cap_bgr)
-                if result and len(result) > 0 and result[0]:
-                    best_text = ""
-                    best_conf = 0.0
+                result = self._paddle.ocr(scaled)
+                if result and result[0]:
                     for line in result[0]:
                         if len(line) >= 2 and len(line[1]) >= 2:
-                            text, conf = line[1][0], float(line[1][1])
-                            normalized = self.normalize_code(text)
-                            if conf > best_conf and len(normalized) > 0:
-                                best_text = normalized
-                                best_conf = conf
-                    if best_text:
-                        return best_text, round(best_conf, 2)
+                            raw = line[1][0]
+                            sku = self.decode_sku(raw)
+                            if sku:
+                                return sku, round(float(line[1][1]), 2)
             except Exception as e:
-                logger.error(f"Error during PaddleOCR inference: {e}")
+                logger.debug(f"PaddleOCR failed: {e}")
 
-        return self._fallback_reader(cropped_cap_bgr)
+        return "", 0.0
 
-    def _fallback_reader(self, img: np.ndarray) -> Tuple[str, float]:
-        """Graceful fallback when Paddle weights are unavailable or running headless."""
-        try:
-            gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-            std_val = float(np.std(gray))
-            if std_val < 15.0:
-                return "UNREADABLE", 0.0
-            # Cap detected by edge variance, but text is unread without Paddle
-            return "", 0.0
-        except Exception:
-            return "UNREADABLE", 0.0

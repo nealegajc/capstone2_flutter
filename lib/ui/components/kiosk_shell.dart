@@ -14,6 +14,7 @@ import '../../providers/theme_provider.dart';
 import '../../providers/kiosk_providers.dart';
 import 'system_restart_banner.dart';
 import 'wifi_connection_dialog.dart';
+import 'misplacement_banner.dart';
 
 class KioskShell extends ConsumerStatefulWidget {
   const KioskShell({super.key, required this.child});
@@ -27,27 +28,29 @@ class KioskShell extends ConsumerStatefulWidget {
 class _KioskShellState extends ConsumerState<KioskShell> {
   int _calculateSelectedIndex(BuildContext context) {
     final String location = GoRouterState.of(context).uri.path;
-    if (location == AppRoutePaths.roiDetail ||
+    if (location.startsWith(AppRoutePaths.cameraMonitor) ||
         location.startsWith(AppRoutePaths.roiDetail)) {
-      return 3;
+      return 2;
     }
-    if (location.startsWith(AppRoutePaths.cameraMonitor)) return 2;
     if (location.startsWith(AppRoutePaths.productForm) ||
-        location.startsWith(AppRoutePaths.productDetail)) {
+        location.startsWith(AppRoutePaths.productDetail) ||
+        location.startsWith(AppRoutePaths.inventory)) {
       return 1;
     }
-    if (location.startsWith(AppRoutePaths.inventory)) return 1;
     if (location.startsWith(AppRoutePaths.dashboard)) return 0;
-    if (location.startsWith(AppRoutePaths.alerts)) return 4;
-    if (location.startsWith(AppRoutePaths.restock)) return 5;
+    if (location.startsWith(AppRoutePaths.alerts)) return 3;
+    if (location.startsWith(AppRoutePaths.restock) ||
+        location.startsWith(AppRoutePaths.createRestock)) {
+      return 4;
+    }
     if (location.startsWith(AppRoutePaths.syncStatus) ||
         location.startsWith(AppRoutePaths.syncQueue)) {
-      return 6;
+      return 5;
     }
-    if (location.startsWith(AppRoutePaths.reports)) return 7;
-    if (location.startsWith(AppRoutePaths.activityLogs)) return 8;
-    if (location.startsWith(AppRoutePaths.settings)) return 9;
-    if (location.startsWith(AppRoutePaths.helpGuide)) return 10;
+    if (location.startsWith(AppRoutePaths.reports)) return 6;
+    if (location.startsWith(AppRoutePaths.activityLogs)) return 7;
+    if (location.startsWith(AppRoutePaths.settings)) return 8;
+    if (location.startsWith(AppRoutePaths.helpGuide)) return 9;
     return 0;
   }
 
@@ -63,27 +66,24 @@ class _KioskShellState extends ConsumerState<KioskShell> {
         context.go(AppRoutePaths.cameraMonitor);
         break;
       case 3:
-        context.go(AppRoutePaths.roiDetail);
-        break;
-      case 4:
         context.go(AppRoutePaths.alerts);
         break;
-      case 5:
+      case 4:
         context.go(AppRoutePaths.restock);
         break;
-      case 6:
+      case 5:
         context.go(AppRoutePaths.syncStatus);
         break;
-      case 7:
+      case 6:
         context.go(AppRoutePaths.reports);
         break;
-      case 8:
+      case 7:
         context.go(AppRoutePaths.activityLogs);
         break;
-      case 9:
+      case 8:
         context.go(AppRoutePaths.settings);
         break;
-      case 10:
+      case 9:
         context.go(AppRoutePaths.helpGuide);
         break;
     }
@@ -446,20 +446,13 @@ class _KioskShellState extends ConsumerState<KioskShell> {
                               ),
                               _buildNavItem(
                                 2,
-                                'Live Shelf View',
+                                'Live Shelf & Cameras',
                                 Icons.videocam_rounded,
                                 selectedIndex,
                                 isDark,
                               ),
                               _buildNavItem(
                                 3,
-                                'Shelf Zones & Slots',
-                                Icons.grid_view_rounded,
-                                selectedIndex,
-                                isDark,
-                              ),
-                              _buildNavItem(
-                                4,
                                 'Alerts & Warnings',
                                 Icons.notifications_active_rounded,
                                 selectedIndex,
@@ -468,7 +461,7 @@ class _KioskShellState extends ConsumerState<KioskShell> {
                                 badgeColor: AppColors.statusRed,
                               ),
                               _buildNavItem(
-                                5,
+                                4,
                                 'Restock & Deliveries',
                                 Icons.move_to_inbox_rounded,
                                 selectedIndex,
@@ -481,7 +474,7 @@ class _KioskShellState extends ConsumerState<KioskShell> {
                                 textSecondary,
                               ),
                               _buildNavItem(
-                                6,
+                                5,
                                 'Cloud Backup',
                                 Icons.cloud_done_rounded,
                                 selectedIndex,
@@ -490,28 +483,28 @@ class _KioskShellState extends ConsumerState<KioskShell> {
                                 badgeColor: AppColors.statusOrange,
                               ),
                               _buildNavItem(
-                                7,
+                                6,
                                 'Sales & Reports',
                                 Icons.insights_rounded,
                                 selectedIndex,
                                 isDark,
                               ),
                               _buildNavItem(
-                                8,
+                                7,
                                 'Activity History',
                                 Icons.history_rounded,
                                 selectedIndex,
                                 isDark,
                               ),
                               _buildNavItem(
-                                9,
+                                8,
                                 'Settings',
                                 Icons.settings_rounded,
                                 selectedIndex,
                                 isDark,
                               ),
                               _buildNavItem(
-                                10,
+                                9,
                                 'Staff Handbook',
                                 Icons.menu_book_rounded,
                                 selectedIndex,
@@ -530,8 +523,16 @@ class _KioskShellState extends ConsumerState<KioskShell> {
                     ),
                   ),
 
-                  // Active Screen Content
-                  Expanded(child: widget.child),
+                  // Active Screen Content with Persistent Misplacement Banner
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        const MisplacementBanner(),
+                        Expanded(child: widget.child),
+                      ],
+                    ),
+                  ),
                 ],
               ),
             ),

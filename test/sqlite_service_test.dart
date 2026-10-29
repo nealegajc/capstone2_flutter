@@ -339,5 +339,60 @@ void main() {
       pending = await sqliteService.getPendingSyncItems(applyBackoff: false);
       expect(pending.any((p) => p['id'] == 'test_backoff_item'), isTrue);
     });
+
+    test('updateInventoryFromDetections detects misplacements, updates inventory status, and inserts alerts', () async {
+      // Configure 5 tray ROIs for Camera 1: AA, AB, AC, AD, AE
+      await sqliteService.setSystemSetting(
+        'camera_1_tray_rois',
+        '{"AA":{"left":0.05,"top":0.2,"right":0.20,"bottom":0.8},'
+        '"AB":{"left":0.22,"top":0.2,"right":0.38,"bottom":0.8},'
+        '"AC":{"left":0.40,"top":0.2,"right":0.58,"bottom":0.8},'
+        '"AD":{"left":0.60,"top":0.2,"right":0.78,"bottom":0.8},'
+        '"AE":{"left":0.80,"top":0.2,"right":0.95,"bottom":0.8}}',
+      );
+
+      // Detections:
+      // 1. Correct bottle in AA (100ml side): AA1 at x=0.08
+      // 2. Misplaced bottle: AB1 physically sitting in Tray AC at x=0.45!
+      final detections = [
+        {
+          'id': 'det_1',
+          'boundingBox': [0.08, 0.35, 0.05, 0.1],
+          'recognizedCode': 'AA1',
+        },
+        {
+          'id': 'det_2',
+          'boundingBox': [0.45, 0.35, 0.05, 0.1],
+          'recognizedCode': 'AB1', // AB1 placed in Tray AC!
+        },
+      ];
+
+      await sqliteService.updateInventoryFromDetections(
+        cameraId: 1,
+        detections: detections,
+        branch: 'San Pablo',
+        targetSlotCodes: ['AA1', 'AA2', 'AB1', 'AB2', 'AC1', 'AC2', 'AD1', 'AD2', 'AE1', 'AE2'],
+      );
+
+      // Verify det_2 marked as misplaced
+      expect(detections[1]['matchResult'], equals('misplaced'));
+
+      // Verify inventory records: AB1 should be marked 'misplaced'
+      final invList = await sqliteService.getInventoryRecords('San Pablo');
+      final ab1 = invList.firstWhere((i) => i.perfumeCode == 'AB1');
+      expect(ab1.status, equals('misplaced'));
+      expect(ab1.misplacementDetails, contains('Tray AC'));
+
+      // Verify alert was inserted into alerts table
+      final alerts = await sqliteService.getAlerts('San Pablo');
+      final misplacedAlerts = alerts.where((a) => a.type == 'misplaced').toList();
+      expect(misplacedAlerts.length, greaterThanOrEqualTo(1));
+      expect(misplacedAlerts.any((a) => a.perfumeCode == 'AB1'), isTrue);
+      expect(misplacedAlerts.first.desc, contains('Tray AC'));
+
+      // Verify movement event was logged in inventory_events
+      final events = await sqliteService.getInventoryEvents('San Pablo');
+      expect(events.any((e) => e.eventType == 'MISPLACED' && e.perfumeCode == 'AB1'), isTrue);
+    });
   });
 }

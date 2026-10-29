@@ -8,17 +8,34 @@ import '../../../core/theme/theme_helper.dart';
 import '../../../data/services/sqlite_service.dart';
 import '../../../providers/kiosk_providers.dart';
 import '../../components/status_badge.dart';
+import '../../components/scan_workflow_dialog.dart';
 import '../reports/record_sale_dialog.dart';
 
 class AlertsScreen extends ConsumerStatefulWidget {
-  const AlertsScreen({super.key});
+  final String? initialFilter;
+
+  const AlertsScreen({super.key, this.initialFilter});
 
   @override
   ConsumerState<AlertsScreen> createState() => _AlertsScreenState();
 }
 
 class _AlertsScreenState extends ConsumerState<AlertsScreen> {
-  String _selectedFilter = 'all';
+  late String _selectedFilter;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedFilter = widget.initialFilter ?? 'all';
+  }
+
+  @override
+  void didUpdateWidget(covariant AlertsScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.initialFilter != null && widget.initialFilter != oldWidget.initialFilter) {
+      _selectedFilter = widget.initialFilter!;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -276,22 +293,32 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                                 }
                               },
                               actionLabel: isLow
-                                  ? 'Request Restock'
-                                  : 'Inspect Camera View',
+                                  ? 'Restock This Scent'
+                                  : (isMisplaced
+                                      ? 'Done Fixing, Verify Now'
+                                      : 'Inspect Camera View'),
                               onAction: () {
                                 if (isLow) {
                                   context.push(AppRoutePaths.createRestock);
+                                } else if (isMisplaced) {
+                                  ScanWorkflowDialog.show(
+                                    context,
+                                    isTargetedVerification: true,
+                                    targetAlert: a,
+                                  );
                                 } else {
                                   context.push(AppRoutePaths.cameraMonitor);
                                 }
                               },
-                              onDismiss: () async {
-                                await SqliteService.instance.markAlertRead(
-                                  a.id,
-                                );
-                                ref.invalidate(liveAlertsProvider(branch));
-                                ref.invalidate(dashboardStatsProvider(branch));
-                              },
+                              onDismiss: isMisplaced
+                                  ? null
+                                  : () async {
+                                      await SqliteService.instance.markAlertRead(
+                                        a.id,
+                                      );
+                                      ref.invalidate(liveAlertsProvider(branch));
+                                      ref.invalidate(dashboardStatsProvider(branch));
+                                    },
                             ),
                           );
                         },
@@ -373,7 +400,7 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
     required VoidCallback onRecordSale,
     required String actionLabel,
     required VoidCallback onAction,
-    required VoidCallback onDismiss,
+    VoidCallback? onDismiss,
   }) {
     Color accentColor;
     switch (statusType) {
@@ -494,28 +521,30 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                         ),
                         const SizedBox(width: 10),
                       ],
-                      Tooltip(
-                        message: 'Mark as Resolved',
-                        child: SizedBox(
-                          height: 44,
-                          width: 44,
-                          child: OutlinedButton(
-                            onPressed: onDismiss,
-                            style: OutlinedButton.styleFrom(
-                              padding: EdgeInsets.zero,
-                              side: BorderSide(color: context.borderColor),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(10),
+                      if (onDismiss != null) ...[
+                        Tooltip(
+                          message: 'Mark as Resolved',
+                          child: SizedBox(
+                            height: 44,
+                            width: 44,
+                            child: OutlinedButton(
+                              onPressed: onDismiss,
+                              style: OutlinedButton.styleFrom(
+                                padding: EdgeInsets.zero,
+                                side: BorderSide(color: context.borderColor),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
                               ),
-                            ),
-                            child: Icon(
-                              Icons.check_rounded,
-                              color: AppColors.statusGreen,
-                              size: 22,
+                              child: const Icon(
+                                Icons.check_rounded,
+                                color: AppColors.statusGreen,
+                                size: 22,
+                              ),
                             ),
                           ),
                         ),
-                      ),
+                      ],
                       const SizedBox(width: 10),
                       SizedBox(
                         height: 44,

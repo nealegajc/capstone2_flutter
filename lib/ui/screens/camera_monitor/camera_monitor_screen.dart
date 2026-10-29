@@ -13,6 +13,7 @@ import '../../../data/services/sqlite_service.dart';
 import '../../../providers/kiosk_providers.dart';
 import '../../../providers/roi_provider.dart';
 import '../../components/roi_editor_overlay.dart';
+import '../../components/scan_workflow_dialog.dart';
 import '../settings/camera_assignment_dialog.dart';
 
 class CameraMonitorScreen extends ConsumerStatefulWidget {
@@ -197,78 +198,19 @@ class _CameraMonitorScreenState extends ConsumerState<CameraMonitorScreen> {
   }
 
   void _triggerScan() async {
+    final hasActiveMisplacement = ref.read(hasActiveMisplacementProvider);
+    if (hasActiveMisplacement) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('⚠️ Please resolve active shelf misplacements before running an inventory scan.'),
+          backgroundColor: AppColors.statusRed,
+        ),
+      );
+      return;
+    }
     setState(() => _isScanning = true);
-    final activeCam = _cameraInfo[_selectedCamera] ?? _cameraInfo[1]!;
-
     try {
-      final hwService = ref.read(cameraHardwareServiceProvider);
-      final pythonApi = ref.read(pythonApiRepositoryProvider);
-      final node = _getDeviceNodeForCamera(_selectedCamera);
-      await hwService.captureFrame(deviceNode: node);
-      final scanResult = await pythonApi.triggerManualScan('San Pablo');
-      final bottles = (scanResult['bottlesDetected'] as num?)?.toInt() ?? 0;
-      final rawDets = scanResult['detections'];
-      final List<Map<String, dynamic>> detectionsList = (rawDets is List)
-          ? rawDets.map((d) => Map<String, dynamic>.from(d as Map)).toList()
-          : <Map<String, dynamic>>[];
-
-      // Update SQLite inventory_records with detected counts for this camera
-      try {
-        final slotCodes = List<String>.from(activeCam['slotCodes'] as List);
-        final fullTargetCodes = <String>[];
-        for (final base in slotCodes) {
-          fullTargetCodes.add('${base}1'); // 100ml
-          fullTargetCodes.add('${base}2'); // 50ml
-        }
-        await SqliteService.instance.updateInventoryFromDetections(
-          cameraId: _selectedCamera,
-          detections: detectionsList,
-          branch: 'San Pablo',
-          targetSlotCodes: fullTargetCodes,
-        );
-
-        // Invalidate Riverpod inventory and stats providers to refresh UI immediately
-        ref.invalidate(liveInventoryProvider);
-        ref.invalidate(dashboardStatsProvider);
-      } catch (invErr) {
-        debugPrint('[CameraMonitorScreen] Error updating inventory from scan: $invErr');
-      }
-
-      await SqliteService.instance.logActivity(
-        type: 'CAMERA_SCAN',
-        description:
-            'Tray vision scan executed on ${activeCam['name']} ($node). Detected: $bottles bottle(s).',
-        branch: 'San Pablo',
-      );
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              scanResult['success'] == true
-                  ? 'High-speed capture & AI scan completed: $bottles bottle(s) detected on ${activeCam['name']}. Counts updated.'
-                  : 'Capture completed on ${activeCam['name']} (Edge AI offline: ${scanResult['message']}).',
-            ),
-            backgroundColor: scanResult['success'] == true
-                ? AppColors.statusGreen
-                : AppColors.statusOrange,
-          ),
-        );
-      }
-    } catch (_) {
-      await SqliteService.instance.logActivity(
-        type: 'CAMERA_SCAN',
-        description: 'Tray vision scan triggered on ${activeCam['name']}.',
-        branch: 'San Pablo',
-      );
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Scanned ${activeCam['name']} vision feed.'),
-            backgroundColor: AppColors.statusGreen,
-          ),
-        );
-      }
+      await ScanWorkflowDialog.show(context, initialCameraId: _selectedCamera);
     } finally {
       if (mounted) setState(() => _isScanning = false);
     }
@@ -487,6 +429,7 @@ class _CameraMonitorScreenState extends ConsumerState<CameraMonitorScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final hasActiveMisplacement = ref.watch(hasActiveMisplacementProvider);
     final activeCam = _cameraInfo[_selectedCamera] ?? _cameraInfo[1]!;
     final activeSlotCodes = List<String>.from(activeCam['slotCodes'] as List);
     final hardwareService = ref.watch(cameraHardwareServiceProvider);
@@ -1097,22 +1040,41 @@ class _CameraMonitorScreenState extends ConsumerState<CameraMonitorScreen> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.stretch,
                               children: [
-                                ElevatedButton.icon(
-                                  onPressed: _isScanning ? null : _triggerScan,
-                                  icon: const Icon(
-                                    Icons.radar_rounded,
-                                    size: 22,
-                                  ),
-                                  label: Text(
-                                    'SCAN ${activeCam['name'].toString().toUpperCase()}',
-                                  ),
-                                  style: ElevatedButton.styleFrom(
-                                    padding: const EdgeInsets.symmetric(
-                                      vertical: 14,
+                                Tooltip(
+                                  message: hasActiveMisplacement
+                                      ? '⚠️ Resolve shelf misplacements before running a scan.'
+                                      : 'Run scan workflow for camera',
+                                  child: ElevatedButton.icon(
+                                    onPressed: (_isScanning || hasActiveMisplacement) ? null : _triggerScan,
+                                    icon: Icon(
+                                      hasActiveMisplacement
+                                          ? Icons.lock_clock_rounded
+                                          : Icons.radar_rounded,
+                                      size: 22,
                                     ),
-                                    textStyle: const TextStyle(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w900,
+                                    label: Text(
+                                      hasActiveMisplacement
+                                          ? 'SCAN LOCKED (FIX MISPLACED)'
+                                          : 'SCAN ${activeCam['name'].toString().toUpperCase()}',
+                                    ),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: hasActiveMisplacement
+                                          ? Colors.grey.shade600
+                                          : null,
+                                      foregroundColor: Colors.white,
+                                      disabledBackgroundColor: hasActiveMisplacement
+                                          ? Colors.grey.shade600
+                                          : null,
+                                      disabledForegroundColor: hasActiveMisplacement
+                                          ? Colors.white70
+                                          : null,
+                                      padding: const EdgeInsets.symmetric(
+                                        vertical: 14,
+                                      ),
+                                      textStyle: const TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w900,
+                                      ),
                                     ),
                                   ),
                                 ),

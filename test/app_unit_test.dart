@@ -3,6 +3,7 @@ import 'package:smart_shelf_linux/data/models/inventory_record_model.dart';
 import 'package:smart_shelf_linux/data/models/alert_model.dart';
 import 'package:smart_shelf_linux/data/models/image_quality_log_model.dart';
 import 'package:smart_shelf_linux/core/extensions.dart';
+import 'package:smart_shelf_linux/providers/kiosk_providers.dart';
 
 void main() {
   group('Smart Shelf Model Tests', () {
@@ -56,6 +57,28 @@ void main() {
       expect(log.isAcceptable, isTrue);
       expect(log.preprocessingApplied.length, 2);
       expect(log.status, 'ACCEPTED');
+    });
+
+    test('DashboardStats correctly calculates capacity and active counts', () {
+      const stats = DashboardStats(
+        totalInStock: 297,
+        lowStockCount: 1,
+        misplacedCount: 0,
+        needsVerificationCount: 0,
+        totalCapacity: 300,
+        activeItemCount: 60,
+      );
+
+      expect(stats.totalInStock, 297);
+      expect(stats.lowStockCount, 1);
+      expect(stats.misplacedCount, 0);
+      expect(stats.needsVerificationCount, 0);
+      expect(stats.totalCapacity, 300);
+      expect(stats.activeItemCount, 60);
+
+      final fillPercent =
+          ((stats.totalInStock / stats.totalCapacity) * 100).toInt();
+      expect(fillPercent, 99);
     });
   });
 }

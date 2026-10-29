@@ -411,6 +411,130 @@ class SettingsScreen extends ConsumerWidget {
                         ),
                         const SizedBox(height: 20),
 
+                        // Inventory Alerts & Stock Thresholds
+                        Text(
+                          'Inventory Alerts & Stock Thresholds',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w800,
+                            color: context.textPrimaryColor,
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        Card(
+                          color: context.surfaceColor,
+                          child: Padding(
+                            padding: const EdgeInsets.all(20),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Row(
+                                            children: [
+                                              const Icon(
+                                                Icons.notifications_active_outlined,
+                                                color: AppColors.statusOrange,
+                                                size: 22,
+                                              ),
+                                              const SizedBox(width: 10),
+                                              Text(
+                                                'Low Stock Alert Threshold',
+                                                style: TextStyle(
+                                                  fontSize: 15,
+                                                  fontWeight: FontWeight.w800,
+                                                  color: context.textPrimaryColor,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                          const SizedBox(height: 4),
+                                          Text(
+                                            'Trigger visual warnings and alerts when a scent reaches or falls below this bottle count.',
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              color: context.textSecondaryColor,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Consumer(
+                                      builder: (context, ref, _) {
+                                        final thresholdAsync = ref.watch(lowStockThresholdProvider);
+                                        final currentThreshold = thresholdAsync.valueOrNull ?? 2;
+
+                                        return Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 14,
+                                            vertical: 4,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: context.surfaceElevatedColor,
+                                            borderRadius: BorderRadius.circular(12),
+                                            border: Border.all(
+                                              color: context.borderColor,
+                                              width: 1.5,
+                                            ),
+                                          ),
+                                          child: DropdownButtonHideUnderline(
+                                            child: DropdownButton<int>(
+                                              value: currentThreshold,
+                                              dropdownColor: context.surfaceElevatedColor,
+                                              style: TextStyle(
+                                                fontSize: 13,
+                                                fontWeight: FontWeight.w800,
+                                                color: context.textPrimaryColor,
+                                              ),
+                                              icon: const Icon(
+                                                Icons.arrow_drop_down_rounded,
+                                                color: AppColors.brandAccent,
+                                              ),
+                                              items: List.generate(
+                                                10,
+                                                (i) => DropdownMenuItem(
+                                                  value: i + 1,
+                                                  child: Text('${i + 1} Bottle${i > 0 ? "s" : ""} or less'),
+                                                ),
+                                              ),
+                                              onChanged: (newThreshold) async {
+                                                if (newThreshold != null) {
+                                                  await SqliteService.instance.setLowStockThreshold(newThreshold);
+                                                  ref.invalidate(lowStockThresholdProvider);
+                                                  ref.invalidate(liveInventoryProvider);
+                                                  ref.invalidate(dashboardStatsProvider);
+                                                  ref.invalidate(liveAlertsProvider);
+                                                  if (context.mounted) {
+                                                    ScaffoldMessenger.of(context).showSnackBar(
+                                                      SnackBar(
+                                                        content: Text(
+                                                          'Low stock alert threshold updated to $newThreshold bottle(s).',
+                                                        ),
+                                                        backgroundColor: AppColors.statusGreen,
+                                                      ),
+                                                    );
+                                                  }
+                                                }
+                                              },
+                                            ),
+                                          ),
+                                        );
+                                      },
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 20),
+
                         // 3. Hardware Power & Terminal Maintenance Card
                         Text(
                           'Hardware Power & Management',

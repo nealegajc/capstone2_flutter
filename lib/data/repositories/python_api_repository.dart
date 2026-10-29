@@ -57,7 +57,7 @@ class PythonApiRepository {
             headers: {'Content-Type': 'application/json'},
             body: jsonEncode({'branch': branch}),
           )
-          .timeout(const Duration(seconds: 15));
+          .timeout(const Duration(seconds: 60));
       if (response.statusCode == 200) {
         return jsonDecode(response.body) as Map<String, dynamic>;
       } else {

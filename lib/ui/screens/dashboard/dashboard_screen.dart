@@ -5,10 +5,10 @@ import 'package:go_router/go_router.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/theme_helper.dart';
-import '../../../data/services/camera_hardware_service.dart';
 import '../../../providers/kiosk_providers.dart';
 import '../../components/status_badge.dart';
 import '../../components/wifi_connection_dialog.dart';
+import '../../components/scan_workflow_dialog.dart';
 import '../settings/camera_assignment_dialog.dart';
 import '../reports/record_sale_dialog.dart';
 import '../../../data/services/csv_export_service.dart';
@@ -23,258 +23,25 @@ class DashboardScreen extends ConsumerStatefulWidget {
 class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   bool _isScanning = false;
 
-  Future<void> _triggerQuickScan() async {
-    setState(() => _isScanning = true);
-    String? capturedPath;
-
-    try {
-      final hardwareService = ref.read(cameraHardwareServiceProvider);
-      final pythonApi = ref.read(pythonApiRepositoryProvider);
-      final activeNode = hardwareService.getAssignedDeviceNode(1);
-
-      // 1. Capture physical frame snapshot if camera node accessible
-      capturedPath = await hardwareService.captureFrame(
-        deviceNode: activeNode,
-        mode: CameraQualityMode.fhd1080p,
+  Future<void> _triggerQuickScan([int cameraId = 1]) async {
+    final hasActiveMisplacement = ref.read(hasActiveMisplacementProvider);
+    if (hasActiveMisplacement) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('⚠️ Please resolve active shelf misplacements before running a full scan.'),
+          backgroundColor: AppColors.statusRed,
+        ),
       );
-
-      // 2. Trigger real Edge Vision AI scan (YOLO + OCR pipeline)
-      final scanResult = await pythonApi.triggerManualScan('San Pablo');
-      final bottlesCount = (scanResult['bottlesDetected'] as num?)?.toInt() ?? 0;
-      final rawDets = scanResult['detections'];
-      final List<Map<String, dynamic>> detectionsList = (rawDets is List)
-          ? rawDets.map((d) => Map<String, dynamic>.from(d as Map)).toList()
-          : <Map<String, dynamic>>[];
-
-      // 3. Update SQLite inventory_records with detected counts for Camera 1
-      try {
-        final sqlite = ref.read(sqliteServiceProvider);
-        const topSlotCodes = [
-          'AA1', 'AA2', 'AB1', 'AB2', 'AC1', 'AC2', 'AD1', 'AD2', 'AE1', 'AE2'
-        ];
-        await sqlite.updateInventoryFromDetections(
-          cameraId: 1,
-          detections: detectionsList,
-          branch: 'San Pablo',
-          targetSlotCodes: topSlotCodes,
-        );
-      } catch (invErr) {
-        debugPrint('[DashboardScreen] Error updating inventory from scan: $invErr');
-      }
-
-      // 4. Log camera scan & shelf verification activity
-      try {
-        final sqlite = ref.read(sqliteServiceProvider);
-        await sqlite.logActivity(
-          type: 'CAMERA_SCAN',
-          description:
-              'AI shelf scan executed across shelf layers. Detected: $bottlesCount bottle(s).',
-        );
-      } catch (_) {}
-    } catch (e) {
-      debugPrint('[DashboardScreen] Quick scan error: $e');
+      return;
+    }
+    setState(() => _isScanning = true);
+    try {
+      await ScanWorkflowDialog.show(context, initialCameraId: cameraId);
     } finally {
       if (mounted) {
         setState(() => _isScanning = false);
       }
     }
-
-    if (mounted) {
-
-      // Refresh inventory provider
-      ref.invalidate(liveInventoryProvider);
-      ref.invalidate(dashboardStatsProvider);
-      ref.invalidate(liveAlertsProvider);
-      ref.invalidate(systemActivityLogsProvider);
-
-      final invList = await ref
-          .read(sqliteServiceProvider)
-          .getInventoryRecords('San Pablo');
-      final layerAItems = invList.where(
-        (i) => i.shelf.contains('Layer A') || i.category == 'Men',
-      );
-      final layerBItems = invList.where((i) => i.shelf.contains('Layer B'));
-      final layerCItems = invList.where(
-        (i) => i.shelf.contains('Layer C') || i.category == 'Women',
-      );
-
-      final layerADetected = layerAItems.fold<int>(0, (s, i) => s + i.detected);
-      final layerARecorded = layerAItems.fold<int>(0, (s, i) => s + i.recorded);
-      final layerAMatch = layerARecorded > 0
-          ? (layerADetected / layerARecorded * 100)
-                .clamp(0, 100)
-                .toStringAsFixed(1)
-          : '100.0';
-
-      final layerBDetected = layerBItems.fold<int>(0, (s, i) => s + i.detected);
-      final layerBRecorded = layerBItems.fold<int>(0, (s, i) => s + i.recorded);
-      final layerBMatch = layerBRecorded > 0
-          ? (layerBDetected / layerBRecorded * 100)
-                .clamp(0, 100)
-                .toStringAsFixed(1)
-          : '100.0';
-
-      final layerCDetected = layerCItems.fold<int>(0, (s, i) => s + i.detected);
-      final layerCRecorded = layerCItems.fold<int>(0, (s, i) => s + i.recorded);
-      final layerCMatch = layerCRecorded > 0
-          ? (layerCDetected / layerCRecorded * 100)
-                .clamp(0, 100)
-                .toStringAsFixed(1)
-          : '100.0';
-
-      if (!mounted) return;
-
-      showDialog(
-        context: context,
-        builder: (context) => AlertDialog(
-          backgroundColor: context.surfaceColor,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
-          ),
-          title: Row(
-            children: [
-              const Icon(
-                Icons.check_circle_rounded,
-                color: AppColors.statusGreen,
-                size: 28,
-              ),
-              const SizedBox(width: 12),
-              Text(
-                'Shelf Check Completed',
-                style: TextStyle(
-                  fontWeight: FontWeight.w800,
-                  color: context.textPrimaryColor,
-                ),
-              ),
-            ],
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'All 3 shelf levels and fragrance trays have been checked and bottle counts updated:',
-                style: TextStyle(
-                  color: context.textSecondaryColor,
-                  fontSize: 14,
-                ),
-              ),
-              const SizedBox(height: 16),
-              _buildScanResultRow(
-                context,
-                'Top Shelf (Men\'s)',
-                'Left & Right Sides ($layerADetected Bottles)',
-                '$layerAMatch% In Place',
-                AppColors.maleBlue,
-              ),
-              _buildScanResultRow(
-                context,
-                'Middle Shelf (Mixed)',
-                'Left & Right Sides ($layerBDetected Bottles)',
-                '$layerBMatch% In Place',
-                AppColors.brandAccent,
-              ),
-              _buildScanResultRow(
-                context,
-                'Bottom Shelf (Women\'s)',
-                'Left & Right Sides ($layerCDetected Bottles)',
-                '$layerCMatch% In Place',
-                AppColors.femalePink,
-              ),
-              if (capturedPath != null) ...[
-                const SizedBox(height: 12),
-                Text(
-                  'Shelf photo captured successfully.',
-                  style: TextStyle(color: context.textMutedColor, fontSize: 12),
-                ),
-              ],
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: Text(
-                'Done',
-                style: TextStyle(color: context.textSecondaryColor),
-              ),
-            ),
-            OutlinedButton.icon(
-              onPressed: () {
-                Navigator.of(context).pop();
-                context.push(AppRoutePaths.cameraMonitor);
-              },
-              icon: const Icon(Icons.videocam_rounded, size: 18),
-              label: const Text('View Shelf Cameras'),
-            ),
-            ElevatedButton.icon(
-              onPressed: () {
-                Navigator.of(context).pop();
-                RecordSaleDialog.show(context);
-              },
-              icon: const Icon(Icons.point_of_sale_rounded, size: 18),
-              label: const Text('Record a Sale'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.statusGreen,
-                foregroundColor: Colors.white,
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-  }
-
-  static Widget _buildScanResultRow(
-    BuildContext context,
-    String layer,
-    String status,
-    String accuracy,
-    Color color,
-  ) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(
-            layer,
-            style: TextStyle(
-              fontWeight: FontWeight.w700,
-              color: context.textPrimaryColor,
-              fontSize: 13,
-            ),
-          ),
-          Row(
-            children: [
-              Text(
-                status,
-                style: TextStyle(
-                  color: color,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 12,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: Text(
-                  accuracy,
-                  style: TextStyle(
-                    color: color,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
   }
 
   @override
@@ -286,6 +53,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     final inventoryAsync = ref.watch(liveInventoryProvider(branch));
     final hardwareCamerasAsync = ref.watch(hardwareCamerasProvider);
     final netStatus = ref.watch(networkStatusProvider);
+    final hasActiveMisplacement = ref.watch(hasActiveMisplacementProvider);
     final detectedCams = hardwareCamerasAsync.valueOrNull ?? [];
 
     return Scaffold(
@@ -534,36 +302,60 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                       const SizedBox(width: 12),
 
                       // Primary Hero Action: CHECK SHELF NOW
-                      ElevatedButton.icon(
-                        onPressed: _isScanning ? null : _triggerQuickScan,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.brandAccent,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 24,
-                            vertical: 16,
+                      Tooltip(
+                        message: hasActiveMisplacement
+                            ? '⚠️ Resolve shelf misplacements before running a full scan.'
+                            : 'Perform full shelf camera scan',
+                        child: ElevatedButton.icon(
+                          onPressed: (_isScanning || hasActiveMisplacement)
+                              ? null
+                              : _triggerQuickScan,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: hasActiveMisplacement
+                                ? Colors.grey.shade600
+                                : AppColors.brandAccent,
+                            foregroundColor: Colors.white,
+                            disabledBackgroundColor: hasActiveMisplacement
+                                ? Colors.grey.shade600
+                                : null,
+                            disabledForegroundColor: hasActiveMisplacement
+                                ? Colors.white70
+                                : null,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 24,
+                              vertical: 16,
+                            ),
+                            elevation: hasActiveMisplacement ? 0 : 3,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14),
+                            ),
                           ),
-                          elevation: 3,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(14),
-                          ),
-                        ),
-                        icon: _isScanning
-                            ? const SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2.5,
-                                  color: Colors.white,
+                          icon: _isScanning
+                              ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2.5,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : Icon(
+                                  hasActiveMisplacement
+                                      ? Icons.lock_clock_rounded
+                                      : Icons.radar_rounded,
+                                  size: 24,
                                 ),
-                              )
-                            : const Icon(Icons.radar_rounded, size: 24),
-                        label: Text(
-                          _isScanning ? 'CHECKING SHELF...' : 'CHECK SHELF NOW',
-                          style: const TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w900,
-                            letterSpacing: 0.5,
+                          label: Text(
+                            _isScanning
+                                ? 'CHECKING SHELF...'
+                                : hasActiveMisplacement
+                                    ? 'SCAN LOCKED (FIX MISPLACED)'
+                                    : 'CHECK SHELF NOW',
+                            style: const TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 0.5,
+                            ),
                           ),
                         ),
                       ),
@@ -653,53 +445,117 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
 
             // 3. Dynamic Key Performance Inventory Metrics
             statsAsync.when(
-              data: (stats) => Row(
-                children: [
-                  _buildSummaryCard(
-                    context: context,
-                    title: 'Total In Stock',
-                    count: '${stats.totalInStock}',
-                    subtitle: '60 Fragrances / 300 Bottles Full Shelf',
-                    color: AppColors.statusGreen,
-                    bgColor: AppColors.statusGreenBg,
-                    icon: Icons.inventory_2_rounded,
-                    onTap: () => context.push(AppRoutePaths.inventory),
-                  ),
-                  const SizedBox(width: 16),
-                  _buildSummaryCard(
-                    context: context,
-                    title: 'Low Stock Alerts',
-                    count: '${stats.lowStockCount}',
-                    subtitle: 'Items with 2 or fewer bottles',
-                    color: AppColors.statusRed,
-                    bgColor: AppColors.statusRedBg,
-                    icon: Icons.warning_amber_rounded,
-                    onTap: () => context.push(AppRoutePaths.alerts),
-                  ),
-                  const SizedBox(width: 16),
-                  _buildSummaryCard(
-                    context: context,
-                    title: 'Misplaced Bottles',
-                    count: '${stats.misplacedCount}',
-                    subtitle: 'Bottles in wrong tray slot',
-                    color: AppColors.statusOrange,
-                    bgColor: AppColors.statusOrangeBg,
-                    icon: Icons.move_up_rounded,
-                    onTap: () => context.push(AppRoutePaths.alerts),
-                  ),
-                  const SizedBox(width: 16),
-                  _buildSummaryCard(
-                    context: context,
-                    title: 'Needs Checking',
-                    count: '${stats.needsVerificationCount}',
-                    subtitle: 'Bottle cap tilted or obscured',
-                    color: AppColors.brandGold,
-                    bgColor: const Color(0x26FBBF24),
-                    icon: Icons.help_outline_rounded,
-                    onTap: () => context.push(AppRoutePaths.cameraMonitor),
-                  ),
-                ],
-              ),
+              data: (stats) {
+                final capacity =
+                    stats.totalCapacity > 0 ? stats.totalCapacity : 300;
+                final fillPercent =
+                    ((stats.totalInStock / capacity) * 100).clamp(0, 100).toInt();
+
+                return Row(
+                  children: [
+                    _buildSummaryCard(
+                      context: context,
+                      title: 'Total In Stock',
+                      count: '${stats.totalInStock}',
+                      badgeText: '$fillPercent% Full',
+                      badgeColor: AppColors.statusGreen,
+                      subtitle:
+                          '${stats.activeItemCount} Fragrances • $capacity Shelf Cap',
+                      color: AppColors.statusGreen,
+                      bgColor: AppColors.statusGreenBg,
+                      icon: Icons.inventory_2_rounded,
+                      tooltip:
+                          'Tap to view full stock inventory and slot assignments',
+                      onTap: () => context.push(AppRoutePaths.inventory),
+                    ),
+                    const SizedBox(width: 16),
+                    _buildSummaryCard(
+                      context: context,
+                      title: 'Low Stock Alerts',
+                      count: '${stats.lowStockCount}',
+                      badgeText:
+                          stats.lowStockCount > 0 ? 'Restock' : 'Optimal',
+                      badgeColor: stats.lowStockCount > 0
+                          ? AppColors.statusRed
+                          : AppColors.statusGreen,
+                      subtitle: stats.lowStockCount > 0
+                          ? '${stats.lowStockCount} items need restocking (≤ 2 bottles)'
+                          : 'All fragrances well-stocked (> 2 bottles)',
+                      color: stats.lowStockCount > 0
+                          ? AppColors.statusRed
+                          : AppColors.statusGreen,
+                      bgColor: stats.lowStockCount > 0
+                          ? AppColors.statusRedBg
+                          : AppColors.statusGreenBg,
+                      icon: stats.lowStockCount > 0
+                          ? Icons.warning_amber_rounded
+                          : Icons.check_circle_outline_rounded,
+                      tooltip: 'Tap to filter alerts by low stock items',
+                      onTap: () =>
+                          context.push('${AppRoutePaths.alerts}?filter=low_stock'),
+                    ),
+                    const SizedBox(width: 16),
+                    _buildSummaryCard(
+                      context: context,
+                      title: 'Misplaced Bottles',
+                      count: '${stats.misplacedCount}',
+                      badgeText:
+                          stats.misplacedCount > 0 ? 'Wrong Slot' : 'Aligned',
+                      badgeColor: stats.misplacedCount > 0
+                          ? AppColors.statusOrange
+                          : AppColors.statusGreen,
+                      subtitle: stats.misplacedCount > 0
+                          ? '${stats.misplacedCount} bottles in wrong tray slots'
+                          : 'All bottles in assigned slots',
+                      color: stats.misplacedCount > 0
+                          ? AppColors.statusOrange
+                          : AppColors.statusGreen,
+                      bgColor: stats.misplacedCount > 0
+                          ? AppColors.statusOrangeBg
+                          : AppColors.statusGreenBg,
+                      icon: stats.misplacedCount > 0
+                          ? Icons.move_up_rounded
+                          : Icons.task_alt_rounded,
+                      tooltip: 'Tap to filter alerts by misplaced bottles',
+                      onTap: () =>
+                          context.push('${AppRoutePaths.alerts}?filter=misplaced'),
+                    ),
+                    const SizedBox(width: 16),
+                    _buildSummaryCard(
+                      context: context,
+                      title: 'Needs Checking',
+                      count: '${stats.needsVerificationCount}',
+                      badgeText:
+                          stats.needsVerificationCount > 0 ? 'Inspect' : 'Clear',
+                      badgeColor: stats.needsVerificationCount > 0
+                          ? AppColors.brandGold
+                          : AppColors.statusGreen,
+                      subtitle: stats.needsVerificationCount > 0
+                          ? '${stats.needsVerificationCount} bottles tilted or obscured'
+                          : 'Bottle caps and camera vision normal',
+                      color: stats.needsVerificationCount > 0
+                          ? AppColors.brandGold
+                          : AppColors.statusGreen,
+                      bgColor: stats.needsVerificationCount > 0
+                          ? const Color(0x26FBBF24)
+                          : AppColors.statusGreenBg,
+                      icon: stats.needsVerificationCount > 0
+                          ? Icons.help_outline_rounded
+                          : Icons.verified_user_rounded,
+                      tooltip: stats.needsVerificationCount > 0
+                          ? 'Tap to review quality verification alerts'
+                          : 'Tap to open live shelf cameras',
+                      onTap: () {
+                        if (stats.needsVerificationCount > 0) {
+                          context.push('${AppRoutePaths.alerts}?filter=quality');
+                        } else {
+                          context.push(AppRoutePaths.cameraMonitor);
+                        }
+                      },
+                    ),
+                  ],
+                );
+              },
               loading: () => const Center(child: CircularProgressIndicator()),
               error: (_, _) => const Text('Unable to load live statistics.'),
             ),
@@ -1057,11 +913,11 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                               Expanded(
                                 child: _buildQuickActionButton(
                                   context: context,
-                                  title: 'Shelf Scan',
-                                  subtitle: '6-Camera OCR pass',
-                                  icon: Icons.radar_rounded,
-                                  color: AppColors.brandAccent,
-                                  onTap: _isScanning ? null : _triggerQuickScan,
+                                  title: hasActiveMisplacement ? 'Scan Locked' : 'Shelf Scan',
+                                  subtitle: hasActiveMisplacement ? 'Fix misplaced bottles' : '6-Camera OCR pass',
+                                  icon: hasActiveMisplacement ? Icons.lock_clock_rounded : Icons.radar_rounded,
+                                  color: hasActiveMisplacement ? Colors.grey : AppColors.brandAccent,
+                                  onTap: (_isScanning || hasActiveMisplacement) ? null : _triggerQuickScan,
                                 ),
                               ),
                             ],
@@ -1494,104 +1350,151 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     required Color bgColor,
     required IconData icon,
     required VoidCallback onTap,
+    String? badgeText,
+    Color? badgeColor,
+    String? tooltip,
   }) {
+    final effectiveBadgeColor = badgeColor ?? color;
+
+    final cardContent = Container(
+      height: 146,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: context.surfaceColor,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: color.withValues(alpha: context.isDark ? 0.35 : 0.45),
+          width: 1.5,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: color.withValues(alpha: context.isDark ? 0.08 : 0.04),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                child: Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: context.textSecondaryColor,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              const SizedBox(width: 6),
+              Container(
+                padding: const EdgeInsets.all(7),
+                decoration: BoxDecoration(
+                  color: bgColor,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(icon, color: color, size: 18),
+              ),
+            ],
+          ),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Text(
+                count,
+                style: TextStyle(
+                  fontSize: 34,
+                  fontWeight: FontWeight.w900,
+                  color: color,
+                  letterSpacing: -1,
+                ),
+              ),
+              if (badgeText != null) ...[
+                const SizedBox(width: 10),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 3.5,
+                  ),
+                  decoration: BoxDecoration(
+                    color: effectiveBadgeColor.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: effectiveBadgeColor.withValues(alpha: 0.28),
+                      width: 1,
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 6,
+                        height: 6,
+                        decoration: BoxDecoration(
+                          color: effectiveBadgeColor,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: 5),
+                      Text(
+                        badgeText,
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: effectiveBadgeColor,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ],
+          ),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  subtitle,
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    color: context.textMutedColor,
+                    fontWeight: FontWeight.w600,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              Icon(
+                Icons.arrow_forward_ios_rounded,
+                size: 11,
+                color: color.withValues(alpha: 0.7),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+
     return Expanded(
       child: Material(
         color: Colors.transparent,
         child: InkWell(
           onTap: onTap,
           borderRadius: BorderRadius.circular(18),
-          child: Container(
-            height: 146,
-            padding: const EdgeInsets.all(18),
-            decoration: BoxDecoration(
-              color: context.surfaceColor,
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(
-                color: color.withValues(alpha: context.isDark ? 0.35 : 0.45),
-                width: 1.5,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: color.withValues(alpha: context.isDark ? 0.08 : 0.04),
-                  blurRadius: 12,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      title,
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                        color: context.textSecondaryColor,
-                      ),
-                    ),
-                    Container(
-                      padding: const EdgeInsets.all(7),
-                      decoration: BoxDecoration(
-                        color: bgColor,
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Icon(icon, color: color, size: 18),
-                    ),
-                  ],
-                ),
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.baseline,
-                  textBaseline: TextBaseline.alphabetic,
-                  children: [
-                    Text(
-                      count,
-                      style: TextStyle(
-                        fontSize: 34,
-                        fontWeight: FontWeight.w900,
-                        color: color,
-                        letterSpacing: -1,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Container(
-                      width: 6,
-                      height: 6,
-                      decoration: BoxDecoration(
-                        color: color,
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                  ],
-                ),
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        subtitle,
-                        style: TextStyle(
-                          fontSize: 11.5,
-                          color: context.textMutedColor,
-                          fontWeight: FontWeight.w600,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    Icon(
-                      Icons.arrow_forward_ios_rounded,
-                      size: 11,
-                      color: color.withValues(alpha: 0.7),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
+          child: tooltip != null
+              ? Tooltip(
+                  message: tooltip,
+                  waitDuration: const Duration(milliseconds: 400),
+                  child: cardContent,
+                )
+              : cardContent,
         ),
       ),
     );

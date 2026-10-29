@@ -76,21 +76,7 @@ class _RoiEditorOverlayState extends State<RoiEditorOverlay> {
 
         if (w <= 0 || h <= 0) return const SizedBox.shrink();
 
-        // 1. Resolve normalized boxes for each detached size slot (e.g. AA1, AA2)
-        final resolvedSlotBoxesNorm = widget.roi.getResolvedSlotBoxes(
-          widget.slotCodes,
-        );
-        final Map<String, Rect> resolvedSlotBoxesPx = {};
-        resolvedSlotBoxesNorm.forEach((code, normRect) {
-          resolvedSlotBoxesPx[code] = Rect.fromLTRB(
-            normRect.left * w,
-            normRect.top * h,
-            normRect.right * w,
-            normRect.bottom * h,
-          );
-        });
-
-        // 2. Resolve normalized envelope boxes for each tray (e.g. AA, AB)
+        // 1. Resolve normalized 5 detached Tray boxes (one per physical tray: AA, AB, AC, AD, AE)
         final resolvedTrayBoxesNorm = widget.roi.getResolvedTrayBoxes(
           widget.slotCodes,
         );
@@ -104,7 +90,7 @@ class _RoiEditorOverlayState extends State<RoiEditorOverlay> {
           );
         });
 
-        // 3. Compute overall envelope rect
+        // 2. Compute overall envelope rect
         final overallRect = Rect.fromLTRB(
           widget.roi.left * w,
           widget.roi.top * h,
@@ -114,7 +100,7 @@ class _RoiEditorOverlayState extends State<RoiEditorOverlay> {
 
         final selectedCode = widget.roi.selectedTrayCode;
         final selectedRect = selectedCode != null
-            ? (resolvedSlotBoxesPx[selectedCode] ?? resolvedTrayBoxesPx[selectedCode])
+            ? resolvedTrayBoxesPx[selectedCode]
             : null;
 
         return Listener(
@@ -134,11 +120,10 @@ class _RoiEditorOverlayState extends State<RoiEditorOverlay> {
           child: Stack(
             fit: StackFit.expand,
             children: [
-              // 1. Shaded backdrop + Detached Tray & Size Slot Painter
+              // 1. Shaded backdrop + 5 Detached Physical Tray Boxes Painter
               CustomPaint(
                 size: Size(w, h),
                 painter: _TrayRoiPainter(
-                  resolvedSlotBoxes: resolvedSlotBoxesPx,
                   resolvedTrayBoxes: resolvedTrayBoxesPx,
                   overallRect: overallRect,
                   selectedCode: selectedCode,
@@ -173,11 +158,13 @@ class _RoiEditorOverlayState extends State<RoiEditorOverlay> {
                   ),
                 ),
 
-              // 3. Move Body for EACH individual Detached Size Slot (100ML and 50ML)
+              // 3. Move Body for EACH of the 5 Detached Physical Trays
               if (widget.isInteractive && widget.roi.isEnabled)
-                ...resolvedSlotBoxesPx.entries.map((entry) {
-                  final code = entry.key;
-                  final box = entry.value;
+                ...widget.slotCodes.map((code) {
+                  final box = resolvedTrayBoxesPx[code];
+                  if (box == null || box.width <= 0 || box.height <= 0) {
+                    return const SizedBox.shrink();
+                  }
                   final isThisSelected = selectedCode == code;
 
                   return Positioned(
@@ -190,7 +177,6 @@ class _RoiEditorOverlayState extends State<RoiEditorOverlay> {
                       child: GestureDetector(
                         behavior: HitTestBehavior.opaque,
                         onTap: () {
-                          // Tapping selects this specific size slot
                           widget.onSelectTray?.call(
                             isThisSelected ? null : code,
                           );
@@ -216,46 +202,6 @@ class _RoiEditorOverlayState extends State<RoiEditorOverlay> {
                         onDoubleTap: () => widget.onResetTray?.call(code),
                         child: Container(color: Colors.transparent),
                       ),
-                    ),
-                  );
-                }),
-
-              // 3b. Header Pill Tap Targets to Select and Move ENTIRE Tray Group
-              if (widget.isInteractive && widget.roi.isEnabled)
-                ...widget.slotCodes.map((code) {
-                  final trayBox = resolvedTrayBoxesPx[code];
-                  if (trayBox == null) return const SizedBox.shrink();
-                  final isTraySelected = selectedCode == code;
-                  final tagWidth = math.min(75.0, trayBox.width * 0.7);
-
-                  return Positioned(
-                    left: trayBox.center.dx - (tagWidth / 2),
-                    top: trayBox.top,
-                    width: tagWidth,
-                    height: 22,
-                    child: GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: () {
-                        widget.onSelectTray?.call(
-                          isTraySelected ? null : code,
-                        );
-                      },
-                      onPanStart: (_) {
-                        if (!isTraySelected) {
-                          widget.onSelectTray?.call(code);
-                        }
-                      },
-                      onPanUpdate: (details) {
-                        final deltaNormX = details.delta.dx / w;
-                        final deltaNormY = details.delta.dy / h;
-                        widget.onMoveTray?.call(
-                          code,
-                          Offset(deltaNormX, deltaNormY),
-                        );
-                      },
-                      onPanEnd: (_) => widget.onInteractionEnd?.call(),
-                      onDoubleTap: () => widget.onResetTray?.call(code),
-                      child: Container(color: Colors.transparent),
                     ),
                   );
                 }),
@@ -557,7 +503,6 @@ class _RoiEditorOverlayState extends State<RoiEditorOverlay> {
 }
 
 class _TrayRoiPainter extends CustomPainter {
-  final Map<String, Rect> resolvedSlotBoxes;
   final Map<String, Rect> resolvedTrayBoxes;
   final Rect overallRect;
   final String? selectedCode;
@@ -567,7 +512,6 @@ class _TrayRoiPainter extends CustomPainter {
   final List<String> slotCodes;
 
   _TrayRoiPainter({
-    required this.resolvedSlotBoxes,
     required this.resolvedTrayBoxes,
     required this.overallRect,
     required this.selectedCode,
@@ -579,22 +523,22 @@ class _TrayRoiPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    if (resolvedSlotBoxes.isEmpty &&
+    if (resolvedTrayBoxes.isEmpty &&
         (overallRect.width <= 0 || overallRect.height <= 0)) {
       return;
     }
 
     final fullRect = Offset.zero & size;
 
-    // 1. Dim background outside the detached slot boxes
+    // 1. Dim background outside the detached tray boxes
     final darkPaint = Paint()
       ..color = Colors.black.withValues(alpha: isInteractive ? 0.60 : 0.25)
       ..style = PaintingStyle.fill;
 
     final path = Path()..addRect(fullRect);
-    for (final box in resolvedSlotBoxes.values) {
+    for (final box in resolvedTrayBoxes.values) {
       if (box.width > 0 && box.height > 0) {
-        path.addRRect(RRect.fromRectAndRadius(box, const Radius.circular(8)));
+        path.addRRect(RRect.fromRectAndRadius(box, const Radius.circular(10)));
       }
     }
     path.fillType = PathFillType.evenOdd;
@@ -610,13 +554,13 @@ class _TrayRoiPainter extends CustomPainter {
         ..style = PaintingStyle.stroke
         ..strokeWidth = 2.0;
 
-      for (final box in resolvedSlotBoxes.values) {
+      for (final box in resolvedTrayBoxes.values) {
         canvas.drawRRect(
-          RRect.fromRectAndRadius(box, const Radius.circular(8)),
+          RRect.fromRectAndRadius(box, const Radius.circular(10)),
           disabledBgPaint,
         );
         canvas.drawRRect(
-          RRect.fromRectAndRadius(box, const Radius.circular(8)),
+          RRect.fromRectAndRadius(box, const Radius.circular(10)),
           disabledBorderPaint,
         );
       }
@@ -658,60 +602,43 @@ class _TrayRoiPainter extends CustomPainter {
       return;
     }
 
-    // 2. Detached Individual Size Slot Boxes
-    final emeraldBgPaint = Paint()
-      ..color = const Color(0xFF10B981).withValues(alpha: 0.16)
-      ..style = PaintingStyle.fill;
-
-    final roseBgPaint = Paint()
-      ..color = const Color(0xFFEC4899).withValues(alpha: 0.16)
-      ..style = PaintingStyle.fill;
-
-    final offBgPaint = Paint()
-      ..color = const Color(0xFF1C1308).withValues(alpha: 0.85)
-      ..style = PaintingStyle.fill;
-
+    // 2. 5 Detached Physical Tray Boxes (one per acrylic tray: AA, AB, AC, AD, AE)
     final textPainter = TextPainter(textDirection: TextDirection.ltr);
 
     for (final code in slotCodes) {
-      final slotPrefix = code.toUpperCase();
-      final leftCode = '${slotPrefix}1';
-      final rightCode = '${slotPrefix}2';
+      final box = resolvedTrayBoxes[code];
+      if (box == null || box.width <= 0 || box.height <= 0) continue;
 
-      final box100 = resolvedSlotBoxes[leftCode];
-      final box50 = resolvedSlotBoxes[rightCode];
-      if (box100 == null || box50 == null || box100.width <= 0 || box50.width <= 0) {
-        continue;
-      }
-
-      final is100Selected = selectedCode == leftCode;
-      final is50Selected = selectedCode == rightCode;
       final isTraySelected = selectedCode == code;
 
       // Check if slot or variant is disabled in disabledCapCodes
-      final isLeftOff = disabledCapCodes.any((c) {
+      final isOff = disabledCapCodes.any((c) {
         final upper = c.trim().toUpperCase();
-        return upper == leftCode || upper == slotPrefix;
+        return upper == code.toUpperCase();
       });
 
-      final isRightOff = disabledCapCodes.any((c) {
-        final upper = c.trim().toUpperCase();
-        return upper == rightCode || upper == slotPrefix;
-      });
+      // Background fill
+      final fillPaint = Paint()
+        ..color = isOff
+            ? const Color(0xFF1C1308).withValues(alpha: 0.85)
+            : (isTraySelected
+                ? AppColors.brandAccent.withValues(alpha: 0.18)
+                : Colors.white.withValues(alpha: 0.06))
+        ..style = PaintingStyle.fill;
 
-      // A. Draw 100ML Box (Fully Detached)
       canvas.drawRRect(
-        RRect.fromRectAndRadius(box100, const Radius.circular(8)),
-        isLeftOff ? offBgPaint : emeraldBgPaint,
+        RRect.fromRectAndRadius(box, const Radius.circular(10)),
+        fillPaint,
       );
 
-      if (is100Selected && isInteractive) {
+      // Border outline
+      if (isTraySelected && isInteractive) {
         final glowPaint = Paint()
-          ..color = AppColors.brandAccent.withValues(alpha: 0.35)
+          ..color = AppColors.brandAccent.withValues(alpha: 0.40)
           ..style = PaintingStyle.stroke
           ..strokeWidth = 6.0;
         canvas.drawRRect(
-          RRect.fromRectAndRadius(box100, const Radius.circular(8)),
+          RRect.fromRectAndRadius(box, const Radius.circular(10)),
           glowPaint,
         );
 
@@ -720,155 +647,38 @@ class _TrayRoiPainter extends CustomPainter {
           ..style = PaintingStyle.stroke
           ..strokeWidth = 2.8;
         canvas.drawRRect(
-          RRect.fromRectAndRadius(box100, const Radius.circular(8)),
+          RRect.fromRectAndRadius(box, const Radius.circular(10)),
           selectedBorderPaint,
         );
       } else {
         final normalBorderPaint = Paint()
-          ..color = (isTraySelected ? AppColors.brandAccent : Colors.white)
-              .withValues(alpha: isTraySelected ? 0.85 : 0.65)
+          ..color = (isOff ? AppColors.statusOrange : Colors.white)
+              .withValues(alpha: 0.70)
           ..style = PaintingStyle.stroke
-          ..strokeWidth = isTraySelected ? 2.0 : 1.5;
+          ..strokeWidth = 1.8;
         canvas.drawRRect(
-          RRect.fromRectAndRadius(box100, const Radius.circular(8)),
+          RRect.fromRectAndRadius(box, const Radius.circular(10)),
           normalBorderPaint,
         );
       }
 
-      // 100ML Text
-      textPainter.text = TextSpan(
-        children: [
-          TextSpan(
-            text: '$leftCode\n',
-            style: TextStyle(
-              color: isLeftOff ? const Color(0xFFF59E0B) : const Color(0xFF10B981),
-              fontSize: 13,
-              fontWeight: FontWeight.w900,
-              decoration: isLeftOff ? TextDecoration.lineThrough : null,
-              height: 1.1,
-              shadows: const [
-                Shadow(
-                  color: Colors.black,
-                  blurRadius: 4,
-                  offset: Offset(0, 1),
-                ),
-              ],
-            ),
-          ),
-          TextSpan(
-            text: isLeftOff ? 'OFF' : '100ML',
-            style: TextStyle(
-              color: isLeftOff ? const Color(0xFFF59E0B) : const Color(0xFF6EE7B7),
-              fontSize: 9,
-              fontWeight: FontWeight.w900,
-              shadows: const [Shadow(color: Colors.black, blurRadius: 3)],
-            ),
-          ),
-        ],
-      );
-      textPainter.textAlign = TextAlign.center;
-      textPainter.layout();
-      textPainter.paint(
-        canvas,
-        Offset(
-          box100.center.dx - (textPainter.width / 2),
-          box100.center.dy - (textPainter.height / 2),
-        ),
-      );
-
-      // B. Draw 50ML Box (Fully Detached)
-      canvas.drawRRect(
-        RRect.fromRectAndRadius(box50, const Radius.circular(8)),
-        isRightOff ? offBgPaint : roseBgPaint,
-      );
-
-      if (is50Selected && isInteractive) {
-        final glowPaint = Paint()
-          ..color = AppColors.brandAccent.withValues(alpha: 0.35)
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 6.0;
-        canvas.drawRRect(
-          RRect.fromRectAndRadius(box50, const Radius.circular(8)),
-          glowPaint,
-        );
-
-        final selectedBorderPaint = Paint()
-          ..color = AppColors.brandAccent
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 2.8;
-        canvas.drawRRect(
-          RRect.fromRectAndRadius(box50, const Radius.circular(8)),
-          selectedBorderPaint,
-        );
-      } else {
-        final normalBorderPaint = Paint()
-          ..color = (isTraySelected ? AppColors.brandAccent : Colors.white)
-              .withValues(alpha: isTraySelected ? 0.85 : 0.65)
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = isTraySelected ? 2.0 : 1.5;
-        canvas.drawRRect(
-          RRect.fromRectAndRadius(box50, const Radius.circular(8)),
-          normalBorderPaint,
-        );
-      }
-
-      // 50ML Text
-      textPainter.text = TextSpan(
-        children: [
-          TextSpan(
-            text: '$rightCode\n',
-            style: TextStyle(
-              color: isRightOff ? const Color(0xFFF59E0B) : const Color(0xFFEC4899),
-              fontSize: 13,
-              fontWeight: FontWeight.w900,
-              decoration: isRightOff ? TextDecoration.lineThrough : null,
-              height: 1.1,
-              shadows: const [
-                Shadow(
-                  color: Colors.black,
-                  blurRadius: 4,
-                  offset: Offset(0, 1),
-                ),
-              ],
-            ),
-          ),
-          TextSpan(
-            text: isRightOff ? 'OFF' : '50ML',
-            style: TextStyle(
-              color: isRightOff ? const Color(0xFFF59E0B) : const Color(0xFFF472B6),
-              fontSize: 9,
-              fontWeight: FontWeight.w900,
-              shadows: const [Shadow(color: Colors.black, blurRadius: 3)],
-            ),
-          ),
-        ],
-      );
-      textPainter.textAlign = TextAlign.center;
-      textPainter.layout();
-      textPainter.paint(
-        canvas,
-        Offset(
-          box50.center.dx - (textPainter.width / 2),
-          box50.center.dy - (textPainter.height / 2),
-        ),
-      );
-
-      // C. Header Pill Tag (at top center of tray)
-      final pillCenterX = (box100.left + box50.right) / 2;
-      final pillCenterY = math.min(box100.top, box50.top) + 8;
-      final tagWidth = math.min(65.0, (box50.right - box100.left) * 0.7);
+      // Tray Header Pill (drawn outside/at top of tray)
+      final pillCenterX = box.center.dx;
+      final pillCenterY = math.max(10.0, box.top + 10);
+      final tagWidth = math.min(80.0, box.width * 0.85);
       final tagRect = Rect.fromCenter(
         center: Offset(pillCenterX, pillCenterY),
         width: tagWidth,
-        height: 16,
+        height: 18,
       );
+
       final tagBgPaint = Paint()
         ..color = isTraySelected
             ? AppColors.brandAccent
-            : Colors.black.withValues(alpha: 0.75)
+            : Colors.black.withValues(alpha: 0.85)
         ..style = PaintingStyle.fill;
       canvas.drawRRect(
-        RRect.fromRectAndRadius(tagRect, const Radius.circular(8)),
+        RRect.fromRectAndRadius(tagRect, const Radius.circular(9)),
         tagBgPaint,
       );
 
@@ -876,9 +686,9 @@ class _TrayRoiPainter extends CustomPainter {
         text: 'TRAY $code',
         style: TextStyle(
           color: isTraySelected ? Colors.black : Colors.white,
-          fontSize: 8.5,
+          fontSize: 9.5,
           fontWeight: FontWeight.w900,
-          letterSpacing: 0.3,
+          letterSpacing: 0.4,
         ),
       );
       textPainter.textAlign = TextAlign.center;
@@ -890,13 +700,62 @@ class _TrayRoiPainter extends CustomPainter {
           tagRect.center.dy - (textPainter.height / 2),
         ),
       );
+
+      // Center Scent Watermark / Label
+      textPainter.text = TextSpan(
+        children: [
+          TextSpan(
+            text: '$code\n',
+            style: TextStyle(
+              color: isOff
+                  ? const Color(0xFFF59E0B)
+                  : (isTraySelected
+                      ? AppColors.brandAccent
+                      : Colors.white.withValues(alpha: 0.85)),
+              fontSize: 16,
+              fontWeight: FontWeight.w900,
+              decoration: isOff ? TextDecoration.lineThrough : null,
+              height: 1.1,
+              shadows: const [
+                Shadow(
+                  color: Colors.black,
+                  blurRadius: 4,
+                  offset: Offset(0, 1),
+                ),
+              ],
+            ),
+          ),
+          TextSpan(
+            text: isOff ? 'PAUSED' : 'ALL SIZES',
+            style: TextStyle(
+              color: isOff
+                  ? const Color(0xFFF59E0B)
+                  : (isTraySelected
+                      ? AppColors.brandAccent.withValues(alpha: 0.8)
+                      : Colors.white54),
+              fontSize: 9,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.3,
+              shadows: const [Shadow(color: Colors.black, blurRadius: 3)],
+            ),
+          ),
+        ],
+      );
+      textPainter.textAlign = TextAlign.center;
+      textPainter.layout();
+      textPainter.paint(
+        canvas,
+        Offset(
+          box.center.dx - (textPainter.width / 2),
+          box.center.dy - (textPainter.height / 2),
+        ),
+      );
     }
 
-    // 3. Corner L-Shapes for Selected Target (or overallRect if none selected)
+    // 3. Corner L-Shapes for Selected Tray Target (or overallRect if none selected)
     if (isInteractive && isEnabled) {
       final activeTarget = (selectedCode != null
-              ? (resolvedSlotBoxes[selectedCode!] ??
-                  resolvedTrayBoxes[selectedCode!])
+              ? resolvedTrayBoxes[selectedCode!]
               : null) ??
           overallRect;
 
@@ -962,8 +821,7 @@ class _TrayRoiPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _TrayRoiPainter old) {
-    return old.resolvedSlotBoxes != resolvedSlotBoxes ||
-        old.resolvedTrayBoxes != resolvedTrayBoxes ||
+    return old.resolvedTrayBoxes != resolvedTrayBoxes ||
         old.overallRect != overallRect ||
         old.selectedCode != selectedCode ||
         old.isInteractive != isInteractive ||
@@ -973,7 +831,7 @@ class _TrayRoiPainter extends CustomPainter {
   }
 }
 
-/// Standalone Tray & Bottle Size Selector Bar for placement outside the camera video feed.
+/// Standalone Tray Selector Bar for placement outside the camera video feed.
 class TraySelectorBar extends StatelessWidget {
   final List<String> slotCodes;
   final String? selectedCode;
@@ -990,10 +848,6 @@ class TraySelectorBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final trayPrefix = selectedCode != null
-        ? (selectedCode!.length >= 2 ? selectedCode!.substring(0, 2) : selectedCode!)
-        : null;
-
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       child: Row(
@@ -1005,12 +859,11 @@ class TraySelectorBar extends StatelessWidget {
             icon: Icons.select_all_rounded,
             onTap: () => onSelectTray(null),
           ),
-          const SizedBox(width: 6),
+          const SizedBox(width: 8),
           ...slotCodes.map((code) {
-            final isSel = selectedCode == code ||
-                (selectedCode != null && selectedCode!.startsWith(code));
+            final isSel = selectedCode == code;
             return Padding(
-              padding: const EdgeInsets.only(right: 6),
+              padding: const EdgeInsets.only(right: 8),
               child: _buildChip(
                 label: 'Tray $code',
                 isSelected: isSel,
@@ -1021,71 +874,49 @@ class TraySelectorBar extends StatelessWidget {
               ),
             );
           }),
-          if (trayPrefix != null) ...[
+          if (selectedCode != null && onResetTray != null) ...[
             Container(
               height: 20,
               width: 1,
               margin: const EdgeInsets.symmetric(horizontal: 6),
               color: Colors.white24,
             ),
-            _buildSubChip(
-              label: '$trayPrefix (Both)',
-              isSelected: selectedCode == trayPrefix,
-              onTap: () => onSelectTray(trayPrefix),
-            ),
-            const SizedBox(width: 4),
-            _buildSubChip(
-              label: '${trayPrefix}1 (100ML)',
-              isSelected: selectedCode == '${trayPrefix}1',
-              accentColor: const Color(0xFF10B981),
-              onTap: () => onSelectTray('${trayPrefix}1'),
-            ),
-            const SizedBox(width: 4),
-            _buildSubChip(
-              label: '${trayPrefix}2 (50ML)',
-              isSelected: selectedCode == '${trayPrefix}2',
-              accentColor: const Color(0xFFEC4899),
-              onTap: () => onSelectTray('${trayPrefix}2'),
-            ),
-            if (onResetTray != null) ...[
-              const SizedBox(width: 6),
-              InkWell(
-                onTap: () => onResetTray!(selectedCode!),
-                borderRadius: BorderRadius.circular(12),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: AppColors.statusOrange.withValues(alpha: 0.2),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: AppColors.statusOrange.withValues(alpha: 0.6),
-                    ),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(
-                        Icons.restart_alt_rounded,
-                        size: 12,
-                        color: AppColors.statusOrange,
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        'Reset $selectedCode',
-                        style: const TextStyle(
-                          fontSize: 10,
-                          color: AppColors.statusOrange,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ],
+            InkWell(
+              onTap: () => onResetTray!(selectedCode!),
+              borderRadius: BorderRadius.circular(12),
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color: AppColors.statusOrange.withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: AppColors.statusOrange.withValues(alpha: 0.6),
                   ),
                 ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                      Icons.restart_alt_rounded,
+                      size: 14,
+                      color: AppColors.statusOrange,
+                    ),
+                    const SizedBox(width: 5),
+                    Text(
+                      'Reset Tray $selectedCode',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: AppColors.statusOrange,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ],
+            ),
           ],
         ],
       ),
@@ -1145,52 +976,6 @@ class TraySelectorBar extends StatelessWidget {
               ),
             ),
           ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSubChip({
-    required String label,
-    required bool isSelected,
-    Color? accentColor,
-    required VoidCallback onTap,
-  }) {
-    final effectiveColor = accentColor ?? AppColors.brandAccent;
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 150),
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        decoration: BoxDecoration(
-          color: isSelected
-              ? effectiveColor
-              : Colors.white.withValues(alpha: 0.08),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: isSelected
-                ? Colors.white
-                : effectiveColor.withValues(alpha: 0.4),
-            width: isSelected ? 1.4 : 1.0,
-          ),
-          boxShadow: isSelected
-              ? [
-                  BoxShadow(
-                    color: effectiveColor.withValues(alpha: 0.4),
-                    blurRadius: 6,
-                    offset: const Offset(0, 2),
-                  ),
-                ]
-              : null,
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 10,
-            fontWeight: isSelected ? FontWeight.w900 : FontWeight.w700,
-            color: isSelected ? Colors.black : Colors.white,
-          ),
         ),
       ),
     );
