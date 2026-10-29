@@ -29,7 +29,8 @@ class DetectionResultModel {
       monitoringRunId: json['monitoringRunId'] as String? ?? '',
       detectedObject: json['detectedObject'] as String? ?? 'perfume_bottle',
       yoloConfidence: (json['yoloConfidence'] as num?)?.toDouble() ?? 0.0,
-      boundingBox: (json['boundingBox'] as List<dynamic>?)
+      boundingBox:
+          (json['boundingBox'] as List<dynamic>?)
               ?.map((e) => (e as num).toDouble())
               .toList() ??
           [0.0, 0.0, 0.0, 0.0],

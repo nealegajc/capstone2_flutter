@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/theme_helper.dart';
+
+import '../../../data/services/sqlite_service.dart';
 
 class ScheduleScreen extends StatefulWidget {
   const ScheduleScreen({super.key});
@@ -20,21 +23,65 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
     '06:00 PM (Closing Check)': true,
   };
 
-  void _saveSchedule() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Monitoring capture schedule updated successfully!'),
-        backgroundColor: AppColors.statusGreen,
-      ),
-    );
-    context.pop();
+  @override
+  void initState() {
+    super.initState();
+    _loadSettings();
+  }
+
+  Future<void> _loadSettings() async {
+    try {
+      final mode = await SqliteService.instance.getSetting('schedule_mode');
+      final interval = await SqliteService.instance.getSetting(
+        'schedule_interval',
+      );
+      if (mounted) {
+        setState(() {
+          if (mode != null && mode.isNotEmpty) _scheduleMode = mode;
+          if (interval != null && interval.isNotEmpty) {
+            _selectedInterval = interval;
+          }
+        });
+      }
+    } catch (_) {}
+  }
+
+  void _saveSchedule() async {
+    try {
+      await SqliteService.instance.setSystemSetting(
+        'schedule_mode',
+        _scheduleMode,
+      );
+      await SqliteService.instance.setSystemSetting(
+        'schedule_interval',
+        _selectedInterval,
+      );
+      await SqliteService.instance.logActivity(
+        type: 'SCAN_SCHEDULE',
+        description:
+            'Vision capture schedule set to $_scheduleMode ($_selectedInterval).',
+        branch: 'San Pablo',
+      );
+    } catch (_) {}
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Monitoring capture schedule updated and saved to system!',
+          ),
+          backgroundColor: AppColors.statusGreen,
+        ),
+      );
+      context.pop();
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Shelf Check Schedule Configuration'),
+        title: const Text('Automatic Shelf Check Schedule'),
         actions: [
           ElevatedButton.icon(
             onPressed: _saveSchedule,
@@ -50,7 +97,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Automated Vision Capture Timers',
+              'Automatic Shelf Recount Times',
               style: TextStyle(
                 fontSize: 22,
                 fontWeight: FontWeight.w800,
@@ -59,7 +106,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
             ),
             const SizedBox(height: 6),
             Text(
-              'Choose how frequently the Otto Scents camera snaps shelf photos for YOLO detection and inventory updating.',
+              'Choose how often the cameras take photos to automatically recount bottles and update stock numbers.',
               style: TextStyle(fontSize: 14, color: context.textSecondaryColor),
             ),
             const SizedBox(height: 24),
@@ -126,29 +173,50 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
                         ),
                       ),
                       const SizedBox(height: 14),
-                      RadioListTile<String>(
-                        title: Text('Every 15 Minutes (High Activity)', style: TextStyle(color: context.textPrimaryColor)),
-                        value: '15min',
+                      RadioGroup<String>(
                         groupValue: _selectedInterval,
-                        onChanged: (val) => setState(() => _selectedInterval = val!),
-                      ),
-                      RadioListTile<String>(
-                        title: Text('Every 30 Minutes', style: TextStyle(color: context.textPrimaryColor)),
-                        value: '30min',
-                        groupValue: _selectedInterval,
-                        onChanged: (val) => setState(() => _selectedInterval = val!),
-                      ),
-                      RadioListTile<String>(
-                        title: Text('Every 1 Hour (Recommended)', style: TextStyle(color: context.textPrimaryColor)),
-                        value: '1hour',
-                        groupValue: _selectedInterval,
-                        onChanged: (val) => setState(() => _selectedInterval = val!),
-                      ),
-                      RadioListTile<String>(
-                        title: Text('Every 2 Hours', style: TextStyle(color: context.textPrimaryColor)),
-                        value: '2hours',
-                        groupValue: _selectedInterval,
-                        onChanged: (val) => setState(() => _selectedInterval = val!),
+                        onChanged: (val) =>
+                            setState(() => _selectedInterval = val!),
+                        child: Column(
+                          children: [
+                            RadioListTile<String>(
+                              title: Text(
+                                'Every 15 Minutes (High Activity)',
+                                style: TextStyle(
+                                  color: context.textPrimaryColor,
+                                ),
+                              ),
+                              value: '15min',
+                            ),
+                            RadioListTile<String>(
+                              title: Text(
+                                'Every 30 Minutes',
+                                style: TextStyle(
+                                  color: context.textPrimaryColor,
+                                ),
+                              ),
+                              value: '30min',
+                            ),
+                            RadioListTile<String>(
+                              title: Text(
+                                'Every 1 Hour (Recommended)',
+                                style: TextStyle(
+                                  color: context.textPrimaryColor,
+                                ),
+                              ),
+                              value: '1hour',
+                            ),
+                            RadioListTile<String>(
+                              title: Text(
+                                'Every 2 Hours',
+                                style: TextStyle(
+                                  color: context.textPrimaryColor,
+                                ),
+                              ),
+                              value: '2hours',
+                            ),
+                          ],
+                        ),
                       ),
                     ],
                   ),
@@ -173,7 +241,10 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
                       const SizedBox(height: 14),
                       ..._dailyCaptureTimes.keys.map((timeKey) {
                         return CheckboxListTile(
-                          title: Text(timeKey, style: TextStyle(color: context.textPrimaryColor)),
+                          title: Text(
+                            timeKey,
+                            style: TextStyle(color: context.textPrimaryColor),
+                          ),
                           value: _dailyCaptureTimes[timeKey],
                           onChanged: (val) {
                             setState(() {
@@ -206,7 +277,9 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
         padding: const EdgeInsets.all(18),
         decoration: BoxDecoration(
           color: isSelected
-              ? AppColors.brandAccent.withValues(alpha: context.isDark ? 0.15 : 0.1)
+              ? AppColors.brandAccent.withValues(
+                  alpha: context.isDark ? 0.15 : 0.1,
+                )
               : context.surfaceElevatedColor,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
@@ -220,9 +293,19 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Icon(icon, color: isSelected ? AppColors.brandAccent : context.textSecondaryColor, size: 28),
+                Icon(
+                  icon,
+                  color: isSelected
+                      ? AppColors.brandAccent
+                      : context.textSecondaryColor,
+                  size: 28,
+                ),
                 if (isSelected)
-                  const Icon(Icons.check_circle_rounded, color: AppColors.brandAccent, size: 22),
+                  const Icon(
+                    Icons.check_circle_rounded,
+                    color: AppColors.brandAccent,
+                    size: 22,
+                  ),
               ],
             ),
             const SizedBox(height: 12),
@@ -231,7 +314,9 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
               style: TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.w800,
-                color: isSelected ? AppColors.brandAccent : context.textPrimaryColor,
+                color: isSelected
+                    ? AppColors.brandAccent
+                    : context.textPrimaryColor,
               ),
             ),
             const SizedBox(height: 4),

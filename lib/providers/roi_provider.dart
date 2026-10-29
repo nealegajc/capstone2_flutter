@@ -1,6 +1,10 @@
+import 'dart:convert';
+import 'dart:math' as math;
 import 'dart:ui';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import '../data/models/shelf_region_model.dart';
 import '../data/services/sqlite_service.dart';
 import 'kiosk_providers.dart';
@@ -24,6 +28,8 @@ class RoiState {
   final double top;
   final double right;
   final double bottom;
+  final Map<String, Rect> trayBoxes; // code -> normalized Rect
+  final String? selectedTrayCode; // null means "All Trays", or 'AA', 'AB', etc.
   final bool isEditing;
   final bool isEnabled;
   final Set<String> disabledCapCodes;
@@ -34,6 +40,8 @@ class RoiState {
     this.top = 0.15,
     this.right = 0.95,
     this.bottom = 0.85,
+    this.trayBoxes = const {},
+    this.selectedTrayCode,
     this.isEditing = false,
     this.isEnabled = true,
     this.disabledCapCodes = const {},
@@ -43,11 +51,40 @@ class RoiState {
   double get height => (bottom - top).clamp(0.01, 1.0);
   Rect get normalizedRect => Rect.fromLTRB(left, top, right, bottom);
 
-  // Left half for 100ML bottles
-  Rect get normalized100mlRect => Rect.fromLTRB(left, top, left + (width / 2), bottom);
+  /// Resolves the detached bounding box for each tray slot.
+  /// If customized individual boxes exist, returns them.
+  /// Otherwise, computes cleanly spaced initial detached boxes.
+  Map<String, Rect> getResolvedTrayBoxes(List<String> slotCodes) {
+    final count = slotCodes.length;
+    if (count == 0) return {};
 
-  // Right half for 50ML bottles
-  Rect get normalized50mlRect => Rect.fromLTRB(left + (width / 2), top, right, bottom);
+    final Map<String, Rect> result = {};
+    const double gap = 0.012; // Gap separating each detached tray
+    final double totalGaps = (count - 1) * gap;
+    final double availableWidth = (right - left) - totalGaps;
+    final double defaultWidth = math.max(0.04, availableWidth / count);
+
+    for (int i = 0; i < count; i++) {
+      final code = slotCodes[i];
+      if (trayBoxes.containsKey(code)) {
+        result[code] = trayBoxes[code]!;
+      } else {
+        final double tLeft = (left + (defaultWidth + gap) * i)
+            .clamp(0.0, 0.95)
+            .toDouble();
+        final double tRight = (tLeft + defaultWidth)
+            .clamp(0.05, 1.0)
+            .toDouble();
+        result[code] = Rect.fromLTRB(
+          tLeft,
+          top.clamp(0.0, 0.95).toDouble(),
+          tRight,
+          bottom.clamp(0.05, 1.0).toDouble(),
+        );
+      }
+    }
+    return result;
+  }
 
   RoiState copyWith({
     int? cameraId,
@@ -55,6 +92,8 @@ class RoiState {
     double? top,
     double? right,
     double? bottom,
+    Map<String, Rect>? trayBoxes,
+    String? Function()? selectedTrayCode,
     bool? isEditing,
     bool? isEnabled,
     Set<String>? disabledCapCodes,
@@ -65,6 +104,10 @@ class RoiState {
       top: (top ?? this.top).clamp(0.0, 0.99),
       right: (right ?? this.right).clamp(0.01, 1.0),
       bottom: (bottom ?? this.bottom).clamp(0.01, 1.0),
+      trayBoxes: trayBoxes ?? this.trayBoxes,
+      selectedTrayCode: selectedTrayCode != null
+          ? selectedTrayCode()
+          : this.selectedTrayCode,
       isEditing: isEditing ?? this.isEditing,
       isEnabled: isEnabled ?? this.isEnabled,
       disabledCapCodes: disabledCapCodes ?? this.disabledCapCodes,
@@ -88,20 +131,64 @@ class RoiNotifier extends StateNotifier<RoiState> {
   final Ref _ref;
   final int cameraId;
 
-  RoiNotifier(this._sqlite, this._ref, this.cameraId) : super(RoiState(cameraId: cameraId)) {
+  RoiNotifier(this._sqlite, this._ref, this.cameraId)
+    : super(RoiState(cameraId: cameraId)) {
     _loadFromDatabase();
   }
 
   Future<void> _loadFromDatabase() async {
     try {
+      // 1. Check if individual detached tray boxes were saved in system settings
+      final settingVal = await _sqlite.getSetting(
+        'camera_${cameraId}_tray_rois',
+      );
+      Map<String, Rect> loadedBoxes = {};
+      if (settingVal != null && settingVal.isNotEmpty) {
+        try {
+          final decoded = jsonDecode(settingVal);
+          if (decoded is Map) {
+            decoded.forEach((k, v) {
+              if (v is Map) {
+                final l = (v['left'] as num?)?.toDouble() ?? 0.05;
+                final t = (v['top'] as num?)?.toDouble() ?? 0.15;
+                final r = (v['right'] as num?)?.toDouble() ?? 0.95;
+                final b = (v['bottom'] as num?)?.toDouble() ?? 0.85;
+                loadedBoxes[k.toString()] = Rect.fromLTRB(l, t, r, b);
+              }
+            });
+          }
+        } catch (_) {}
+      }
+
+      // 2. Load bounding region from shelf_regions
       final regions = await _sqlite.getShelfRegions('San Pablo');
       final match = regions.where((r) => r.cameraId == cameraId).firstOrNull;
+
       if (match != null) {
-        state = RoiState.fromShelfRegion(match);
+        state = RoiState.fromShelfRegion(match)
+            .copyWith(trayBoxes: loadedBoxes);
+      } else if (loadedBoxes.isNotEmpty) {
+        final l = loadedBoxes.values.map((r) => r.left).reduce(math.min);
+        final t = loadedBoxes.values.map((r) => r.top).reduce(math.min);
+        final r = loadedBoxes.values.map((rect) => rect.right).reduce(math.max);
+        final b = loadedBoxes.values
+            .map((rect) => rect.bottom)
+            .reduce(math.max);
+        state = state.copyWith(
+          left: l,
+          top: t,
+          right: r,
+          bottom: b,
+          trayBoxes: loadedBoxes,
+        );
       }
     } catch (e) {
       debugPrint('[RoiNotifier] Error loading ROI: $e');
     }
+  }
+
+  void selectTray(String? code) {
+    state = state.copyWith(selectedTrayCode: () => code);
   }
 
   void setEditing(bool editing) {
@@ -124,58 +211,202 @@ class RoiNotifier extends StateNotifier<RoiState> {
     state = state.copyWith(disabledCapCodes: codes);
   }
 
-  void move(double deltaNormX, double deltaNormY) {
-    final w = state.width;
-    final h = state.height;
+  /// Moves an individual detached tray box
+  void moveTray(
+    String code,
+    double deltaNormX,
+    double deltaNormY,
+    List<String> slotCodes,
+  ) {
+    final boxes = state.getResolvedTrayBoxes(slotCodes);
+    final cur = boxes[code];
+    if (cur == null) return;
 
-    var newLeft = state.left + deltaNormX;
-    var newTop = state.top + deltaNormY;
+    final w = cur.width;
+    final h = cur.height;
+    final double newLeft = (cur.left + deltaNormX)
+        .clamp(0.0, math.max(0.0, 1.0 - w))
+        .toDouble();
+    final double newTop = (cur.top + deltaNormY)
+        .clamp(0.0, math.max(0.0, 1.0 - h))
+        .toDouble();
+    boxes[code] = Rect.fromLTWH(newLeft, newTop, w, h);
 
-    if (newLeft < 0.0) newLeft = 0.0;
-    if (newTop < 0.0) newTop = 0.0;
-    if (newLeft + w > 1.0) newLeft = 1.0 - w;
-    if (newTop + h > 1.0) newTop = 1.0 - h;
-
-    state = state.copyWith(
-      left: newLeft,
-      top: newTop,
-      right: newLeft + w,
-      bottom: newTop + h,
-    );
+    _updateEnvelopeAndState(boxes);
   }
 
+  /// Resizes an individual detached tray box from a specific corner
+  void resizeTrayCorner({
+    required String code,
+    required bool isTop,
+    required bool isLeft,
+    required double newNormX,
+    required double newNormY,
+    required List<String> slotCodes,
+    double minW = 0.04,
+    double minH = 0.08,
+  }) {
+    final boxes = state.getResolvedTrayBoxes(slotCodes);
+    final cur = boxes[code];
+    if (cur == null) return;
+
+    double l = cur.left;
+    double t = cur.top;
+    double r = cur.right;
+    double b = cur.bottom;
+
+    if (isLeft) {
+      l = newNormX.clamp(0.0, r - minW).toDouble();
+    } else {
+      r = newNormX.clamp(l + minW, 1.0).toDouble();
+    }
+
+    if (isTop) {
+      t = newNormY.clamp(0.0, b - minH).toDouble();
+    } else {
+      b = newNormY.clamp(t + minH, 1.0).toDouble();
+    }
+
+    boxes[code] = Rect.fromLTRB(l, t, r, b);
+    _updateEnvelopeAndState(boxes);
+  }
+
+  /// Resizes an individual detached tray box along one edge
+  void resizeTrayEdge({
+    required String code,
+    required RoiHandleType edge,
+    required double newNormValue,
+    required List<String> slotCodes,
+    double minW = 0.04,
+    double minH = 0.08,
+  }) {
+    final boxes = state.getResolvedTrayBoxes(slotCodes);
+    final cur = boxes[code];
+    if (cur == null) return;
+
+    double l = cur.left;
+    double t = cur.top;
+    double r = cur.right;
+    double b = cur.bottom;
+
+    switch (edge) {
+      case RoiHandleType.topEdge:
+        t = newNormValue.clamp(0.0, b - minH).toDouble();
+        break;
+      case RoiHandleType.bottomEdge:
+        b = newNormValue.clamp(t + minH, 1.0).toDouble();
+        break;
+      case RoiHandleType.leftEdge:
+        l = newNormValue.clamp(0.0, r - minW).toDouble();
+        break;
+      case RoiHandleType.rightEdge:
+        r = newNormValue.clamp(l + minW, 1.0).toDouble();
+        break;
+      default:
+        return;
+    }
+
+    boxes[code] = Rect.fromLTRB(l, t, r, b);
+    _updateEnvelopeAndState(boxes);
+  }
+
+  /// Moves all trays simultaneously, or the active individual tray if one is selected
+  void move(double deltaNormX, double deltaNormY, [List<String>? slotCodes]) {
+    if (state.selectedTrayCode != null && slotCodes != null) {
+      moveTray(state.selectedTrayCode!, deltaNormX, deltaNormY, slotCodes);
+      return;
+    }
+
+    if (slotCodes != null && slotCodes.isNotEmpty) {
+      final boxes = state.getResolvedTrayBoxes(slotCodes);
+      final newBoxes = <String, Rect>{};
+      for (final entry in boxes.entries) {
+        final r = entry.value;
+        final double newLeft = (r.left + deltaNormX)
+            .clamp(0.0, 1.0 - r.width)
+            .toDouble();
+        final double newTop = (r.top + deltaNormY)
+            .clamp(0.0, 1.0 - r.height)
+            .toDouble();
+        newBoxes[entry.key] = Rect.fromLTWH(newLeft, newTop, r.width, r.height);
+      }
+      _updateEnvelopeAndState(newBoxes);
+    } else {
+      final w = state.width;
+      final h = state.height;
+      final double newLeft = (state.left + deltaNormX)
+          .clamp(0.0, 1.0 - w)
+          .toDouble();
+      final double newTop = (state.top + deltaNormY)
+          .clamp(0.0, 1.0 - h)
+          .toDouble();
+      state = state.copyWith(
+        left: newLeft,
+        top: newTop,
+        right: newLeft + w,
+        bottom: newTop + h,
+      );
+    }
+  }
+
+  /// Resizes corner of active tray or outer bounds
   void resizeCorner({
     required bool isTop,
     required bool isLeft,
     required double newNormX,
     required double newNormY,
+    List<String>? slotCodes,
     double minSize = 0.05,
   }) {
+    if (state.selectedTrayCode != null && slotCodes != null) {
+      resizeTrayCorner(
+        code: state.selectedTrayCode!,
+        isTop: isTop,
+        isLeft: isLeft,
+        newNormX: newNormX,
+        newNormY: newNormY,
+        slotCodes: slotCodes,
+      );
+      return;
+    }
+
     double l = state.left;
     double t = state.top;
     double r = state.right;
     double b = state.bottom;
 
     if (isLeft) {
-      l = newNormX.clamp(0.0, r - minSize);
+      l = newNormX.clamp(0.0, r - minSize).toDouble();
     } else {
-      r = newNormX.clamp(l + minSize, 1.0);
+      r = newNormX.clamp(l + minSize, 1.0).toDouble();
     }
 
     if (isTop) {
-      t = newNormY.clamp(0.0, b - minSize);
+      t = newNormY.clamp(0.0, b - minSize).toDouble();
     } else {
-      b = newNormY.clamp(t + minSize, 1.0);
+      b = newNormY.clamp(t + minSize, 1.0).toDouble();
     }
 
     state = state.copyWith(left: l, top: t, right: r, bottom: b);
   }
 
+  /// Resizes edge of active tray or outer bounds
   void resizeEdge({
     required RoiHandleType edge,
     required double newNormValue,
+    List<String>? slotCodes,
     double minSize = 0.05,
   }) {
+    if (state.selectedTrayCode != null && slotCodes != null) {
+      resizeTrayEdge(
+        code: state.selectedTrayCode!,
+        edge: edge,
+        newNormValue: newNormValue,
+        slotCodes: slotCodes,
+      );
+      return;
+    }
+
     double l = state.left;
     double t = state.top;
     double r = state.right;
@@ -183,16 +414,16 @@ class RoiNotifier extends StateNotifier<RoiState> {
 
     switch (edge) {
       case RoiHandleType.topEdge:
-        t = newNormValue.clamp(0.0, b - minSize);
+        t = newNormValue.clamp(0.0, b - minSize).toDouble();
         break;
       case RoiHandleType.bottomEdge:
-        b = newNormValue.clamp(t + minSize, 1.0);
+        b = newNormValue.clamp(t + minSize, 1.0).toDouble();
         break;
       case RoiHandleType.leftEdge:
-        l = newNormValue.clamp(0.0, r - minSize);
+        l = newNormValue.clamp(0.0, r - minSize).toDouble();
         break;
       case RoiHandleType.rightEdge:
-        r = newNormValue.clamp(l + minSize, 1.0);
+        r = newNormValue.clamp(l + minSize, 1.0).toDouble();
         break;
       default:
         return;
@@ -201,8 +432,14 @@ class RoiNotifier extends StateNotifier<RoiState> {
     state = state.copyWith(left: l, top: t, right: r, bottom: b);
   }
 
-  void scale(double scaleFactor, {Offset? focalPointNorm}) {
-    final focal = focalPointNorm ?? Offset((state.left + state.right) / 2, (state.top + state.bottom) / 2);
+  void scale(
+    double scaleFactor, {
+    Offset? focalPointNorm,
+    List<String>? slotCodes,
+  }) {
+    final focal =
+        focalPointNorm ??
+        Offset((state.left + state.right) / 2, (state.top + state.bottom) / 2);
     final curW = state.width;
     final curH = state.height;
 
@@ -242,18 +479,66 @@ class RoiNotifier extends StateNotifier<RoiState> {
     );
   }
 
-  void reset() {
-    state = state.copyWith(
-      left: 0.05,
-      top: 0.20,
-      right: 0.95,
-      bottom: 0.80,
-    );
-    save('San Pablo');
+  /// Resets a single detached tray box back to proportional default
+  void resetTray(String code, List<String> slotCodes) {
+    final boxes = Map<String, Rect>.from(state.trayBoxes);
+    boxes.remove(code);
+    _updateEnvelopeAndState(boxes);
   }
 
-  Future<void> save(String branch) async {
+  /// Resets all detached trays back to aligned defaults
+  void reset([List<String>? slotCodes]) {
+    state = state.copyWith(
+      left: 0.05,
+      top: 0.15,
+      right: 0.95,
+      bottom: 0.85,
+      trayBoxes: {},
+      selectedTrayCode: () => null,
+    );
+    save('San Pablo', slotCodes: slotCodes);
+  }
+
+  void _updateEnvelopeAndState(Map<String, Rect> newBoxes) {
+    if (newBoxes.isEmpty) {
+      state = state.copyWith(trayBoxes: newBoxes);
+      return;
+    }
+    final l = newBoxes.values.map((r) => r.left).reduce(math.min);
+    final t = newBoxes.values.map((r) => r.top).reduce(math.min);
+    final r = newBoxes.values.map((rect) => rect.right).reduce(math.max);
+    final b = newBoxes.values.map((rect) => rect.bottom).reduce(math.max);
+
+    state = state.copyWith(
+      left: l,
+      top: t,
+      right: r,
+      bottom: b,
+      trayBoxes: newBoxes,
+    );
+  }
+
+  Future<void> save(String branch, {List<String>? slotCodes}) async {
     try {
+      // 1. Save detailed detached tray boxes JSON to system_settings
+      final Map<String, dynamic> toSave = {};
+      final resolved = slotCodes != null
+          ? state.getResolvedTrayBoxes(slotCodes)
+          : state.trayBoxes;
+      resolved.forEach((k, r) {
+        toSave[k] = {
+          'left': r.left,
+          'top': r.top,
+          'right': r.right,
+          'bottom': r.bottom,
+        };
+      });
+      await _sqlite.setSystemSetting(
+        'camera_${cameraId}_tray_rois',
+        jsonEncode(toSave),
+      );
+
+      // 2. Save outer envelope to shelf_regions
       final regions = await _sqlite.getShelfRegions(branch);
       final match = regions.where((r) => r.cameraId == cameraId).firstOrNull;
       final status = state.isEnabled ? 'active' : 'seasonal_off';
@@ -289,7 +574,8 @@ class RoiNotifier extends StateNotifier<RoiState> {
   }
 }
 
-final cameraRoiProvider = StateNotifierProvider.family<RoiNotifier, RoiState, int>((ref, cameraId) {
-  final sqlite = SqliteService.instance;
-  return RoiNotifier(sqlite, ref, cameraId);
-});
+final cameraRoiProvider =
+    StateNotifierProvider.family<RoiNotifier, RoiState, int>((ref, cameraId) {
+      final sqlite = SqliteService.instance;
+      return RoiNotifier(sqlite, ref, cameraId);
+    });

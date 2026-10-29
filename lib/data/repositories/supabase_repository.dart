@@ -1,5 +1,7 @@
 import 'dart:async';
+
 import 'package:supabase_flutter/supabase_flutter.dart';
+
 import '../models/inventory_record_model.dart';
 import '../models/alert_model.dart';
 import '../models/inventory_event_model.dart';
@@ -7,6 +9,8 @@ import '../models/system_log_model.dart';
 import '../models/restock_record_model.dart';
 import '../models/sync_queue_model.dart';
 import '../models/shelf_region_model.dart';
+import '../models/sale_record_model.dart';
+import '../models/product_model.dart';
 
 class SupabaseRepository {
   SupabaseClient? get _supabase {
@@ -29,9 +33,13 @@ class SupabaseRepository {
       if (branch != null && branch.isNotEmpty && branch != 'All Branches') {
         query = query.eq('branch', branch);
       }
-      return query.map((data) {
-        return data.map((row) => InventoryRecordModel.fromMap(row)).toList();
-      }).handleError((_) => <InventoryRecordModel>[]);
+      return query
+          .map((data) {
+            return data
+                .map((row) => InventoryRecordModel.fromMap(row))
+                .toList();
+          })
+          .handleError((_) => <InventoryRecordModel>[]);
     } catch (_) {
       return const Stream.empty();
     }
@@ -65,11 +73,13 @@ class SupabaseRepository {
       if (branch != null && branch.isNotEmpty && branch != 'All Branches') {
         query = query.eq('branch', branch);
       }
-      return query.map((data) {
-        final list = data.map((row) => AlertModel.fromMap(row)).toList();
-        list.sort((a, b) => b.createdAt.compareTo(a.createdAt));
-        return list;
-      }).handleError((_) => <AlertModel>[]);
+      return query
+          .map((data) {
+            final list = data.map((row) => AlertModel.fromMap(row)).toList();
+            list.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+            return list;
+          })
+          .handleError((_) => <AlertModel>[]);
     } catch (_) {
       return const Stream.empty();
     }
@@ -127,11 +137,15 @@ class SupabaseRepository {
       if (branch != null && branch.isNotEmpty && branch != 'All Branches') {
         query = query.eq('branch', branch);
       }
-      return query.map((data) {
-        final list = data.map((row) => InventoryEventModel.fromMap(row)).toList();
-        list.sort((a, b) => b.timestamp.compareTo(a.timestamp));
-        return list;
-      }).handleError((_) => <InventoryEventModel>[]);
+      return query
+          .map((data) {
+            final list = data
+                .map((row) => InventoryEventModel.fromMap(row))
+                .toList();
+            list.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+            return list;
+          })
+          .handleError((_) => <InventoryEventModel>[]);
     } catch (_) {
       return const Stream.empty();
     }
@@ -157,11 +171,15 @@ class SupabaseRepository {
       if (branch != null && branch.isNotEmpty && branch != 'All Branches') {
         query = query.eq('branch', branch);
       }
-      return query.map((data) {
-        final list = data.map((row) => SystemLogModel.fromMap(row)).toList();
-        list.sort((a, b) => b.timestamp.compareTo(a.timestamp));
-        return list;
-      }).handleError((_) => <SystemLogModel>[]);
+      return query
+          .map((data) {
+            final list = data
+                .map((row) => SystemLogModel.fromMap(row))
+                .toList();
+            list.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+            return list;
+          })
+          .handleError((_) => <SystemLogModel>[]);
     } catch (_) {
       return const Stream.empty();
     }
@@ -203,9 +221,11 @@ class SupabaseRepository {
       if (branch != null && branch.isNotEmpty && branch != 'All Branches') {
         query = query.eq('branch', branch);
       }
-      return query.map((data) {
-        return data.map((row) => SyncQueueModel.fromMap(row)).toList();
-      }).handleError((_) => <SyncQueueModel>[]);
+      return query
+          .map((data) {
+            return data.map((row) => SyncQueueModel.fromMap(row)).toList();
+          })
+          .handleError((_) => <SyncQueueModel>[]);
     } catch (_) {
       return const Stream.empty();
     }
@@ -219,9 +239,13 @@ class SupabaseRepository {
       final client = _supabase;
       if (client == null) return const Stream.empty();
 
-      return client.from('restock_records').stream(primaryKey: ['id']).map((data) {
-        return data.map((row) => RestockRecordModel.fromMap(row)).toList();
-      }).handleError((_) => <RestockRecordModel>[]);
+      return client
+          .from('restock_records')
+          .stream(primaryKey: ['id'])
+          .map((data) {
+            return data.map((row) => RestockRecordModel.fromMap(row)).toList();
+          })
+          .handleError((_) => <RestockRecordModel>[]);
     } catch (_) {
       return const Stream.empty();
     }
@@ -247,8 +271,9 @@ class SupabaseRepository {
           .from('products')
           .stream(primaryKey: ['id'])
           .map((data) {
-        return data.map((row) => ProductModel.fromMap(row)).toList();
-      }).handleError((_) => <ProductModel>[]);
+            return data.map((row) => ProductModel.fromMap(row)).toList();
+          })
+          .handleError((_) => <ProductModel>[]);
     } catch (_) {
       return const Stream.empty();
     }
@@ -280,8 +305,9 @@ class SupabaseRepository {
           .stream(primaryKey: ['id'])
           .eq('branch', branch)
           .map((data) {
-        return data.map((row) => ShelfRegionModel.fromMap(row)).toList();
-      }).handleError((_) => <ShelfRegionModel>[]);
+            return data.map((row) => ShelfRegionModel.fromMap(row)).toList();
+          })
+          .handleError((_) => <ShelfRegionModel>[]);
     } catch (_) {
       return const Stream.empty();
     }
@@ -302,7 +328,11 @@ class SupabaseRepository {
     try {
       final client = _supabase;
       if (client != null) {
-        final data = await client.from('system_settings').select().eq('key', 'global_config').maybeSingle();
+        final data = await client
+            .from('system_settings')
+            .select()
+            .eq('key', 'global_config')
+            .maybeSingle();
         if (data != null && data['value'] != null) {
           return data;
         }
@@ -325,6 +355,48 @@ class SupabaseRepository {
         'key': 'global_config',
         'value': settings.toString(),
       });
+    } catch (_) {}
+  }
+
+  // ---------------------------------------------------------------------------
+  // SALES RECORDS
+  // ---------------------------------------------------------------------------
+  Stream<List<SaleRecordModel>> streamSalesRecords(String? branch) {
+    try {
+      final client = _supabase;
+      if (client == null) return const Stream.empty();
+
+      var query = client.from('sales_records').stream(primaryKey: ['id']);
+      if (branch != null && branch.isNotEmpty && branch != 'All Branches') {
+        query = query.eq('branch', branch);
+      }
+      return query
+          .map((data) {
+            final list = data
+                .map((row) => SaleRecordModel.fromMap(row))
+                .toList();
+            list.sort((a, b) => b.soldAt.compareTo(a.soldAt));
+            return list;
+          })
+          .handleError((_) => <SaleRecordModel>[]);
+    } catch (_) {
+      return const Stream.empty();
+    }
+  }
+
+  Future<void> saveSaleRecord(SaleRecordModel record) async {
+    try {
+      final client = _supabase;
+      if (client == null) return;
+      await client.from('sales_records').upsert(record.toSupabaseMap());
+    } catch (_) {}
+  }
+
+  Future<void> deleteSaleRecord(String id) async {
+    try {
+      final client = _supabase;
+      if (client == null) return;
+      await client.from('sales_records').delete().eq('id', id);
     } catch (_) {}
   }
 }

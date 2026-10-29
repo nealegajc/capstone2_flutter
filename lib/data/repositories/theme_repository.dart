@@ -5,7 +5,8 @@ class ThemeRepository {
 
   Future<bool> loadDarkMode() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getBool(_keyDarkMode) ?? true; // Default to dark mode for kiosk display
+    return prefs.getBool(_keyDarkMode) ??
+        true; // Default to dark mode for kiosk display
   }
 
   Future<void> saveDarkMode(bool isDark) async {

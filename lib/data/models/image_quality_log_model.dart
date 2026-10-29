@@ -53,7 +53,9 @@ class ImageQualityLogModel {
     final rawAcceptable = map['isAcceptable'] ?? map['is_acceptable'];
     final bool parsedAcceptable = (rawAcceptable is bool)
         ? rawAcceptable
-        : (rawAcceptable == 1 || rawAcceptable == '1' || rawAcceptable == 'true');
+        : (rawAcceptable == 1 ||
+              rawAcceptable == '1' ||
+              rawAcceptable == 'true');
 
     return ImageQualityLogModel(
       id: logId,
@@ -62,7 +64,8 @@ class ImageQualityLogModel {
       sharpness: (map['sharpness'] as num?)?.toDouble() ?? 0.0,
       isAcceptable: parsedAcceptable,
       preprocessingApplied: preprocessing,
-      retryCount: (map['retryCount'] ?? map['retry_count'] as num?)?.toInt() ?? 0,
+      retryCount:
+          (map['retryCount'] ?? map['retry_count'] as num?)?.toInt() ?? 0,
       status: map['status'] as String? ?? 'ACCEPTED',
       branch: map['branch'] as String? ?? 'San Pablo',
       timestamp: parsedDate,

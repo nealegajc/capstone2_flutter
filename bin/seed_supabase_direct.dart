@@ -1,50 +1,232 @@
+// ignore_for_file: avoid_print
 import 'dart:convert';
 import 'dart:io';
 
 void main() async {
-  const url = 'https://nnuzffushaaaxjmrreiv.supabase.co';
-  const anonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5udXpmZnVzaGFhYXhqbXJyZWl2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc1MTM3MzksImV4cCI6MjEwMzA4OTczOX0.QnxiNJfw5-xE45lFZf4V8CPeUyl68cLjSv944zJQ_-c';
+  final env = _loadEnv();
+  final url = env['SUPABASE_URL']!;
+  final anonKey = env['SUPABASE_ANON_KEY']!;
 
   final client = HttpClient();
 
   // 1. All 30 fragrance variants (15 Men, 15 Women)
   final maleVariants = [
-    {'codePrefix': 'A', 'name': 'Bvlgari Extreme', 'brand': 'Bvlgari', 'layer': 'Layer A (Top)', 'slot': 1},
-    {'codePrefix': 'B', 'name': 'Bvlgari Aqua', 'brand': 'Bvlgari', 'layer': 'Layer A (Top)', 'slot': 2},
-    {'codePrefix': 'C', 'name': 'Clinique Happy Men', 'brand': 'Clinique', 'layer': 'Layer A (Top)', 'slot': 3},
-    {'codePrefix': 'D', 'name': 'Christian Dior Sauvage', 'brand': 'Christian Dior', 'layer': 'Layer A (Top)', 'slot': 4},
-    {'codePrefix': 'E', 'name': 'Ralph Lauren Polo Black', 'brand': 'Ralph Lauren', 'layer': 'Layer A (Top)', 'slot': 5},
-    {'codePrefix': 'F', 'name': 'Davidoff Cool Water', 'brand': 'Davidoff', 'layer': 'Layer A (Top)', 'slot': 6},
-    {'codePrefix': 'G', 'name': 'Ralph Lauren Polo Red', 'brand': 'Ralph Lauren', 'layer': 'Layer A (Top)', 'slot': 7},
-    {'codePrefix': 'H', 'name': 'Lacoste Black', 'brand': 'Lacoste', 'layer': 'Layer A (Top)', 'slot': 8},
-    {'codePrefix': 'J', 'name': 'Hugo Boss', 'brand': 'Hugo Boss', 'layer': 'Layer A (Top)', 'slot': 9},
-    {'codePrefix': 'K', 'name': 'Lacoste Essential', 'brand': 'Lacoste', 'layer': 'Layer A (Top)', 'slot': 10},
+    {
+      'codePrefix': 'A',
+      'name': 'Bvlgari Extreme',
+      'brand': 'Bvlgari',
+      'layer': 'Layer A (Top)',
+      'slot': 1,
+    },
+    {
+      'codePrefix': 'B',
+      'name': 'Bvlgari Aqua',
+      'brand': 'Bvlgari',
+      'layer': 'Layer A (Top)',
+      'slot': 2,
+    },
+    {
+      'codePrefix': 'C',
+      'name': 'Clinique Happy Men',
+      'brand': 'Clinique',
+      'layer': 'Layer A (Top)',
+      'slot': 3,
+    },
+    {
+      'codePrefix': 'D',
+      'name': 'Christian Dior Sauvage',
+      'brand': 'Christian Dior',
+      'layer': 'Layer A (Top)',
+      'slot': 4,
+    },
+    {
+      'codePrefix': 'E',
+      'name': 'Ralph Lauren Polo Black',
+      'brand': 'Ralph Lauren',
+      'layer': 'Layer A (Top)',
+      'slot': 5,
+    },
+    {
+      'codePrefix': 'F',
+      'name': 'Davidoff Cool Water',
+      'brand': 'Davidoff',
+      'layer': 'Layer A (Top)',
+      'slot': 6,
+    },
+    {
+      'codePrefix': 'G',
+      'name': 'Ralph Lauren Polo Red',
+      'brand': 'Ralph Lauren',
+      'layer': 'Layer A (Top)',
+      'slot': 7,
+    },
+    {
+      'codePrefix': 'H',
+      'name': 'Lacoste Black',
+      'brand': 'Lacoste',
+      'layer': 'Layer A (Top)',
+      'slot': 8,
+    },
+    {
+      'codePrefix': 'J',
+      'name': 'Hugo Boss',
+      'brand': 'Hugo Boss',
+      'layer': 'Layer A (Top)',
+      'slot': 9,
+    },
+    {
+      'codePrefix': 'K',
+      'name': 'Lacoste Essential',
+      'brand': 'Lacoste',
+      'layer': 'Layer A (Top)',
+      'slot': 10,
+    },
     // Middle Layer Male Scents
-    {'codePrefix': 'A', 'name': 'Lacoste Red', 'brand': 'Lacoste', 'layer': 'Layer B (Middle)', 'slot': 1},
-    {'codePrefix': 'B', 'name': 'Lacoste White', 'brand': 'Lacoste', 'layer': 'Layer B (Middle)', 'slot': 2},
-    {'codePrefix': 'C', 'name': 'Paco Rabanne Invictus', 'brand': 'Paco Rabanne', 'layer': 'Layer B (Middle)', 'slot': 3},
-    {'codePrefix': 'D', 'name': 'Ralph Lauren Polo Sport', 'brand': 'Ralph Lauren', 'layer': 'Layer B (Middle)', 'slot': 4},
-    {'codePrefix': 'E', 'name': 'Tommy Boy', 'brand': 'Tommy Hilfiger', 'layer': 'Layer B (Middle)', 'slot': 5},
+    {
+      'codePrefix': 'A',
+      'name': 'Lacoste Red',
+      'brand': 'Lacoste',
+      'layer': 'Layer B (Middle)',
+      'slot': 1,
+    },
+    {
+      'codePrefix': 'B',
+      'name': 'Lacoste White',
+      'brand': 'Lacoste',
+      'layer': 'Layer B (Middle)',
+      'slot': 2,
+    },
+    {
+      'codePrefix': 'C',
+      'name': 'Paco Rabanne Invictus',
+      'brand': 'Paco Rabanne',
+      'layer': 'Layer B (Middle)',
+      'slot': 3,
+    },
+    {
+      'codePrefix': 'D',
+      'name': 'Ralph Lauren Polo Sport',
+      'brand': 'Ralph Lauren',
+      'layer': 'Layer B (Middle)',
+      'slot': 4,
+    },
+    {
+      'codePrefix': 'E',
+      'name': 'Tommy Boy',
+      'brand': 'Tommy Hilfiger',
+      'layer': 'Layer B (Middle)',
+      'slot': 5,
+    },
   ];
 
   final femaleVariants = [
     // Middle Layer Female Scents
-    {'codePrefix': 'F', 'name': 'Chanel Chance', 'brand': 'Chanel', 'layer': 'Layer B (Middle)', 'slot': 6},
-    {'codePrefix': 'G', 'name': 'Chanel No.5', 'brand': 'Chanel', 'layer': 'Layer B (Middle)', 'slot': 7},
-    {'codePrefix': 'H', 'name': 'Clinique Happy Women', 'brand': 'Clinique', 'layer': 'Layer B (Middle)', 'slot': 8},
-    {'codePrefix': 'J', 'name': 'Escada Moon Sparkle', 'brand': 'Escada', 'layer': 'Layer B (Middle)', 'slot': 9},
-    {'codePrefix': 'K', 'name': 'DKNY Be Delicious', 'brand': 'DKNY', 'layer': 'Layer B (Middle)', 'slot': 10},
+    {
+      'codePrefix': 'F',
+      'name': 'Chanel Chance',
+      'brand': 'Chanel',
+      'layer': 'Layer B (Middle)',
+      'slot': 6,
+    },
+    {
+      'codePrefix': 'G',
+      'name': 'Chanel No.5',
+      'brand': 'Chanel',
+      'layer': 'Layer B (Middle)',
+      'slot': 7,
+    },
+    {
+      'codePrefix': 'H',
+      'name': 'Clinique Happy Women',
+      'brand': 'Clinique',
+      'layer': 'Layer B (Middle)',
+      'slot': 8,
+    },
+    {
+      'codePrefix': 'J',
+      'name': 'Escada Moon Sparkle',
+      'brand': 'Escada',
+      'layer': 'Layer B (Middle)',
+      'slot': 9,
+    },
+    {
+      'codePrefix': 'K',
+      'name': 'DKNY Be Delicious',
+      'brand': 'DKNY',
+      'layer': 'Layer B (Middle)',
+      'slot': 10,
+    },
     // Bottom Layer Female Scents
-    {'codePrefix': 'A', 'name': 'D&G Light Blue Women', 'brand': 'Dolce & Gabbana', 'layer': 'Layer C (Bottom)', 'slot': 1},
-    {'codePrefix': 'B', 'name': 'Elizabeth Arden Green Tea', 'brand': 'Elizabeth Arden', 'layer': 'Layer C (Bottom)', 'slot': 2},
-    {'codePrefix': 'C', 'name': 'Chanel Coco', 'brand': 'Chanel', 'layer': 'Layer C (Bottom)', 'slot': 3},
-    {'codePrefix': 'D', 'name': 'Estee Lauder Pleasures', 'brand': 'Estee Lauder', 'layer': 'Layer C (Bottom)', 'slot': 4},
-    {'codePrefix': 'E', 'name': 'Ferragamo Incanto', 'brand': 'Salvatore Ferragamo', 'layer': 'Layer C (Bottom)', 'slot': 5},
-    {'codePrefix': 'F', 'name': 'Jo Malone Mimosa & Cardamom', 'brand': 'Jo Malone', 'layer': 'Layer C (Bottom)', 'slot': 6},
-    {'codePrefix': 'G', 'name': 'Ralph Lauren Romance', 'brand': 'Ralph Lauren', 'layer': 'Layer C (Bottom)', 'slot': 7},
-    {'codePrefix': 'H', 'name': 'Lancome La Vie Est Belle', 'brand': 'Lancome', 'layer': 'Layer C (Bottom)', 'slot': 8},
-    {'codePrefix': 'J', 'name': 'Lanvin Eclat D\'Arpege', 'brand': 'Lanvin', 'layer': 'Layer C (Bottom)', 'slot': 9},
-    {'codePrefix': 'K', 'name': 'Tommy Girl', 'brand': 'Tommy Hilfiger', 'layer': 'Layer C (Bottom)', 'slot': 10},
+    {
+      'codePrefix': 'A',
+      'name': 'D&G Light Blue Women',
+      'brand': 'Dolce & Gabbana',
+      'layer': 'Layer C (Bottom)',
+      'slot': 1,
+    },
+    {
+      'codePrefix': 'B',
+      'name': 'Elizabeth Arden Green Tea',
+      'brand': 'Elizabeth Arden',
+      'layer': 'Layer C (Bottom)',
+      'slot': 2,
+    },
+    {
+      'codePrefix': 'C',
+      'name': 'Chanel Coco',
+      'brand': 'Chanel',
+      'layer': 'Layer C (Bottom)',
+      'slot': 3,
+    },
+    {
+      'codePrefix': 'D',
+      'name': 'Estee Lauder Pleasures',
+      'brand': 'Estee Lauder',
+      'layer': 'Layer C (Bottom)',
+      'slot': 4,
+    },
+    {
+      'codePrefix': 'E',
+      'name': 'Ferragamo Incanto',
+      'brand': 'Salvatore Ferragamo',
+      'layer': 'Layer C (Bottom)',
+      'slot': 5,
+    },
+    {
+      'codePrefix': 'F',
+      'name': 'Jo Malone Mimosa & Cardamom',
+      'brand': 'Jo Malone',
+      'layer': 'Layer C (Bottom)',
+      'slot': 6,
+    },
+    {
+      'codePrefix': 'G',
+      'name': 'Ralph Lauren Romance',
+      'brand': 'Ralph Lauren',
+      'layer': 'Layer C (Bottom)',
+      'slot': 7,
+    },
+    {
+      'codePrefix': 'H',
+      'name': 'Lancome La Vie Est Belle',
+      'brand': 'Lancome',
+      'layer': 'Layer C (Bottom)',
+      'slot': 8,
+    },
+    {
+      'codePrefix': 'J',
+      'name': 'Lanvin Eclat D\'Arpege',
+      'brand': 'Lanvin',
+      'layer': 'Layer C (Bottom)',
+      'slot': 9,
+    },
+    {
+      'codePrefix': 'K',
+      'name': 'Tommy Girl',
+      'brand': 'Tommy Hilfiger',
+      'layer': 'Layer C (Bottom)',
+      'slot': 10,
+    },
   ];
 
   final List<Map<String, dynamic>> products = [];
@@ -52,8 +234,12 @@ void main() async {
 
   // Generate 60 SKUs
   for (final v in [...maleVariants, ...femaleVariants]) {
-    final layerCode = (v['layer'] as String).contains('Layer A') ? 'A' : ((v['layer'] as String).contains('Layer B') ? 'B' : 'C');
-    final isMale = (v['layer'] as String).contains('Layer A') || ((v['layer'] as String).contains('Layer B') && (v['slot'] as int) <= 5);
+    final layerCode = (v['layer'] as String).contains('Layer A')
+        ? 'A'
+        : ((v['layer'] as String).contains('Layer B') ? 'B' : 'C');
+    final isMale =
+        (v['layer'] as String).contains('Layer A') ||
+        ((v['layer'] as String).contains('Layer B') && (v['slot'] as int) <= 5);
     final category = isMale ? 'Men' : 'Women';
     final slotCode = v['codePrefix'] as String;
 
@@ -66,7 +252,7 @@ void main() async {
       'brand': v['brand'],
       'category': category,
       'bottle_size': '100ml',
-      'price': 0.0,
+      'price': 260.0,
       'status': 'active',
     });
     inventory.add({
@@ -80,7 +266,7 @@ void main() async {
       'detected': 5,
       'status': 'normal',
       'misplacement_details': '',
-      'price': 0.0,
+      'price': 260.0,
       'last_updated': DateTime.now().toIso8601String(),
     });
 
@@ -93,7 +279,7 @@ void main() async {
       'brand': v['brand'],
       'category': category,
       'bottle_size': '50ml',
-      'price': 0.0,
+      'price': 180.0,
       'status': 'active',
     });
     inventory.add({
@@ -107,19 +293,67 @@ void main() async {
       'detected': 5,
       'status': 'normal',
       'misplacement_details': '',
-      'price': 0.0,
+      'price': 180.0,
       'last_updated': DateTime.now().toIso8601String(),
     });
   }
 
   // Shelf Regions (6 Mounted Cameras × 2 Bottle Sizes = 12 Regions)
   final cameras = [
-    {'id': 1, 'name': 'Camera 1A (Top Left)', 'layer': 'Layer A (Top)', 'pos': 'left', 'node': '/dev/video0', 'code1': 'AA1-AE1', 'code2': 'AA2-AE2'},
-    {'id': 2, 'name': 'Camera 1B (Top Right)', 'layer': 'Layer A (Top)', 'pos': 'right', 'node': '/dev/video1', 'code1': 'AF1-AK1', 'code2': 'AF2-AK2'},
-    {'id': 3, 'name': 'Camera 2A (Middle Left)', 'layer': 'Layer B (Middle)', 'pos': 'left', 'node': '/dev/video2', 'code1': 'BA1-BE1', 'code2': 'BA2-BE2'},
-    {'id': 4, 'name': 'Camera 2B (Middle Right)', 'layer': 'Layer B (Middle)', 'pos': 'right', 'node': '/dev/video3', 'code1': 'BF1-BK1', 'code2': 'BF2-BK2'},
-    {'id': 5, 'name': 'Camera 3A (Bottom Left)', 'layer': 'Layer C (Bottom)', 'pos': 'left', 'node': '/dev/video4', 'code1': 'CA1-CE1', 'code2': 'CA2-CE2'},
-    {'id': 6, 'name': 'Camera 3B (Bottom Right)', 'layer': 'Layer C (Bottom)', 'pos': 'right', 'node': '/dev/video5', 'code1': 'CF1-CK1', 'code2': 'CF2-CK2'},
+    {
+      'id': 1,
+      'name': 'Cam 1A (left)',
+      'layer': 'Layer A (Top)',
+      'pos': 'left',
+      'node': '/dev/video0',
+      'code1': 'AA1-AE1',
+      'code2': 'AA2-AE2',
+    },
+    {
+      'id': 2,
+      'name': 'Cam 1B (Right)',
+      'layer': 'Layer A (Top)',
+      'pos': 'right',
+      'node': '/dev/video4',
+      'code1': 'AF1-AK1',
+      'code2': 'AF2-AK2',
+    },
+    {
+      'id': 3,
+      'name': 'Cam 2A (left)',
+      'layer': 'Layer B (Middle)',
+      'pos': 'left',
+      'node': '/dev/video6',
+      'code1': 'BA1-BE1',
+      'code2': 'BA2-BE2',
+    },
+    {
+      'id': 4,
+      'name': 'Cam 2B (Right)',
+      'layer': 'Layer B (Middle)',
+      'pos': 'right',
+      'node': '/dev/video8',
+      'code1': 'BF1-BK1',
+      'code2': 'BF2-BK2',
+    },
+    {
+      'id': 5,
+      'name': 'Cam 3A (left)',
+      'layer': 'Layer C (Bottom)',
+      'pos': 'left',
+      'node': '/dev/video10',
+      'code1': 'CA1-CE1',
+      'code2': 'CA2-CE2',
+    },
+    {
+      'id': 6,
+      'name': 'Cam 3B (Right)',
+      'layer': 'Layer C (Bottom)',
+      'pos': 'right',
+      'node': '/dev/video12',
+      'code1': 'CF1-CK1',
+      'code2': 'CF2-CK2',
+    },
   ];
 
   final List<Map<String, dynamic>> shelfRegions = [];
@@ -180,7 +414,9 @@ void main() async {
     req.write(jsonEncode(payload));
     final res = await req.close();
     final body = await res.transform(utf8.decoder).join();
-    print('[$table] HTTP ${res.statusCode}: ${body.isEmpty ? "Success" : body}');
+    print(
+      '[$table] HTTP ${res.statusCode}: ${body.isEmpty ? "Success" : body}',
+    );
   }
 
   print('=== RE-SEEDING PRODUCTS (60 SKUs) ===');
@@ -194,4 +430,29 @@ void main() async {
 
   print('\n✓ Done! Supabase records updated.');
   exit(0);
+}
+
+/// Reads `SUPABASE_URL` and `SUPABASE_ANON_KEY` from the project `.env` file.
+Map<String, String> _loadEnv() {
+  final file = File('.env');
+  if (!file.existsSync()) {
+    stderr.writeln('Missing .env file. Run this script from the project root.');
+    exit(1);
+  }
+  final env = <String, String>{};
+  for (final line in file.readAsLinesSync()) {
+    final trimmed = line.trim();
+    if (trimmed.isEmpty || trimmed.startsWith('#') || !trimmed.contains('=')) {
+      continue;
+    }
+    final idx = trimmed.indexOf('=');
+    env[trimmed.substring(0, idx).trim()] = trimmed.substring(idx + 1).trim();
+  }
+  for (final key in ['SUPABASE_URL', 'SUPABASE_ANON_KEY']) {
+    if (env[key] == null || env[key]!.isEmpty) {
+      stderr.writeln('Missing $key in .env');
+      exit(1);
+    }
+  }
+  return env;
 }

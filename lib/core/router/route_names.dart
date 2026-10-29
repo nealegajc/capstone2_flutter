@@ -43,6 +43,7 @@ class AppRoutePaths {
 
   // Fig 3.31: Reports & Analytics Screen
   static const String reports = '/reports';
+  static const String sales = '/reports/sales';
 
   // Fig 3.32: System Activity Logs Screen
   static const String activityLogs = '/logs';
@@ -74,6 +75,7 @@ class AppRouteNames {
   static const String syncQueue = 'syncQueue';
   static const String alerts = 'alerts';
   static const String reports = 'reports';
+  static const String sales = 'sales';
   static const String activityLogs = 'activityLogs';
   static const String settings = 'settings';
   static const String helpGuide = 'helpGuide';

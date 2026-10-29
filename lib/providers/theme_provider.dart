@@ -1,11 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import '../data/repositories/theme_repository.dart';
 import '../data/services/sqlite_service.dart';
 
-final themeRepositoryProvider = Provider<ThemeRepository>((ref) => ThemeRepository());
+final themeRepositoryProvider = Provider<ThemeRepository>(
+  (ref) => ThemeRepository(),
+);
 
-final themeModeProvider = StateNotifierProvider<ThemeModeNotifier, ThemeMode>((ref) {
+final themeModeProvider = StateNotifierProvider<ThemeModeNotifier, ThemeMode>((
+  ref,
+) {
   final repo = ref.watch(themeRepositoryProvider);
   return ThemeModeNotifier(repo);
 });
@@ -33,7 +38,8 @@ class ThemeModeNotifier extends StateNotifier<ThemeMode> {
       await _repo.saveDarkMode(newMode == ThemeMode.dark);
       await SqliteService.instance.logActivity(
         type: 'THEME_SWITCH',
-        description: 'Kiosk display theme changed to ${newMode == ThemeMode.dark ? 'Dark Mode' : 'Light Mode'}.',
+        description:
+            'Kiosk display theme changed to ${newMode == ThemeMode.dark ? 'Dark Mode' : 'Light Mode'}.',
       );
     } catch (_) {}
   }
@@ -44,7 +50,8 @@ class ThemeModeNotifier extends StateNotifier<ThemeMode> {
       await _repo.saveDarkMode(mode == ThemeMode.dark);
       await SqliteService.instance.logActivity(
         type: 'THEME_SWITCH',
-        description: 'Kiosk display theme set to ${mode == ThemeMode.dark ? 'Dark Mode' : 'Light Mode'}.',
+        description:
+            'Kiosk display theme set to ${mode == ThemeMode.dark ? 'Dark Mode' : 'Light Mode'}.',
       );
     } catch (_) {}
   }

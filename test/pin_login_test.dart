@@ -5,7 +5,9 @@ import 'package:smart_shelf_linux/core/theme/app_theme.dart';
 import 'package:smart_shelf_linux/ui/screens/auth/pin_login_screen.dart';
 
 void main() {
-  testWidgets('PinLoginScreen renders branding, title, and touch numpad', (tester) async {
+  testWidgets('PinLoginScreen renders branding, title, and touch numpad', (
+    tester,
+  ) async {
     tester.view.physicalSize = const Size(1920, 1080);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(() => tester.view.resetPhysicalSize());

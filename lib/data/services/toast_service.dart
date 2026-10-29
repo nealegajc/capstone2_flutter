@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+
 import '../../ui/components/alert_toast.dart';
 
 class ToastService {
-  static final GlobalKey<ScaffoldMessengerState> messengerKey = GlobalKey<ScaffoldMessengerState>();
+  static final GlobalKey<ScaffoldMessengerState> messengerKey =
+      GlobalKey<ScaffoldMessengerState>();
 
   static void showToast({
     required String title,

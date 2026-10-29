@@ -1,10 +1,28 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 class SupabaseConfig {
-  static String get url =>
-      dotenv.env['SUPABASE_URL'] ?? 'https://nnuzffushaaaxjmrreiv.supabase.co';
+  static String get url {
+    final value =
+        dotenv.env['SUPABASE_URL'] ??
+        const String.fromEnvironment('SUPABASE_URL');
+    if (value.isEmpty) {
+      debugPrint(
+        'WARNING: SUPABASE_URL is missing from environment configuration.',
+      );
+    }
+    return value;
+  }
 
-  static String get anonKey =>
-      dotenv.env['SUPABASE_ANON_KEY'] ??
-      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5udXpmZnVzaGFhYXhqbXJyZWl2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc1MTM3MzksImV4cCI6MjEwMzA4OTczOX0.QnxiNJfw5-xE45lFZf4V8CPeUyl68cLjSv944zJQ_-c';
+  static String get anonKey {
+    final value =
+        dotenv.env['SUPABASE_ANON_KEY'] ??
+        const String.fromEnvironment('SUPABASE_ANON_KEY');
+    if (value.isEmpty) {
+      debugPrint(
+        'WARNING: SUPABASE_ANON_KEY is missing from environment configuration.',
+      );
+    }
+    return value;
+  }
 }

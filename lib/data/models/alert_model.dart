@@ -51,7 +51,8 @@ class AlertModel {
       branch: map['branch'] as String? ?? 'San Pablo',
       type: map['type'] as String? ?? 'low_stock',
       isRead: parsedIsRead,
-      perfumeCode: map['perfumeCode'] as String? ?? map['perfume_code'] as String? ?? '',
+      perfumeCode:
+          map['perfumeCode'] as String? ?? map['perfume_code'] as String? ?? '',
       createdAt: parsedDate,
     );
   }

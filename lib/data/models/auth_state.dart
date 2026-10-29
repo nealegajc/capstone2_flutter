@@ -37,7 +37,8 @@ class AuthState {
       errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
       failedAttempts: failedAttempts ?? this.failedAttempts,
       isLockedOut: isLockedOut ?? this.isLockedOut,
-      lockoutRemainingSeconds: lockoutRemainingSeconds ?? this.lockoutRemainingSeconds,
+      lockoutRemainingSeconds:
+          lockoutRemainingSeconds ?? this.lockoutRemainingSeconds,
       token: token ?? this.token,
     );
   }

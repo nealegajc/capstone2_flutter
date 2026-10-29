@@ -1,6 +1,8 @@
 import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import '../data/services/sqlite_service.dart';
 import 'auth_provider.dart';
 
@@ -168,7 +170,8 @@ class AutoLockNotifier extends StateNotifier<AutoLockState> {
     try {
       await _sqlite.logActivity(
         type: 'AUTOLOCK',
-        description: 'Terminal automatically locked due to ${state.timeoutMinutes} min(s) of inactivity.',
+        description:
+            'Terminal automatically locked due to ${state.timeoutMinutes} min(s) of inactivity.',
       );
     } catch (_) {}
 
@@ -176,7 +179,9 @@ class AutoLockNotifier extends StateNotifier<AutoLockState> {
   }
 }
 
-final autoLockProvider = StateNotifierProvider<AutoLockNotifier, AutoLockState>((ref) {
-  final sqlite = SqliteService.instance;
-  return AutoLockNotifier(ref, sqlite);
-});
+final autoLockProvider = StateNotifierProvider<AutoLockNotifier, AutoLockState>(
+  (ref) {
+    final sqlite = SqliteService.instance;
+    return AutoLockNotifier(ref, sqlite);
+  },
+);

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import '../theme/app_theme.dart';
 
 class AlertToast extends StatelessWidget {
@@ -55,7 +56,10 @@ class AlertToast extends StatelessWidget {
         decoration: BoxDecoration(
           color: isDark ? const Color(0xFF1E293B) : Colors.white,
           borderRadius: BorderRadius.circular(18.0),
-          border: Border.all(color: accentColor.withValues(alpha: 0.5), width: 1.5),
+          border: Border.all(
+            color: accentColor.withValues(alpha: 0.5),
+            width: 1.5,
+          ),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withValues(alpha: isDark ? 0.35 : 0.08),
@@ -92,7 +96,9 @@ class AlertToast extends StatelessWidget {
                   Text(
                     message,
                     style: TextStyle(
-                      color: isDark ? const Color(0xFFCBD5E1) : const Color(0xFF475569),
+                      color: isDark
+                          ? const Color(0xFFCBD5E1)
+                          : const Color(0xFF475569),
                       fontSize: 13,
                     ),
                   ),

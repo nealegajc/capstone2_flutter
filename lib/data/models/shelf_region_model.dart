@@ -5,8 +5,10 @@ class ShelfRegionModel {
   final String assignedProductName;
   final String branch;
   final int cameraId; // 1 (1A), 2 (1B), 3 (2A), 4 (2B), 5 (3A), 6 (3B)
-  final String cameraName; // 'Camera 1A (Top Left)', 'Camera 1B (Top Right)', etc.
-  final String layerName; // 'Layer A (Top)', 'Layer B (Middle)', 'Layer C (Bottom)'
+  final String
+  cameraName; // 'Camera 1A (Top Left)', 'Camera 1B (Top Right)', etc.
+  final String
+  layerName; // 'Layer A (Top)', 'Layer B (Middle)', 'Layer C (Bottom)'
   final String cameraPosition; // 'left' or 'right'
   final String deviceNode; // e.g. '/dev/video2'
   final String bottleSize; // '100ml' or '50ml'
@@ -47,23 +49,41 @@ class ShelfRegionModel {
     return ShelfRegionModel(
       id: regionId,
       code: map['code'] as String? ?? '',
-      assignedProductId: map['assignedProductId'] as String? ??
+      assignedProductId:
+          map['assignedProductId'] as String? ??
           map['assigned_product_id'] as String? ??
           '',
-      assignedProductName: map['assignedProductName'] as String? ??
+      assignedProductName:
+          map['assignedProductName'] as String? ??
           map['assigned_product_name'] as String? ??
           '',
       branch: map['branch'] as String? ?? 'San Pablo',
       cameraId: (map['cameraId'] ?? map['camera_id'] as num?)?.toInt() ?? 1,
-      cameraName: map['cameraName'] as String? ?? map['camera_name'] as String? ?? 'Camera 1A (Top Left)',
-      layerName: map['layerName'] as String? ?? map['layer_name'] as String? ?? 'Layer A (Top)',
-      cameraPosition: map['cameraPosition'] as String? ?? map['camera_position'] as String? ?? 'left',
-      deviceNode: map['deviceNode'] as String? ?? map['device_node'] as String? ?? '/dev/video2',
-      bottleSize: map['bottleSize'] as String? ?? map['bottle_size'] as String? ?? '100ml',
+      cameraName:
+          map['cameraName'] as String? ??
+          map['camera_name'] as String? ??
+          'Camera 1A (Top Left)',
+      layerName:
+          map['layerName'] as String? ??
+          map['layer_name'] as String? ??
+          'Layer A (Top)',
+      cameraPosition:
+          map['cameraPosition'] as String? ??
+          map['camera_position'] as String? ??
+          'left',
+      deviceNode:
+          map['deviceNode'] as String? ??
+          map['device_node'] as String? ??
+          '/dev/video2',
+      bottleSize:
+          map['bottleSize'] as String? ??
+          map['bottle_size'] as String? ??
+          '100ml',
       left: ((map['left_coord'] ?? map['left']) as num?)?.toDouble() ?? 0.0,
       right: ((map['right_coord'] ?? map['right']) as num?)?.toDouble() ?? 1.0,
       top: ((map['top_coord'] ?? map['top']) as num?)?.toDouble() ?? 0.0,
-      bottom: ((map['bottom_coord'] ?? map['bottom']) as num?)?.toDouble() ?? 1.0,
+      bottom:
+          ((map['bottom_coord'] ?? map['bottom']) as num?)?.toDouble() ?? 1.0,
       status: map['status'] as String? ?? 'active',
     );
   }

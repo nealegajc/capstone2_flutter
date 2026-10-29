@@ -1,14 +1,16 @@
 import 'dart:convert';
 import 'dart:typed_data';
+
 import 'package:http/http.dart' as http;
-import '../../core/constants.dart';
+
+import '../../core/constants/app_constants.dart';
 import '../models/detection_result_model.dart';
 import '../models/image_quality_log_model.dart';
 
 class PythonApiRepository {
   final String baseUrl;
 
-  PythonApiRepository({this.baseUrl = AppConstants.pythonApiBaseUrl});
+  PythonApiRepository({this.baseUrl = AppConstants.defaultApiBaseUrl});
 
   Future<Map<String, dynamic>> getHardwareStatus() async {
     try {
@@ -57,68 +59,15 @@ class PythonApiRepository {
         final data = jsonDecode(response.body);
         if (data is List) {
           return data
-              .map((item) => DetectionResultModel.fromJson(item as Map<String, dynamic>))
+              .map(
+                (item) =>
+                    DetectionResultModel.fromJson(item as Map<String, dynamic>),
+              )
               .toList();
         }
       }
     } catch (_) {}
-    return [
-      DetectionResultModel(
-        id: 'det_1',
-        monitoringRunId: 'run_sample_1',
-        detectedObject: 'perfume_bottle_100ml',
-        yoloConfidence: 0.96,
-        boundingBox: [0.05, 0.25, 0.08, 0.50],
-        roiId: 'tray_A_100ml',
-        recognizedCode: 'AA1',
-        ocrConfidence: 0.98,
-        matchResult: 'matched',
-      ),
-      DetectionResultModel(
-        id: 'det_2',
-        monitoringRunId: 'run_sample_1',
-        detectedObject: 'perfume_bottle_50ml',
-        yoloConfidence: 0.94,
-        boundingBox: [0.15, 0.25, 0.08, 0.50],
-        roiId: 'tray_A_50ml',
-        recognizedCode: 'AA2',
-        ocrConfidence: 0.95,
-        matchResult: 'matched',
-      ),
-      DetectionResultModel(
-        id: 'det_3',
-        monitoringRunId: 'run_sample_1',
-        detectedObject: 'perfume_bottle_100ml',
-        yoloConfidence: 0.93,
-        boundingBox: [0.25, 0.25, 0.08, 0.50],
-        roiId: 'tray_B_100ml',
-        recognizedCode: 'AB1',
-        ocrConfidence: 0.97,
-        matchResult: 'matched',
-      ),
-      DetectionResultModel(
-        id: 'det_4',
-        monitoringRunId: 'run_sample_1',
-        detectedObject: 'perfume_bottle_50ml',
-        yoloConfidence: 0.92,
-        boundingBox: [0.35, 0.25, 0.08, 0.50],
-        roiId: 'tray_B_50ml',
-        recognizedCode: 'AB2',
-        ocrConfidence: 0.94,
-        matchResult: 'matched',
-      ),
-      DetectionResultModel(
-        id: 'det_5',
-        monitoringRunId: 'run_sample_1',
-        detectedObject: 'perfume_bottle_100ml',
-        yoloConfidence: 0.95,
-        boundingBox: [0.45, 0.25, 0.08, 0.50],
-        roiId: 'tray_C_100ml',
-        recognizedCode: 'AC1',
-        ocrConfidence: 0.96,
-        matchResult: 'matched',
-      ),
-    ];
+    return [];
   }
 
   Future<Uint8List?> getCalibrationFrame() async {
@@ -157,11 +106,11 @@ class PythonApiRepository {
           .timeout(const Duration(seconds: 5));
       return response.statusCode == 200;
     } catch (_) {
-      return true; // Local success fallback
+      return false;
     }
   }
 
-  Future<ImageQualityLogModel> getLatestImageQualityLog() async {
+  Future<ImageQualityLogModel?> getLatestImageQualityLog() async {
     try {
       final response = await http
           .get(Uri.parse('$baseUrl/image-quality/log'))
@@ -170,16 +119,7 @@ class PythonApiRepository {
         return ImageQualityLogModel.fromJson(jsonDecode(response.body));
       }
     } catch (_) {}
-    return ImageQualityLogModel(
-      id: 'qa_log_${DateTime.now().millisecondsSinceEpoch}',
-      brightness: 78.5,
-      contrast: 82.1,
-      sharpness: 90.4,
-      isAcceptable: true,
-      preprocessingApplied: ['CLAHE', 'Bilateral_Filter', 'Sharpening'],
-      retryCount: 0,
-      status: 'ACCEPTED',
-    );
+    return null;
   }
 
   Future<bool> forceCloudSync() async {

@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:provider/provider.dart';
-import 'package:smart_shelf_linux/providers/app_provider.dart';
-import 'package:smart_shelf_linux/app.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:smart_shelf_linux/main.dart';
 
 void main() {
   setUp(() {
@@ -16,18 +15,7 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
-    final provider = AppProvider();
-
-    await tester.pumpWidget(
-      MultiProvider(
-        providers: [
-          ChangeNotifierProvider.value(value: provider),
-        ],
-        child: const SmartShelfApp(),
-      ),
-    );
-    expect(find.byType(SmartShelfApp), findsOneWidget);
-
-    provider.dispose();
+    await tester.pumpWidget(const ProviderScope(child: OttoScentsKioskApp()));
+    expect(find.byType(OttoScentsKioskApp), findsOneWidget);
   });
 }

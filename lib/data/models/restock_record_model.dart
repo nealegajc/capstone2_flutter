@@ -35,22 +35,19 @@ class RestockRecordModel {
 
     return RestockRecordModel(
       id: restockId,
-      productName: map['productName'] as String? ??
-          map['product_name'] as String? ??
-          '',
-      perfumeCode: map['perfumeCode'] as String? ??
-          map['perfume_code'] as String? ??
-          '',
+      productName:
+          map['productName'] as String? ?? map['product_name'] as String? ?? '',
+      perfumeCode:
+          map['perfumeCode'] as String? ?? map['perfume_code'] as String? ?? '',
       quantity: (map['quantity'] as num?)?.toInt() ?? 1,
-      fromBranch: map['fromBranch'] as String? ??
+      fromBranch:
+          map['fromBranch'] as String? ??
           map['from_branch'] as String? ??
           'San Pablo',
-      toBranch: map['toBranch'] as String? ??
-          map['to_branch'] as String? ??
-          'Lipa',
-      requestedBy: map['requestedBy'] as String? ??
-          map['requested_by'] as String? ??
-          '',
+      toBranch:
+          map['toBranch'] as String? ?? map['to_branch'] as String? ?? 'Lipa',
+      requestedBy:
+          map['requestedBy'] as String? ?? map['requested_by'] as String? ?? '',
       status: map['status'] as String? ?? 'pending',
       createdAt: parsedDate,
     );

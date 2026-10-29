@@ -1,5 +1,7 @@
 import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import '../data/models/inventory_record_model.dart';
 import '../data/models/product_model.dart';
 import '../data/models/shelf_region_model.dart';
@@ -33,59 +35,106 @@ final networkStatusProvider = Provider<NetworkStatus>((ref) {
 });
 
 /// Dynamic Inventory Records Provider
-final liveInventoryProvider = FutureProvider.autoDispose.family<List<InventoryRecordModel>, String?>((ref, branch) async {
-  final sqlite = ref.watch(sqliteServiceProvider);
-  return await sqlite.getInventoryRecords(branch);
-});
+final liveInventoryProvider = FutureProvider.autoDispose
+    .family<List<InventoryRecordModel>, String?>((ref, branch) async {
+      final sqlite = ref.watch(sqliteServiceProvider);
+      return await sqlite.getInventoryRecords(branch);
+    });
 
 /// Dynamic Master Products Catalog Provider
-final masterProductsProvider = FutureProvider.autoDispose<List<ProductModel>>((ref) async {
+final masterProductsProvider = FutureProvider.autoDispose<List<ProductModel>>((
+  ref,
+) async {
   final sqlite = ref.watch(sqliteServiceProvider);
   return await sqlite.getProducts();
 });
 
 /// Dynamic Shelf Regions (6 Cameras) Provider
-final shelfRegionsProvider = FutureProvider.autoDispose.family<List<ShelfRegionModel>, String>((ref, branch) async {
-  final sqlite = ref.watch(sqliteServiceProvider);
-  return await sqlite.getShelfRegions(branch);
-});
+final shelfRegionsProvider = FutureProvider.autoDispose
+    .family<List<ShelfRegionModel>, String>((ref, branch) async {
+      final sqlite = ref.watch(sqliteServiceProvider);
+      return await sqlite.getShelfRegions(branch);
+    });
 
 /// Dynamic Active Alerts Provider
-final liveAlertsProvider = FutureProvider.autoDispose.family<List<AlertModel>, String?>((ref, branch) async {
-  final sqlite = ref.watch(sqliteServiceProvider);
-  return await sqlite.getAlerts(branch);
-});
+final liveAlertsProvider = FutureProvider.autoDispose
+    .family<List<AlertModel>, String?>((ref, branch) async {
+      final sqlite = ref.watch(sqliteServiceProvider);
+      return await sqlite.getAlerts(branch);
+    });
 
 /// Dynamic Stock Movement Events Logs Provider
-final stockMovementLogsProvider = FutureProvider.autoDispose.family<List<InventoryEventModel>, String?>((ref, branch) async {
-  final sqlite = ref.watch(sqliteServiceProvider);
-  return await sqlite.getInventoryEvents(branch);
-});
+final stockMovementLogsProvider = FutureProvider.autoDispose
+    .family<List<InventoryEventModel>, String?>((ref, branch) async {
+      final sqlite = ref.watch(sqliteServiceProvider);
+      return await sqlite.getInventoryEvents(branch);
+    });
 
 /// Dynamic System Activity Logs Provider
-final systemActivityLogsProvider = FutureProvider.autoDispose.family<List<SystemLogModel>, String?>((ref, branch) async {
-  final sqlite = ref.watch(sqliteServiceProvider);
-  return await sqlite.getSystemLogs(branch);
-});
+final systemActivityLogsProvider = StreamProvider.autoDispose
+    .family<List<SystemLogModel>, String?>((ref, branch) {
+      final sqlite = ref.watch(sqliteServiceProvider);
+      final syncService = ref.read(syncServiceProvider);
+
+      // Auto-pull latest logs from Supabase cloud in the background once upon provider initialization
+      syncService.pullLatestSystemLogs(limit: 200);
+
+      final controller = StreamController<List<SystemLogModel>>();
+      Timer? debounceTimer;
+
+      Future<void> emitLogs() async {
+        try {
+          final logs = await sqlite.getSystemLogs(branch, limit: 300);
+          if (!controller.isClosed) {
+            controller.add(logs);
+          }
+        } catch (e, st) {
+          if (!controller.isClosed) {
+            controller.addError(e, st);
+          }
+        }
+      }
+
+      // Initial fetch
+      emitLogs();
+
+      final subscription = sqlite.onActivityLogUpdated.listen((_) {
+        debounceTimer?.cancel();
+        debounceTimer = Timer(const Duration(milliseconds: 150), () {
+          emitLogs();
+        });
+      });
+
+      ref.onDispose(() {
+        debounceTimer?.cancel();
+        subscription.cancel();
+        controller.close();
+      });
+
+      return controller.stream;
+    });
 
 /// Dynamic Sync Queue Provider bound to SyncService State
-final syncQueueListProvider = FutureProvider.autoDispose.family<List<SyncQueueModel>, String?>((ref, branch) async {
-  ref.watch(syncServiceProvider);
-  final sqlite = ref.watch(sqliteServiceProvider);
-  return await sqlite.getSyncQueue(branch);
-});
+final syncQueueListProvider = FutureProvider.autoDispose
+    .family<List<SyncQueueModel>, String?>((ref, branch) async {
+      ref.watch(syncServiceProvider);
+      final sqlite = ref.watch(sqliteServiceProvider);
+      return await sqlite.getSyncQueue(branch);
+    });
 
 /// Dynamic Restock Records Provider
-final restockRecordsProvider = FutureProvider.autoDispose.family<List<RestockRecordModel>, String?>((ref, branch) async {
-  final sqlite = ref.watch(sqliteServiceProvider);
-  return await sqlite.getRestockRecords(branch);
-});
+final restockRecordsProvider = FutureProvider.autoDispose
+    .family<List<RestockRecordModel>, String?>((ref, branch) async {
+      final sqlite = ref.watch(sqliteServiceProvider);
+      return await sqlite.getRestockRecords(branch);
+    });
 
 /// Dynamic Image Quality Logs Provider
-final imageQualityLogsProvider = FutureProvider.autoDispose.family<List<ImageQualityLogModel>, String?>((ref, branch) async {
-  final sqlite = ref.watch(sqliteServiceProvider);
-  return await sqlite.getImageQualityLogs(branch);
-});
+final imageQualityLogsProvider = FutureProvider.autoDispose
+    .family<List<ImageQualityLogModel>, String?>((ref, branch) async {
+      final sqlite = ref.watch(sqliteServiceProvider);
+      return await sqlite.getImageQualityLogs(branch);
+    });
 
 /// Computed Dashboard Statistics Provider with 5s Auto-Refresh
 class DashboardStats {
@@ -104,40 +153,43 @@ class DashboardStats {
   });
 }
 
-final dashboardStatsProvider = FutureProvider.autoDispose.family<DashboardStats, String?>((ref, branch) async {
-  final inventory = await ref.watch(liveInventoryProvider(branch).future);
-  final alerts = await ref.watch(liveAlertsProvider(branch).future);
+final dashboardStatsProvider = FutureProvider.autoDispose
+    .family<DashboardStats, String?>((ref, branch) async {
+      final inventory = await ref.watch(liveInventoryProvider(branch).future);
+      final alerts = await ref.watch(liveAlertsProvider(branch).future);
 
-  int totalInStock = 0;
-  int lowStock = 0;
-  int misplaced = 0;
-  int needsVerification = 0;
-  int activeItemCount = 0;
+      int totalInStock = 0;
+      int lowStock = 0;
+      int misplaced = 0;
+      int needsVerification = 0;
+      int activeItemCount = 0;
 
-  for (final item in inventory) {
-    if (item.isSeasonalOff) continue;
-    activeItemCount++;
-    totalInStock += item.detected;
-    if (item.isLowStock) lowStock++;
-    if (item.status == 'misplaced') misplaced++;
-  }
+      for (final item in inventory) {
+        if (item.isSeasonalOff) continue;
+        activeItemCount++;
+        totalInStock += item.detected;
+        if (item.isLowStock) lowStock++;
+        if (item.status == 'misplaced') misplaced++;
+      }
 
-  for (final alert in alerts) {
-    if (!alert.isRead && alert.type == 'quality') {
-      needsVerification++;
-    }
-  }
+      for (final alert in alerts) {
+        if (!alert.isRead && alert.type == 'quality') {
+          needsVerification++;
+        }
+      }
 
-  final capacityItems = activeItemCount > 0 ? activeItemCount : inventory.length;
+      final capacityItems = activeItemCount > 0
+          ? activeItemCount
+          : inventory.length;
 
-  return DashboardStats(
-    totalInStock: totalInStock,
-    lowStockCount: lowStock,
-    misplacedCount: misplaced,
-    needsVerificationCount: needsVerification,
-    totalCapacity: capacityItems * 5, // 5 max bottles per active slot
-  );
-});
+      return DashboardStats(
+        totalInStock: totalInStock,
+        lowStockCount: lowStock,
+        misplacedCount: misplaced,
+        needsVerificationCount: needsVerification,
+        totalCapacity: capacityItems * 5, // 5 max bottles per active slot
+      );
+    });
 
 // -----------------------------------------------------------------------------
 // Hardware Presence Detection & Camera Providers
@@ -149,7 +201,9 @@ final cameraHardwareServiceProvider = Provider<CameraHardwareService>((ref) {
   return service;
 });
 
-final hardwareCamerasProvider = StreamProvider<List<HardwareCameraDevice>>((ref) async* {
+final hardwareCamerasProvider = StreamProvider<List<HardwareCameraDevice>>((
+  ref,
+) async* {
   final service = ref.watch(cameraHardwareServiceProvider);
   yield await service.probeHardwareDevices();
 
@@ -173,8 +227,18 @@ final hardwareCamerasProvider = StreamProvider<List<HardwareCameraDevice>>((ref)
 final rapooCameraPresenceProvider = Provider<HardwareCameraDevice?>((ref) {
   final camerasAsync = ref.watch(hardwareCamerasProvider);
   return camerasAsync.when(
-    data: (devices) => devices.where((d) => d.isRapooCamera).firstOrNull,
+    data: (devices) =>
+        devices.where((d) => d.isRapooCamera || d.isSunplusCamera).firstOrNull,
     loading: () => null,
-    error: (_, __) => null,
+    error: (_, _) => null,
+  );
+});
+
+final sunplusCameraPresenceProvider = Provider<HardwareCameraDevice?>((ref) {
+  final camerasAsync = ref.watch(hardwareCamerasProvider);
+  return camerasAsync.when(
+    data: (devices) => devices.where((d) => d.isSunplusCamera).firstOrNull,
+    loading: () => null,
+    error: (_, _) => null,
   );
 });

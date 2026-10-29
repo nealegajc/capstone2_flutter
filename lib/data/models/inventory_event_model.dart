@@ -41,23 +41,22 @@ class InventoryEventModel {
 
     return InventoryEventModel(
       id: eventId,
-      eventType: map['eventType'] as String? ??
+      eventType:
+          map['eventType'] as String? ??
           map['event_type'] as String? ??
           map['status'] as String? ??
           'VERIFIED',
-      productName: map['productName'] as String? ??
-          map['product_name'] as String? ??
-          '',
-      perfumeCode: map['perfumeCode'] as String? ??
-          map['perfume_code'] as String? ??
-          '',
-      shelfArea: map['shelfArea'] as String? ??
-          map['shelf_area'] as String? ??
-          '',
+      productName:
+          map['productName'] as String? ?? map['product_name'] as String? ?? '',
+      perfumeCode:
+          map['perfumeCode'] as String? ?? map['perfume_code'] as String? ?? '',
+      shelfArea:
+          map['shelfArea'] as String? ?? map['shelf_area'] as String? ?? '',
       branch: map['branch'] as String? ?? 'San Pablo',
       quantity: (map['quantity'] as num?)?.toInt() ?? 1,
       timestamp: parsedDate,
-      syncStatus: map['syncStatus'] as String? ??
+      syncStatus:
+          map['syncStatus'] as String? ??
           map['sync_status'] as String? ??
           'synced',
     );

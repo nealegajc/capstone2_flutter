@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+
 import '../../data/models/product_model.dart';
 import '../../providers/auth_provider.dart';
 import '../../ui/components/kiosk_shell.dart';
@@ -19,6 +20,7 @@ import '../../ui/screens/inventory/product_detail_screen.dart';
 import '../../ui/screens/inventory/product_form_screen.dart';
 import '../../ui/screens/inventory/stock_movement_logs_screen.dart';
 import '../../ui/screens/reports/reports_screen.dart';
+import '../../ui/screens/reports/sales_analytics_screen.dart';
 import '../../ui/screens/restock/create_restock_screen.dart';
 import '../../ui/screens/restock/receiving_verification_screen.dart';
 import '../../ui/screens/restock/restock_screen.dart';
@@ -66,18 +68,16 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: AppRoutePaths.dashboard,
             name: AppRouteNames.dashboard,
-            pageBuilder: (context, state) => const NoTransitionPage(
-              child: DashboardScreen(),
-            ),
+            pageBuilder: (context, state) =>
+                const NoTransitionPage(child: DashboardScreen()),
           ),
 
           // Fig 3.16: Inventory Monitoring Screen
           GoRoute(
             path: AppRoutePaths.inventory,
             name: AppRouteNames.inventory,
-            pageBuilder: (context, state) => const NoTransitionPage(
-              child: InventoryScreen(),
-            ),
+            pageBuilder: (context, state) =>
+                const NoTransitionPage(child: InventoryScreen()),
           ),
 
           // Fig 3.17: Product Detail Screen
@@ -102,144 +102,136 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: AppRoutePaths.stockMovements,
             name: AppRouteNames.stockMovements,
-            pageBuilder: (context, state) => const NoTransitionPage(
-              child: StockMovementLogsScreen(),
-            ),
+            pageBuilder: (context, state) =>
+                const NoTransitionPage(child: StockMovementLogsScreen()),
           ),
 
           // Fig 3.19: Shelf Camera Monitor Screen
           GoRoute(
             path: AppRoutePaths.cameraMonitor,
             name: AppRouteNames.cameraMonitor,
-            pageBuilder: (context, state) => const NoTransitionPage(
-              child: CameraMonitorScreen(),
-            ),
+            pageBuilder: (context, state) =>
+                const NoTransitionPage(child: CameraMonitorScreen()),
           ),
 
           // Fig 3.20: Shelf Area (ROI) Detail Screen
           GoRoute(
             path: AppRoutePaths.roiDetail,
             name: AppRouteNames.roiDetail,
-            pageBuilder: (context, state) => const NoTransitionPage(
-              child: ShelfAreaDetailScreen(),
-            ),
+            pageBuilder: (context, state) =>
+                const NoTransitionPage(child: ShelfAreaDetailScreen()),
           ),
 
           // Fig 3.21: Shelf Check Schedule Screen
           GoRoute(
             path: AppRoutePaths.schedule,
             name: AppRouteNames.schedule,
-            pageBuilder: (context, state) => const NoTransitionPage(
-              child: ScheduleScreen(),
-            ),
+            pageBuilder: (context, state) =>
+                const NoTransitionPage(child: ScheduleScreen()),
           ),
 
           // Fig 3.22: Shelf Check History Screen
           GoRoute(
             path: AppRoutePaths.shelfHistory,
             name: AppRouteNames.shelfHistory,
-            pageBuilder: (context, state) => const NoTransitionPage(
-              child: ShelfCheckHistoryScreen(),
-            ),
+            pageBuilder: (context, state) =>
+                const NoTransitionPage(child: ShelfCheckHistoryScreen()),
           ),
 
           // Fig 3.23: Image Quality & Scanning Status Screen
           GoRoute(
             path: AppRoutePaths.imageQuality,
             name: AppRouteNames.imageQuality,
-            pageBuilder: (context, state) => const NoTransitionPage(
-              child: ImageQualityScreen(),
-            ),
+            pageBuilder: (context, state) =>
+                const NoTransitionPage(child: ImageQualityScreen()),
           ),
 
           // Fig 3.25: Restock Management Screen
           GoRoute(
             path: AppRoutePaths.restock,
             name: AppRouteNames.restock,
-            pageBuilder: (context, state) => const NoTransitionPage(
-              child: RestockScreen(),
-            ),
+            pageBuilder: (context, state) =>
+                const NoTransitionPage(child: RestockScreen()),
           ),
 
           // Fig 3.26: Create Restock Record Screen
           GoRoute(
             path: AppRoutePaths.createRestock,
             name: AppRouteNames.createRestock,
-            pageBuilder: (context, state) => const NoTransitionPage(
-              child: CreateRestockScreen(),
-            ),
+            pageBuilder: (context, state) =>
+                const NoTransitionPage(child: CreateRestockScreen()),
           ),
 
           // Fig 3.27: Receiving Verification Screen
           GoRoute(
             path: AppRoutePaths.receivingVerification,
             name: AppRouteNames.receivingVerification,
-            pageBuilder: (context, state) => const NoTransitionPage(
-              child: ReceivingVerificationScreen(),
-            ),
+            pageBuilder: (context, state) =>
+                const NoTransitionPage(child: ReceivingVerificationScreen()),
           ),
 
           // Fig 3.28: Synchronization Status Screen
           GoRoute(
             path: AppRoutePaths.syncStatus,
             name: AppRouteNames.syncStatus,
-            pageBuilder: (context, state) => const NoTransitionPage(
-              child: SyncStatusScreen(),
-            ),
+            pageBuilder: (context, state) =>
+                const NoTransitionPage(child: SyncStatusScreen()),
           ),
 
           // Fig 3.29: Pending Synchronization Queue Screen
           GoRoute(
             path: AppRoutePaths.syncQueue,
             name: AppRouteNames.syncQueue,
-            pageBuilder: (context, state) => const NoTransitionPage(
-              child: SyncQueueScreen(),
-            ),
+            pageBuilder: (context, state) =>
+                const NoTransitionPage(child: SyncQueueScreen()),
           ),
 
           // Fig 3.30: System Alerts Screen
           GoRoute(
             path: AppRoutePaths.alerts,
             name: AppRouteNames.alerts,
-            pageBuilder: (context, state) => const NoTransitionPage(
-              child: AlertsScreen(),
-            ),
+            pageBuilder: (context, state) =>
+                const NoTransitionPage(child: AlertsScreen()),
           ),
 
           // Fig 3.31: Reports & Analytics Screen
           GoRoute(
             path: AppRoutePaths.reports,
             name: AppRouteNames.reports,
-            pageBuilder: (context, state) => const NoTransitionPage(
-              child: ReportsScreen(),
-            ),
+            pageBuilder: (context, state) =>
+                const NoTransitionPage(child: ReportsScreen()),
+          ),
+
+          // Sales Tracking & Revenue Analytics Screen
+          GoRoute(
+            path: AppRoutePaths.sales,
+            name: AppRouteNames.sales,
+            pageBuilder: (context, state) =>
+                const NoTransitionPage(child: SalesAnalyticsScreen()),
           ),
 
           // Fig 3.32: System Activity Logs Screen
           GoRoute(
             path: AppRoutePaths.activityLogs,
             name: AppRouteNames.activityLogs,
-            pageBuilder: (context, state) => const NoTransitionPage(
-              child: ActivityLogsScreen(),
-            ),
+            pageBuilder: (context, state) =>
+                const NoTransitionPage(child: ActivityLogsScreen()),
           ),
 
           // Fig 3.33: Settings & Profile Screen
           GoRoute(
             path: AppRoutePaths.settings,
             name: AppRouteNames.settings,
-            pageBuilder: (context, state) => const NoTransitionPage(
-              child: SettingsScreen(),
-            ),
+            pageBuilder: (context, state) =>
+                const NoTransitionPage(child: SettingsScreen()),
           ),
 
           // Fig 3.34: Help / Simple Guide Screen
           GoRoute(
             path: AppRoutePaths.helpGuide,
             name: AppRouteNames.helpGuide,
-            pageBuilder: (context, state) => const NoTransitionPage(
-              child: HelpGuideScreen(),
-            ),
+            pageBuilder: (context, state) =>
+                const NoTransitionPage(child: HelpGuideScreen()),
           ),
         ],
       ),

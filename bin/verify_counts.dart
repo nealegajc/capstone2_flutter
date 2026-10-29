@@ -1,9 +1,11 @@
+// ignore_for_file: avoid_print
 import 'dart:convert';
 import 'dart:io';
 
 void main() async {
-  const url = 'https://nnuzffushaaaxjmrreiv.supabase.co';
-  const anonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5udXpmZnVzaGFhYXhqbXJyZWl2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc1MTM3MzksImV4cCI6MjEwMzA4OTczOX0.QnxiNJfw5-xE45lFZf4V8CPeUyl68cLjSv944zJQ_-c';
+  final env = _loadEnv();
+  final url = env['SUPABASE_URL']!;
+  final anonKey = env['SUPABASE_ANON_KEY']!;
 
   final client = HttpClient();
 
@@ -18,4 +20,29 @@ void main() async {
   }
 
   exit(0);
+}
+
+/// Reads `SUPABASE_URL` and `SUPABASE_ANON_KEY` from the project `.env` file.
+Map<String, String> _loadEnv() {
+  final file = File('.env');
+  if (!file.existsSync()) {
+    stderr.writeln('Missing .env file. Run this script from the project root.');
+    exit(1);
+  }
+  final env = <String, String>{};
+  for (final line in file.readAsLinesSync()) {
+    final trimmed = line.trim();
+    if (trimmed.isEmpty || trimmed.startsWith('#') || !trimmed.contains('=')) {
+      continue;
+    }
+    final idx = trimmed.indexOf('=');
+    env[trimmed.substring(0, idx).trim()] = trimmed.substring(idx + 1).trim();
+  }
+  for (final key in ['SUPABASE_URL', 'SUPABASE_ANON_KEY']) {
+    if (env[key] == null || env[key]!.isEmpty) {
+      stderr.writeln('Missing $key in .env');
+      exit(1);
+    }
+  }
+  return env;
 }

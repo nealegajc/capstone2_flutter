@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/theme_helper.dart';
 
@@ -16,14 +17,46 @@ class _HelpGuideScreenState extends State<HelpGuideScreen> {
 
   final List<Map<String, dynamic>> _categories = [
     {'id': 'all', 'label': 'All Guides', 'icon': Icons.menu_book_rounded},
-    {'id': 'overview', 'label': '1. System Overview', 'icon': Icons.rocket_launch_rounded},
-    {'id': 'shelf_layout', 'label': '2. Shelf & Cap Codes', 'icon': Icons.shelves},
-    {'id': 'camera_vision', 'label': '3. Camera Vision', 'icon': Icons.videocam_rounded},
-    {'id': 'roi_calibration', 'label': '4. Touch ROI Calibration', 'icon': Icons.crop_free_rounded},
-    {'id': 'inventory_catalog', 'label': '5. Inventory & Catalog', 'icon': Icons.inventory_2_rounded},
-    {'id': 'restock_flow', 'label': '6. Restocking & Receiving', 'icon': Icons.move_to_inbox_rounded},
-    {'id': 'alerts_troubleshoot', 'label': '7. Alerts & Safeguards', 'icon': Icons.notifications_active_rounded},
-    {'id': 'security_autolock', 'label': '8. Security & Auto-Lock', 'icon': Icons.lock_outline_rounded},
+    {
+      'id': 'overview',
+      'label': '1. System Overview',
+      'icon': Icons.home_rounded,
+    },
+    {
+      'id': 'shelf_layout',
+      'label': '2. Shelf Layout & Cap Codes',
+      'icon': Icons.shelves,
+    },
+    {
+      'id': 'camera_vision',
+      'label': '3. Live Shelf Cameras',
+      'icon': Icons.videocam_rounded,
+    },
+    {
+      'id': 'roi_calibration',
+      'label': '4. Adjusting Slot Grid',
+      'icon': Icons.grid_view_rounded,
+    },
+    {
+      'id': 'inventory_catalog',
+      'label': '5. Fragrance Stock & Catalog',
+      'icon': Icons.inventory_2_rounded,
+    },
+    {
+      'id': 'restock_flow',
+      'label': '6. Restocking & Deliveries',
+      'icon': Icons.move_to_inbox_rounded,
+    },
+    {
+      'id': 'alerts_troubleshoot',
+      'label': '7. Alerts & Problem Solving',
+      'icon': Icons.notifications_active_rounded,
+    },
+    {
+      'id': 'security_autolock',
+      'label': '8. Security & Lock Screen',
+      'icon': Icons.lock_outline_rounded,
+    },
   ];
 
   @override
@@ -44,11 +77,17 @@ class _HelpGuideScreenState extends State<HelpGuideScreen> {
             decoration: BoxDecoration(
               color: AppColors.brandAccent.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: AppColors.brandAccent.withValues(alpha: 0.3)),
+              border: Border.all(
+                color: AppColors.brandAccent.withValues(alpha: 0.3),
+              ),
             ),
             child: const Row(
               children: [
-                Icon(Icons.school_rounded, color: AppColors.brandAccent, size: 18),
+                Icon(
+                  Icons.school_rounded,
+                  color: AppColors.brandAccent,
+                  size: 18,
+                ),
                 SizedBox(width: 8),
                 Text(
                   'Staff Onboarding Handbook',
@@ -77,11 +116,18 @@ class _HelpGuideScreenState extends State<HelpGuideScreen> {
                 // Search Input Field
                 TextField(
                   controller: _searchController,
-                  onChanged: (val) => setState(() => _searchQuery = val.trim().toLowerCase()),
-                  style: TextStyle(color: context.textPrimaryColor, fontSize: 14),
+                  onChanged: (val) =>
+                      setState(() => _searchQuery = val.trim().toLowerCase()),
+                  style: TextStyle(
+                    color: context.textPrimaryColor,
+                    fontSize: 14,
+                  ),
                   decoration: InputDecoration(
                     hintText: 'Search guides, instructions, cap codes, camera calibration, or troubleshooting...',
-                    prefixIcon: const Icon(Icons.search_rounded, color: AppColors.brandAccent),
+                    prefixIcon: const Icon(
+                      Icons.search_rounded,
+                      color: AppColors.brandAccent,
+                    ),
                     suffixIcon: _searchQuery.isNotEmpty
                         ? IconButton(
                             icon: const Icon(Icons.clear_rounded),
@@ -93,7 +139,10 @@ class _HelpGuideScreenState extends State<HelpGuideScreen> {
                         : null,
                     filled: true,
                     fillColor: context.surfaceElevatedColor,
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 12,
+                    ),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(14),
                       borderSide: BorderSide(color: context.borderColor),
@@ -118,21 +167,31 @@ class _HelpGuideScreenState extends State<HelpGuideScreen> {
                           avatar: Icon(
                             cat['icon'] as IconData,
                             size: 16,
-                            color: isSelected ? Colors.white : context.textSecondaryColor,
+                            color: isSelected
+                                ? Colors.white
+                                : context.textSecondaryColor,
                           ),
                           label: Text(
                             cat['label'] as String,
                             style: TextStyle(
                               fontSize: 12,
-                              fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
-                              color: isSelected ? Colors.white : context.textPrimaryColor,
+                              fontWeight: isSelected
+                                  ? FontWeight.w800
+                                  : FontWeight.w600,
+                              color: isSelected
+                                  ? Colors.white
+                                  : context.textPrimaryColor,
                             ),
                           ),
                           selected: isSelected,
                           selectedColor: AppColors.brandAccent,
                           backgroundColor: context.surfaceElevatedColor,
                           onSelected: (selected) {
-                            if (selected) setState(() => _selectedCategory = cat['id'] as String);
+                            if (selected) {
+                              setState(
+                                () => _selectedCategory = cat['id'] as String,
+                              );
+                            }
                           },
                         ),
                       );
@@ -161,14 +220,20 @@ class _HelpGuideScreenState extends State<HelpGuideScreen> {
                     badge: 'Core Concept',
                     badgeColor: AppColors.brandAccent,
                     content: [
-                      _p('The Otto Scents Smart Shelf is an AI-powered retail inventory terminal designed to give you real-time visibility into your perfume inventory without manual barcode scanning.'),
-                      _p('The physical display shelf consists of 3 horizontal layers monitored by 6 synchronized overhead cameras (2 cameras per layer).'),
+                      _p(
+                        'The Otto Scents Smart Shelf is an AI-powered retail inventory terminal designed to give you real-time visibility into your perfume inventory without manual barcode scanning.',
+                      ),
+                      _p(
+                        'The physical display shelf consists of 3 horizontal layers monitored by 6 synchronized overhead cameras (2 cameras per layer).',
+                      ),
                       _bullet([
                         'Layer A (Top Shelf): Holds 10 Men\'s Fragrance variants (Slots A to K).',
                         'Layer B (Middle Shelf): Holds 5 Men\'s (Slots A to E) & 5 Women\'s (Slots F to K) variants.',
                         'Layer C (Bottom Shelf): Holds 10 Women\'s Fragrance variants (Slots A to K).',
                       ]),
-                      _tip('Total Capacity: 30 Fragrance Variants × 2 Sizes (100ml & 50ml) = 60 SKUs total. Each slot holds up to 5 bottles, for a maximum shelf capacity of 300 bottles.'),
+                      _tip(
+                        'Total Capacity: 30 Fragrance Variants × 2 Sizes (100ml & 50ml) = 60 SKUs total. Each slot holds up to 5 bottles, for a maximum shelf capacity of 300 bottles.',
+                      ),
                     ],
                   ),
                   const SizedBox(height: 16),
@@ -187,7 +252,9 @@ class _HelpGuideScreenState extends State<HelpGuideScreen> {
                     badge: 'Physical Layout',
                     badgeColor: AppColors.statusGreen,
                     content: [
-                      _p('5 acrylic perfume trays are lined up in a single horizontal row across each camera view. Each individual tray is divided into 2 compartments:'),
+                      _p(
+                        '5 acrylic perfume trays are lined up in a single horizontal row across each camera view. Each individual tray is divided into 2 compartments:',
+                      ),
                       _bullet([
                         'Left Half of Each Tray (100ML): Rendered in Emerald Cyan (#10B981) on the vision monitor.',
                         'Right Half of Each Tray (50ML): Rendered in Rose Pink (#EC4899) on the vision monitor.',
@@ -201,13 +268,17 @@ class _HelpGuideScreenState extends State<HelpGuideScreen> {
                     badge: 'OCR Standard',
                     badgeColor: AppColors.statusBlue,
                     content: [
-                      _p('Every perfume cap features a high-contrast circular sticker with a unique 3-character code. The camera AI reads this code to identify the exact scent, slot, and size:'),
+                      _p(
+                        'Every perfume cap features a high-contrast circular sticker with a unique 3-character code. The camera AI reads this code to identify the exact scent, slot, and size:',
+                      ),
                       _bullet([
                         '1st Character = Shelf Layer (A = Top, B = Middle, C = Bottom)',
                         '2nd Character = Tray Slot Letter (A, B, C, D, E, F, G, H, J, K)',
                         '3rd Character = Bottle Size (1 = 100ML, 2 = 50ML)',
                       ]),
-                      _tip('Example: "AA1" = Layer A (Top), Slot A, 100ML (e.g. Bvlgari Extreme 100ml).\nExample: "CA2" = Layer C (Bottom), Slot A, 50ML (e.g. Light Blue 50ml).'),
+                      _tip(
+                        'Example: "AA1" = Layer A (Top), Slot A, 100ML (e.g. Bvlgari Extreme 100ml).\nExample: "CA2" = Layer C (Bottom), Slot A, 50ML (e.g. Light Blue 50ml).',
+                      ),
                     ],
                   ),
                   const SizedBox(height: 16),
@@ -226,8 +297,12 @@ class _HelpGuideScreenState extends State<HelpGuideScreen> {
                     badge: 'Vision Feeds',
                     badgeColor: AppColors.maleBlue,
                     content: [
-                      _p('Navigate to "Shelf Camera" in the left sidebar to open the 6-Camera Monitor.'),
-                      _p('The top camera selector bar organizes the 6 mounted cameras into 3 shelf layers:'),
+                      _p(
+                        'Navigate to "Shelf Camera" in the left sidebar to open the 6-Camera Monitor.',
+                      ),
+                      _p(
+                        'The top camera selector bar organizes the 6 mounted cameras into 3 shelf layers:',
+                      ),
                       _bullet([
                         'Top Layer A (Male): Cam 1A (Left: Slots A–E) & Cam 1B (Right: Slots F–K)',
                         'Middle Layer B (Mixed): Cam 2A (Left: Slots A–E) & Cam 2B (Right: Slots F–K)',
@@ -238,7 +313,9 @@ class _HelpGuideScreenState extends State<HelpGuideScreen> {
                         '🟢 Green Status Dot: Hardware camera is connected and recognized on that video node.',
                         '⚪ Grey Status Dot: No camera is plugged into that USB/video port.',
                       ]),
-                      _tip('Tap on any camera card at the top to instantly view its live stream and calibrate its tray ROI.'),
+                      _tip(
+                        'Tap on any camera card at the top to instantly view its live stream and calibrate its tray ROI.',
+                      ),
                     ],
                   ),
                   const SizedBox(height: 16),
@@ -257,14 +334,36 @@ class _HelpGuideScreenState extends State<HelpGuideScreen> {
                     badge: 'Step-by-Step',
                     badgeColor: AppColors.brandGold,
                     content: [
-                      _p('When cameras are first mounted or repositioned, calibrate the Region of Interest so the AI looks only at the perfume bottles:'),
-                      _step(1, 'Open "Shelf Camera" from the sidebar and select the camera you wish to align.'),
-                      _step(2, 'Tap the green "Touch & Reshape ROI" button in the top action bar to enter calibration mode.'),
-                      _step(3, 'Drag the body of the ROI box to center it over the single row of physical trays.'),
-                      _step(4, 'Drag any of the 8 circular handles (4 corners + 4 edges) to resize the box until it tightly frames the 5 trays.'),
-                      _step(5, 'Verify that each tray\'s left compartment aligns with 100ML bottles (Emerald) and the right compartment aligns with 50ML bottles (Rose).'),
-                      _step(6, 'Tap "Save Tray ROI" to save the calibrated coordinates to local SQLite and cloud storage.'),
-                      _tip('Double-tap inside the box or tap "Reset ROI" if you ever want to return to default calibration dimensions.'),
+                      _p(
+                        'When cameras are first mounted or repositioned, calibrate the Region of Interest so the AI looks only at the perfume bottles:',
+                      ),
+                      _step(
+                        1,
+                        'Open "Shelf Camera" from the sidebar and select the camera you wish to align.',
+                      ),
+                      _step(
+                        2,
+                        'Tap the green "Touch & Reshape ROI" button in the top action bar to enter calibration mode.',
+                      ),
+                      _step(
+                        3,
+                        'Drag the body of the ROI box to center it over the single row of physical trays.',
+                      ),
+                      _step(
+                        4,
+                        'Drag any of the 8 circular handles (4 corners + 4 edges) to resize the box until it tightly frames the 5 trays.',
+                      ),
+                      _step(
+                        5,
+                        'Verify that each tray\'s left compartment aligns with 100ML bottles (Emerald) and the right compartment aligns with 50ML bottles (Rose).',
+                      ),
+                      _step(
+                        6,
+                        'Tap "Save Tray ROI" to save the calibrated coordinates to local SQLite and cloud storage.',
+                      ),
+                      _tip(
+                        'Double-tap inside the box or tap "Reset ROI" if you ever want to return to default calibration dimensions.',
+                      ),
                     ],
                   ),
                   const SizedBox(height: 16),
@@ -283,11 +382,24 @@ class _HelpGuideScreenState extends State<HelpGuideScreen> {
                     badge: 'Catalog Control',
                     badgeColor: AppColors.femalePink,
                     content: [
-                      _p('Go to "Inventory" in the sidebar to view all perfume variants currently in your store catalog.'),
-                      _p('Search by scent name, brand, or filter by Layer (A, B, C), Size (100ml, 50ml), or Gender (Men, Women).'),
-                      _step(1, 'To edit an existing scent: Tap the Edit (pencil) icon on its card.'),
-                      _step(2, 'To auto-generate cap codes: Select Layer, Gender, and Size, then tap "Auto-Generate Cap Code" to produce the standard 3-character code (e.g. AA1).'),
-                      _step(3, 'To delete a discontinued fragrance: Tap "Delete Product" in the edit screen. This immediately frees up a tray slot for a new fragrance.'),
+                      _p(
+                        'Go to "Inventory" in the sidebar to view all perfume variants currently in your store catalog.',
+                      ),
+                      _p(
+                        'Search by scent name, brand, or filter by Layer (A, B, C), Size (100ml, 50ml), or Gender (Men, Women).',
+                      ),
+                      _step(
+                        1,
+                        'To edit an existing scent: Tap the Edit (pencil) icon on its card.',
+                      ),
+                      _step(
+                        2,
+                        'To auto-generate cap codes: Select Layer, Gender, and Size, then tap "Auto-Generate Cap Code" to produce the standard 3-character code (e.g. AA1).',
+                      ),
+                      _step(
+                        3,
+                        'To delete a discontinued fragrance: Tap "Delete Product" in the edit screen. This immediately frees up a tray slot for a new fragrance.',
+                      ),
                     ],
                   ),
                   const SizedBox(height: 12),
@@ -296,9 +408,15 @@ class _HelpGuideScreenState extends State<HelpGuideScreen> {
                     badge: 'Safety Rule',
                     badgeColor: AppColors.statusOrange,
                     content: [
-                      _p('The physical shelf has exactly 30 tray slots (10 per layer × 3 layers).'),
-                      _warning('When all 30 slots are occupied, the "Add New Product" button locks and switches to "Shelf Full (30/30)". You cannot add a 31st scent because there are no physical slots remaining.'),
-                      _tip('To introduce a new fragrance, edit an existing variant to replace it or delete an obsolete scent to free up a slot.'),
+                      _p(
+                        'The physical shelf has exactly 30 tray slots (10 per layer × 3 layers).',
+                      ),
+                      _warning(
+                        'When all 30 slots are occupied, the "Add New Product" button locks and switches to "Shelf Full (30/30)". You cannot add a 31st scent because there are no physical slots remaining.',
+                      ),
+                      _tip(
+                        'To introduce a new fragrance, edit an existing variant to replace it or delete an obsolete scent to free up a slot.',
+                      ),
                     ],
                   ),
                   const SizedBox(height: 16),
@@ -317,11 +435,26 @@ class _HelpGuideScreenState extends State<HelpGuideScreen> {
                     badge: 'Restock Flow',
                     badgeColor: AppColors.statusGreen,
                     content: [
-                      _step(1, 'Go to "Restock Records" in the sidebar and tap "Log New Restock".'),
-                      _step(2, 'Select the perfume product being delivered and specify the quantity of bottles (e.g. 5 bottles).'),
-                      _step(3, 'Tap "Submit Restock Delivery". The batch is logged in SQLite and inventory is updated.'),
-                      _step(4, 'Place the bottles into their designated shelf tray slot.'),
-                      _step(5, 'Navigate to the Dashboard and tap "SCAN SHELF NOW" to verify that the camera detects the newly restocked bottles.'),
+                      _step(
+                        1,
+                        'Go to "Restock Records" in the sidebar and tap "Log New Restock".',
+                      ),
+                      _step(
+                        2,
+                        'Select the perfume product being delivered and specify the quantity of bottles (e.g. 5 bottles).',
+                      ),
+                      _step(
+                        3,
+                        'Tap "Submit Restock Delivery". The batch is logged in SQLite and inventory is updated.',
+                      ),
+                      _step(
+                        4,
+                        'Place the bottles into their designated shelf tray slot.',
+                      ),
+                      _step(
+                        5,
+                        'Navigate to the Dashboard and tap "SCAN SHELF NOW" to verify that the camera detects the newly restocked bottles.',
+                      ),
                     ],
                   ),
                   const SizedBox(height: 16),
@@ -368,7 +501,9 @@ class _HelpGuideScreenState extends State<HelpGuideScreen> {
                     badge: 'Sync Engine',
                     badgeColor: AppColors.statusBlue,
                     content: [
-                      _p('Your terminal is fully offline-first! If your store internet drops:'),
+                      _p(
+                        'Your terminal is fully offline-first! If your store internet drops:',
+                      ),
                       _bullet([
                         'All scans, sales, inventory adjustments, and logs continue functioning without interruption.',
                         'Transactions are stored locally in the high-speed SQLite database.',
@@ -392,14 +527,18 @@ class _HelpGuideScreenState extends State<HelpGuideScreen> {
                     badge: 'Security',
                     badgeColor: AppColors.brandAccent,
                     content: [
-                      _p('To protect store data from unauthorized changes, the terminal includes access security:'),
+                      _p(
+                        'To protect store data from unauthorized changes, the terminal includes access security:',
+                      ),
                       _bullet([
                         '6-Digit Security PIN: Default is "123456". You can change this anytime under Settings > Security PIN.',
                         'Inactivity Auto-Lock: Automatically locks the screen if no touch interaction is detected for 3 minutes (default).',
                         'Unified Lock Button: Located in the top-right bar with live countdown badge (e.g. 🔒 Lock Kiosk [⏱️ 2:52]). Tap it anytime to lock instantly.',
                         'Configuring Timeout: Go to Settings > Terminal Inactivity Auto-Lock to select 1m, 2m, 3m, 5m, 10m, or Disabled.',
                       ]),
-                      _tip('Any touch, tap, or mouse movement on the screen instantly resets the idle timer back to your configured timeout.'),
+                      _tip(
+                        'Any touch, tap, or mouse movement on the screen instantly resets the idle timer back to your configured timeout.',
+                      ),
                     ],
                   ),
                   const SizedBox(height: 16),
@@ -494,11 +633,16 @@ class _HelpGuideScreenState extends State<HelpGuideScreen> {
                   ),
                 ),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
                   decoration: BoxDecoration(
                     color: badgeColor.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: badgeColor.withValues(alpha: 0.4)),
+                    border: Border.all(
+                      color: badgeColor.withValues(alpha: 0.4),
+                    ),
                   ),
                   child: Text(
                     badge,
@@ -544,11 +688,21 @@ class _HelpGuideScreenState extends State<HelpGuideScreen> {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('• ', style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.brandAccent)),
+                const Text(
+                  '• ',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.brandAccent,
+                  ),
+                ),
                 Expanded(
                   child: Text(
                     item,
-                    style: TextStyle(fontSize: 13, color: context.textPrimaryColor, height: 1.3),
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: context.textPrimaryColor,
+                      height: 1.3,
+                    ),
                   ),
                 ),
               ],
@@ -575,14 +729,22 @@ class _HelpGuideScreenState extends State<HelpGuideScreen> {
             ),
             child: Text(
               '$number',
-              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white),
+              style: const TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
             ),
           ),
           const SizedBox(width: 10),
           Expanded(
             child: Text(
               text,
-              style: TextStyle(fontSize: 13, color: context.textPrimaryColor, height: 1.3),
+              style: TextStyle(
+                fontSize: 13,
+                color: context.textPrimaryColor,
+                height: 1.3,
+              ),
             ),
           ),
         ],
@@ -602,7 +764,11 @@ class _HelpGuideScreenState extends State<HelpGuideScreen> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(Icons.lightbulb_outline_rounded, color: AppColors.brandAccent, size: 18),
+          const Icon(
+            Icons.lightbulb_outline_rounded,
+            color: AppColors.brandAccent,
+            size: 18,
+          ),
           const SizedBox(width: 10),
           Expanded(
             child: Text(
@@ -627,12 +793,18 @@ class _HelpGuideScreenState extends State<HelpGuideScreen> {
       decoration: BoxDecoration(
         color: AppColors.statusOrange.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: AppColors.statusOrange.withValues(alpha: 0.3)),
+        border: Border.all(
+          color: AppColors.statusOrange.withValues(alpha: 0.3),
+        ),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(Icons.warning_amber_rounded, color: AppColors.statusOrange, size: 18),
+          const Icon(
+            Icons.warning_amber_rounded,
+            color: AppColors.statusOrange,
+            size: 18,
+          ),
           const SizedBox(width: 10),
           Expanded(
             child: Text(
@@ -674,12 +846,20 @@ class _HelpGuideScreenState extends State<HelpGuideScreen> {
               children: [
                 Text(
                   title,
-                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: color),
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.bold,
+                    color: color,
+                  ),
                 ),
                 const SizedBox(height: 2),
                 Text(
                   desc,
-                  style: TextStyle(fontSize: 12, color: context.textPrimaryColor, height: 1.3),
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: context.textPrimaryColor,
+                    height: 1.3,
+                  ),
                 ),
               ],
             ),

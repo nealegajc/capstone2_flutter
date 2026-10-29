@@ -48,7 +48,8 @@ class InventoryRecordModel {
 
     return InventoryRecordModel(
       id: recordId,
-      perfumeCode: map['perfumeCode'] as String? ??
+      perfumeCode:
+          map['perfumeCode'] as String? ??
           map['perfume_code'] as String? ??
           map['code'] as String? ??
           '',
@@ -59,7 +60,8 @@ class InventoryRecordModel {
       recorded: (map['recorded'] as num?)?.toInt() ?? 5,
       detected: (map['detected'] as num?)?.toInt() ?? 5,
       status: map['status'] as String? ?? 'normal',
-      misplacementDetails: map['misplacementDetails'] as String? ??
+      misplacementDetails:
+          map['misplacementDetails'] as String? ??
           map['misplacement_details'] as String? ??
           '',
       lastUpdated: parsedDate,

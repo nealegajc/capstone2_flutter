@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Otto Scents Smart Shelf Kiosk
+Comment=Autostart orchestrator for Otto Scents Smart Shelf Linux Kiosk
+Exec=/usr/local/bin/start-kiosk.sh
+Terminal=false
+StartupNotify=false
+X-GNOME-Autostart-enabled=true
+X-GNOME-Autostart-Delay=2
+Categories=Utility;

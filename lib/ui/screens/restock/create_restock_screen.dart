@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/theme_helper.dart';
 import '../../../data/models/inventory_event_model.dart';
+import '../../../data/models/inventory_record_model.dart';
+import '../../../data/models/restock_record_model.dart';
 import '../../../data/services/sqlite_service.dart';
 import '../../../providers/kiosk_providers.dart';
 
@@ -11,7 +14,8 @@ class CreateRestockScreen extends ConsumerStatefulWidget {
   const CreateRestockScreen({super.key});
 
   @override
-  ConsumerState<CreateRestockScreen> createState() => _CreateRestockScreenState();
+  ConsumerState<CreateRestockScreen> createState() =>
+      _CreateRestockScreenState();
 }
 
 class _CreateRestockScreenState extends ConsumerState<CreateRestockScreen> {
@@ -37,28 +41,94 @@ class _CreateRestockScreenState extends ConsumerState<CreateRestockScreen> {
       }
 
       final products = await ref.read(masterProductsProvider.future);
-      final product = products.firstWhere((p) => p.perfumeCode == _selectedProductCode);
+      final product = products.firstWhere(
+        (p) => p.perfumeCode == _selectedProductCode,
+      );
 
+      final now = DateTime.now();
+      final targetBranch = 'San Pablo';
+
+      // 1. Log Inventory Movement Event
       final event = InventoryEventModel(
-        id: 'evt_${DateTime.now().millisecondsSinceEpoch}',
+        id: 'evt_${now.millisecondsSinceEpoch}',
         eventType: 'RESTOCKED',
         productName: product.name,
         perfumeCode: product.perfumeCode,
         shelfArea: _selectedShelf ?? product.shelfLayer,
-        branch: 'San Pablo',
+        branch: targetBranch,
         quantity: _expectedQty,
-        timestamp: DateTime.now(),
+        timestamp: now,
       );
-
       await SqliteService.instance.logInventoryEvent(event);
-      ref.invalidate(stockMovementLogsProvider('San Pablo'));
-      ref.invalidate(liveInventoryProvider('San Pablo'));
-      ref.invalidate(dashboardStatsProvider('San Pablo'));
+
+      // 2. Persist Restock Record Model for Restock & In-Transit tracking
+      final restockRecord = RestockRecordModel(
+        id: 'rst_${now.millisecondsSinceEpoch}',
+        productName: product.name,
+        perfumeCode: product.perfumeCode,
+        quantity: _expectedQty,
+        fromBranch: 'Main Warehouse',
+        toBranch: targetBranch,
+        requestedBy: 'Kiosk Store Manager',
+        status: 'received',
+        createdAt: now,
+      );
+      await SqliteService.instance.saveRestockRecord(restockRecord);
+
+      // 3. Immediately increment SQLite inventory_records for this branch & product
+      try {
+        final existing = await SqliteService.instance.getInventoryRecord(
+          product.perfumeCode,
+          targetBranch,
+        );
+        if (existing != null) {
+          final updated = InventoryRecordModel(
+            id: existing.id,
+            perfumeCode: existing.perfumeCode,
+            name: existing.name,
+            category: existing.category,
+            branch: existing.branch,
+            shelf: existing.shelf,
+            recorded: existing.recorded + _expectedQty,
+            detected: existing.detected + _expectedQty,
+            status: 'normal',
+            misplacementDetails: '',
+            lastUpdated: now,
+            price: existing.price,
+          );
+          await SqliteService.instance.upsertInventoryRecord(updated);
+        } else {
+          final newRecord = InventoryRecordModel(
+            id: 'inv_${now.millisecondsSinceEpoch}',
+            perfumeCode: product.perfumeCode,
+            name: product.name,
+            category: product.category,
+            branch: targetBranch,
+            shelf: _selectedShelf ?? product.shelfLayer,
+            recorded: _expectedQty,
+            detected: _expectedQty,
+            status: 'normal',
+            misplacementDetails: '',
+            lastUpdated: now,
+            price: product.price,
+          );
+          await SqliteService.instance.upsertInventoryRecord(newRecord);
+        }
+      } catch (e) {
+        debugPrint('Failed to increment local inventory on restock: $e');
+      }
+
+      ref.invalidate(stockMovementLogsProvider(targetBranch));
+      ref.invalidate(liveInventoryProvider(targetBranch));
+      ref.invalidate(dashboardStatsProvider(targetBranch));
+      ref.invalidate(restockRecordsProvider(targetBranch));
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Restocked $_expectedQty bottles of ${product.name} (${product.perfumeCode}).'),
+            content: Text(
+              'Restocked $_expectedQty bottles of ${product.name} (${product.perfumeCode}).',
+            ),
             backgroundColor: AppColors.statusGreen,
           ),
         );
@@ -72,9 +142,7 @@ class _CreateRestockScreenState extends ConsumerState<CreateRestockScreen> {
     final productsAsync = ref.watch(masterProductsProvider);
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Log Incoming Restock Delivery'),
-      ),
+      appBar: AppBar(title: const Text('Log Incoming Restock Delivery')),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(24),
         child: Form(
@@ -100,7 +168,10 @@ class _CreateRestockScreenState extends ConsumerState<CreateRestockScreen> {
                       const SizedBox(height: 6),
                       Text(
                         'Log the expected quantity from your supplier invoice before stocking the physical shelves.',
-                        style: TextStyle(fontSize: 14, color: context.textSecondaryColor),
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: context.textSecondaryColor,
+                        ),
                       ),
                       const SizedBox(height: 24),
 
@@ -114,7 +185,10 @@ class _CreateRestockScreenState extends ConsumerState<CreateRestockScreen> {
                           return DropdownButtonFormField<String>(
                             initialValue: _selectedProductCode,
                             dropdownColor: context.surfaceElevatedColor,
-                            style: TextStyle(fontSize: 15, color: context.textPrimaryColor),
+                            style: TextStyle(
+                              fontSize: 15,
+                              color: context.textPrimaryColor,
+                            ),
                             decoration: const InputDecoration(
                               labelText: 'Select Perfume Product',
                               prefixIcon: Icon(Icons.sanitizer_rounded),
@@ -122,12 +196,16 @@ class _CreateRestockScreenState extends ConsumerState<CreateRestockScreen> {
                             items: products.map((p) {
                               return DropdownMenuItem(
                                 value: p.perfumeCode,
-                                child: Text('[${p.perfumeCode}] ${p.name} (${p.bottleSize.toUpperCase()})'),
+                                child: Text(
+                                  '[${p.perfumeCode}] ${p.name} (${p.bottleSize.toUpperCase()})',
+                                ),
                               );
                             }).toList(),
                             onChanged: (val) {
                               if (val != null) {
-                                final p = products.firstWhere((item) => item.perfumeCode == val);
+                                final p = products.firstWhere(
+                                  (item) => item.perfumeCode == val,
+                                );
                                 setState(() {
                                   _selectedProductCode = val;
                                   _selectedShelf = p.shelfLayer;
@@ -145,15 +223,31 @@ class _CreateRestockScreenState extends ConsumerState<CreateRestockScreen> {
                       DropdownButtonFormField<String>(
                         initialValue: _selectedShelf ?? 'Layer A (Top)',
                         dropdownColor: context.surfaceElevatedColor,
-                        style: TextStyle(fontSize: 15, color: context.textPrimaryColor),
+                        style: TextStyle(
+                          fontSize: 15,
+                          color: context.textPrimaryColor,
+                        ),
                         decoration: const InputDecoration(
                           labelText: 'Target Shelf Layer (Camera)',
                           prefixIcon: Icon(Icons.videocam_rounded),
                         ),
                         items: const [
-                          DropdownMenuItem(value: 'Layer A (Top)', child: Text('Camera 1: Layer A (Top Shelf - Male)')),
-                          DropdownMenuItem(value: 'Layer B (Middle)', child: Text('Camera 2: Layer B (Middle Shelf - Mixed)')),
-                          DropdownMenuItem(value: 'Layer C (Bottom)', child: Text('Camera 3: Layer C (Bottom Shelf - Female)')),
+                          DropdownMenuItem(
+                            value: 'Layer A (Top)',
+                            child: Text('Camera 1: Layer A (Top Shelf - Male)'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'Layer B (Middle)',
+                            child: Text(
+                              'Camera 2: Layer B (Middle Shelf - Mixed)',
+                            ),
+                          ),
+                          DropdownMenuItem(
+                            value: 'Layer C (Bottom)',
+                            child: Text(
+                              'Camera 3: Layer C (Bottom Shelf - Female)',
+                            ),
+                          ),
                         ],
                         onChanged: (val) {
                           if (val != null) setState(() => _selectedShelf = val);
@@ -173,7 +267,10 @@ class _CreateRestockScreenState extends ConsumerState<CreateRestockScreen> {
                       const SizedBox(height: 8),
 
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 8,
+                        ),
                         decoration: BoxDecoration(
                           color: context.surfaceElevatedColor,
                           borderRadius: BorderRadius.circular(16),
@@ -218,10 +315,15 @@ class _CreateRestockScreenState extends ConsumerState<CreateRestockScreen> {
                       TextFormField(
                         controller: _notesController,
                         maxLines: 2,
-                        style: TextStyle(fontSize: 15, color: context.textPrimaryColor),
+                        style: TextStyle(
+                          fontSize: 15,
+                          color: context.textPrimaryColor,
+                        ),
                         decoration: const InputDecoration(
-                          labelText: 'Batch Notes / Delivery Invoice Ref (Optional)',
-                          hintText: 'e.g. PO-2026-08, Fragrance supplier batch #992',
+                          labelText:
+                              'Batch Notes / Delivery Invoice Ref (Optional)',
+                          hintText:
+                              'e.g. PO-2026-08, Fragrance supplier batch #992',
                           prefixIcon: Icon(Icons.note_alt_outlined),
                         ),
                       ),
@@ -233,10 +335,16 @@ class _CreateRestockScreenState extends ConsumerState<CreateRestockScreen> {
                         height: 56,
                         child: ElevatedButton.icon(
                           onPressed: _submitRestock,
-                          icon: const Icon(Icons.check_circle_outline_rounded, size: 22),
+                          icon: const Icon(
+                            Icons.check_circle_outline_rounded,
+                            size: 22,
+                          ),
                           label: const Text(
                             'Confirm & Save Restock Batch',
-                            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w800,
+                            ),
                           ),
                         ),
                       ),

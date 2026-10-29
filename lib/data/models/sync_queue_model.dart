@@ -28,7 +28,8 @@ class SyncQueueModel {
   factory SyncQueueModel.fromMap(Map<String, dynamic> map, [String? id]) {
     final queueId = id ?? (map['id'] as String? ?? '');
     DateTime parsedDate;
-    final la = map['lastAttempt'] ??
+    final la =
+        map['lastAttempt'] ??
         map['last_attempt'] ??
         map['timestamp'] ??
         map['createdAt'];
@@ -42,14 +43,17 @@ class SyncQueueModel {
 
     return SyncQueueModel(
       id: queueId,
-      pendingEventId: map['pendingEventId'] as String? ??
+      pendingEventId:
+          map['pendingEventId'] as String? ??
           map['pending_event_id'] as String? ??
           queueId,
-      targetCollection: map['targetCollection'] as String? ??
+      targetCollection:
+          map['targetCollection'] as String? ??
           map['target_collection'] as String? ??
           'inventory_events',
       operation: map['operation'] as String? ?? 'UPSERT',
-      retryCount: (map['retryCount'] as num?)?.toInt() ??
+      retryCount:
+          (map['retryCount'] as num?)?.toInt() ??
           (map['retry_count'] as num?)?.toInt() ??
           0,
       lastAttempt: parsedDate,

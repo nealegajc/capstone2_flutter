@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:io';
+
 import 'package:supabase_flutter/supabase_flutter.dart';
+
 import '../models/user_model.dart';
 import '../models/sync_queue_model.dart';
 import '../services/sqlite_service.dart';
@@ -76,7 +78,12 @@ class AuthRepository {
   }
 
   /// Register a new user in Supabase Auth and Supabase database, caching into SQLite.
-  Future<UserModel> register(String email, String password, String role, String branch) async {
+  Future<UserModel> register(
+    String email,
+    String password,
+    String role,
+    String branch,
+  ) async {
     final cleanEmail = email.trim();
     final cleanPassword = password.trim();
 
@@ -149,7 +156,11 @@ class AuthRepository {
     try {
       final client = _supabase;
       if (client != null) {
-        final data = await client.from('users').select().eq('uid', uid).maybeSingle();
+        final data = await client
+            .from('users')
+            .select()
+            .eq('uid', uid)
+            .maybeSingle();
         if (data != null) {
           return UserModel.fromMap(data, uid);
         }
@@ -157,16 +168,13 @@ class AuthRepository {
     } catch (_) {}
 
     final isAdmin = email.toLowerCase().contains('admin');
-    final isLipa = email.toLowerCase().contains('staff') || email.toLowerCase().contains('lipa');
+    final isLipa =
+        email.toLowerCase().contains('staff') ||
+        email.toLowerCase().contains('lipa');
     final role = isAdmin ? 'admin' : 'staff';
     final branch = isLipa ? 'Lipa' : 'San Pablo';
 
-    final user = UserModel(
-      uid: uid,
-      email: email,
-      role: role,
-      branch: branch,
-    );
+    final user = UserModel(uid: uid, email: email, role: role, branch: branch);
 
     try {
       final client = _supabase;

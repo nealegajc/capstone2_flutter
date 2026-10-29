@@ -25,9 +25,13 @@ class AppColors {
   static const Color lightTextMuted = Color(0xFF64748B);
 
   // Gender / Category Colors
-  static const Color maleBlue = Color(0xFF0284C7); // Electric Sky Blue for Male Fragrances
+  static const Color maleBlue = Color(
+    0xFF0284C7,
+  ); // Electric Sky Blue for Male Fragrances
   static const Color maleBlueBg = Color(0x260284C7);
-  static const Color femalePink = Color(0xFFEC4899); // Vibrant Rose Pink for Female Fragrances
+  static const Color femalePink = Color(
+    0xFFEC4899,
+  ); // Vibrant Rose Pink for Female Fragrances
   static const Color femalePinkBg = Color(0x26EC4899);
 
   // Status & Semantic Badges
@@ -39,9 +43,11 @@ class AppColors {
   static const Color statusRed = Color(0xFFEF4444);
   static const Color statusRedBg = Color(0x26EF4444);
 
-  // Orange = Pending Sync / Misplaced / Needs Verification
+  // Orange / Amber = Pending Sync / Misplaced / Needs Verification
   static const Color statusOrange = Color(0xFFF59E0B);
   static const Color statusOrangeBg = Color(0x26F59E0B);
+  static const Color statusAmber = statusOrange;
+  static const Color statusAmberBg = statusOrangeBg;
 
   // Blue = Info / Active Scanning
   static const Color statusBlue = Color(0xFF3B82F6);
@@ -53,4 +59,10 @@ class AppColors {
   static const Color numpadActionBg = Color(0xFF0F172A);
   static const Color numpadActionClear = Color(0x33EF4444);
   static const Color numpadActionDelete = Color(0x33F59E0B);
+
+  // Modern Card & Overlay Accents
+  static const Color darkCardHighlight = Color(0x0FFFFFFF);
+  static const Color lightCardHighlight = Color(0x80FFFFFF);
+  static const Color darkBorderSubtle = Color(0xFF1E293B);
+  static const Color lightBorderSubtle = Color(0xFFE2E8F0);
 }

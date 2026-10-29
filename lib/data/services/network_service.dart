@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+
 import 'package:flutter/foundation.dart';
 
 class WifiNetwork {
@@ -53,7 +54,9 @@ class NetworkStatus {
     this.lastReachabilityResult,
   });
 
-  bool get isEthernet => isOnline && (connectionType == 'Ethernet' || connectionType == 'Ethernet / LAN');
+  bool get isEthernet =>
+      isOnline &&
+      (connectionType == 'Ethernet' || connectionType == 'Ethernet / LAN');
   bool get isWifi => isOnline && connectionType == 'WiFi';
 
   NetworkStatus copyWith({
@@ -76,7 +79,8 @@ class NetworkStatus {
       availableNetworks: availableNetworks ?? this.availableNetworks,
       isScanning: isScanning ?? this.isScanning,
       connectionType: connectionType ?? this.connectionType,
-      lastReachabilityResult: lastReachabilityResult ?? this.lastReachabilityResult,
+      lastReachabilityResult:
+          lastReachabilityResult ?? this.lastReachabilityResult,
     );
   }
 }
@@ -102,7 +106,10 @@ class NetworkService extends ChangeNotifier {
   void _init() {
     checkConnectivity();
     _monitorTimer?.cancel();
-    _monitorTimer = Timer.periodic(const Duration(seconds: 4), (_) => checkConnectivity());
+    _monitorTimer = Timer.periodic(
+      const Duration(seconds: 4),
+      (_) => checkConnectivity(),
+    );
   }
 
   @override
@@ -148,7 +155,10 @@ class NetworkService extends ChangeNotifier {
         final entries = await netDir.list().toList();
         for (final entry in entries) {
           final iface = entry.path.split('/').last;
-          if (iface == 'lo' || iface.startsWith('virbr') || iface.startsWith('docker') || iface.startsWith('veth')) {
+          if (iface == 'lo' ||
+              iface.startsWith('virbr') ||
+              iface.startsWith('docker') ||
+              iface.startsWith('veth')) {
             continue;
           }
 
@@ -156,9 +166,16 @@ class NetworkService extends ChangeNotifier {
           if (isUp) {
             activeIfaceName = iface;
             final lower = iface.toLowerCase();
-            if (lower.startsWith('wl') || lower.contains('wlan') || lower.contains('wifi')) {
+            if (lower.startsWith('wl') ||
+                lower.contains('wlan') ||
+                lower.contains('wifi')) {
               connectionType = 'WiFi';
-            } else if (lower.startsWith('en') || lower.startsWith('eth') || lower.startsWith('eno') || lower.startsWith('ens') || lower.startsWith('enp') || lower.startsWith('usb')) {
+            } else if (lower.startsWith('en') ||
+                lower.startsWith('eth') ||
+                lower.startsWith('eno') ||
+                lower.startsWith('ens') ||
+                lower.startsWith('enp') ||
+                lower.startsWith('usb')) {
               connectionType = 'Ethernet';
             }
             break;
@@ -186,7 +203,13 @@ class NetworkService extends ChangeNotifier {
       // Check active WiFi SSID if WiFi interface is up
       if (connectionType == 'WiFi') {
         try {
-          final nmResult = await Process.run('nmcli', ['-t', '-f', 'ACTIVE,SSID,SIGNAL', 'dev', 'wifi']);
+          final nmResult = await Process.run('nmcli', [
+            '-t',
+            '-f',
+            'ACTIVE,SSID,SIGNAL',
+            'dev',
+            'wifi',
+          ]);
           if (nmResult.exitCode == 0) {
             final lines = nmResult.stdout.toString().split('\n');
             for (final line in lines) {
@@ -196,7 +219,9 @@ class NetworkService extends ChangeNotifier {
                 if (rawSsid != null && rawSsid.isNotEmpty) {
                   currentSsid = rawSsid;
                 }
-                signal = parts.length > 2 ? int.tryParse(parts[2].trim()) ?? 80 : 80;
+                signal = parts.length > 2
+                    ? int.tryParse(parts[2].trim()) ?? 80
+                    : 80;
                 break;
               }
             }
@@ -208,12 +233,20 @@ class NetworkService extends ChangeNotifier {
     // 3. Test genuine internet reachability via real TCP connection
     if (activeIfaceName != null) {
       try {
-        final socket = await Socket.connect('1.1.1.1', 53, timeout: const Duration(seconds: 2));
+        final socket = await Socket.connect(
+          '1.1.1.1',
+          53,
+          timeout: const Duration(seconds: 2),
+        );
         socket.destroy();
         online = true;
       } catch (_) {
         try {
-          final socket = await Socket.connect('8.8.8.8', 53, timeout: const Duration(seconds: 2));
+          final socket = await Socket.connect(
+            '8.8.8.8',
+            53,
+            timeout: const Duration(seconds: 2),
+          );
           socket.destroy();
           online = true;
         } catch (_) {
@@ -261,7 +294,11 @@ class NetworkService extends ChangeNotifier {
     String message = 'Offline - No route to host';
 
     try {
-      final socket = await Socket.connect('1.1.1.1', 53, timeout: const Duration(seconds: 3));
+      final socket = await Socket.connect(
+        '1.1.1.1',
+        53,
+        timeout: const Duration(seconds: 3),
+      );
       stopwatch.stop();
       latency = stopwatch.elapsedMilliseconds;
       socket.destroy();
@@ -271,7 +308,11 @@ class NetworkService extends ChangeNotifier {
       try {
         stopwatch.reset();
         stopwatch.start();
-        final socket2 = await Socket.connect('8.8.8.8', 53, timeout: const Duration(seconds: 3));
+        final socket2 = await Socket.connect(
+          '8.8.8.8',
+          53,
+          timeout: const Duration(seconds: 3),
+        );
         stopwatch.stop();
         latency = stopwatch.elapsedMilliseconds;
         socket2.destroy();
@@ -307,8 +348,16 @@ class NetworkService extends ChangeNotifier {
     final seenSsids = <String>{};
 
     try {
-      final res = await Process.run('nmcli', ['-t', '-f', 'SSID,SIGNAL,SECURITY,IN-USE', 'dev', 'wifi', 'list', '--rescan', 'yes'])
-          .timeout(const Duration(seconds: 5));
+      final res = await Process.run('nmcli', [
+        '-t',
+        '-f',
+        'SSID,SIGNAL,SECURITY,IN-USE',
+        'dev',
+        'wifi',
+        'list',
+        '--rescan',
+        'yes',
+      ]).timeout(const Duration(seconds: 5));
 
       if (res.exitCode == 0) {
         final lines = res.stdout.toString().split('\n');
@@ -346,10 +395,7 @@ class NetworkService extends ChangeNotifier {
       return b.signalStrength.compareTo(a.signalStrength);
     });
 
-    _status = _status.copyWith(
-      availableNetworks: networks,
-      isScanning: false,
-    );
+    _status = _status.copyWith(availableNetworks: networks, isScanning: false);
     notifyListeners();
     return networks;
   }
@@ -369,7 +415,10 @@ class NetworkService extends ChangeNotifier {
         args = ['dev', 'wifi', 'connect', ssid];
       }
 
-      final res = await Process.run('nmcli', args).timeout(const Duration(seconds: 10));
+      final res = await Process.run(
+        'nmcli',
+        args,
+      ).timeout(const Duration(seconds: 10));
       if (res.exitCode == 0) {
         success = true;
       }

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+
+import '../../../core/constants/app_constants.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/theme_helper.dart';
 import '../../../data/models/product_model.dart';
@@ -8,10 +10,7 @@ import '../../../data/services/sqlite_service.dart';
 import '../../../providers/kiosk_providers.dart';
 
 class ProductFormScreen extends ConsumerStatefulWidget {
-  const ProductFormScreen({
-    super.key,
-    this.product,
-  });
+  const ProductFormScreen({super.key, this.product});
 
   final ProductModel? product;
 
@@ -35,7 +34,18 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
   bool _createBothSizes = false;
   bool _isSeasonalOff = false;
 
-  final List<String> _slotLetters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'J', 'K'];
+  final List<String> _slotLetters = [
+    'A',
+    'B',
+    'C',
+    'D',
+    'E',
+    'F',
+    'G',
+    'H',
+    'J',
+    'K',
+  ];
 
   @override
   void initState() {
@@ -73,7 +83,10 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
     if (_selectedLayer.contains('Layer B')) layerLetter = 'B';
     if (_selectedLayer.contains('Layer C')) layerLetter = 'C';
 
-    final slotIdx = (_selectedSlotPosition - 1).clamp(0, _slotLetters.length - 1);
+    final slotIdx = (_selectedSlotPosition - 1).clamp(
+      0,
+      _slotLetters.length - 1,
+    );
     final slotLetter = _slotLetters[slotIdx];
     final sizeDigit = _selectedBottleSize == '100ml' ? '1' : '2';
 
@@ -108,9 +121,19 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: Row(
           children: [
-            const Icon(Icons.delete_outline_rounded, color: AppColors.statusRed, size: 28),
+            const Icon(
+              Icons.delete_outline_rounded,
+              color: AppColors.statusRed,
+              size: 28,
+            ),
             const SizedBox(width: 12),
-            Text('Delete Fragrance SKU', style: TextStyle(color: context.textPrimaryColor, fontWeight: FontWeight.bold)),
+            Text(
+              'Delete Fragrance SKU',
+              style: TextStyle(
+                color: context.textPrimaryColor,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
           ],
         ),
         content: Text(
@@ -124,7 +147,10 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
           ),
           ElevatedButton(
             onPressed: () => Navigator.of(context).pop(true),
-            style: ElevatedButton.styleFrom(backgroundColor: AppColors.statusRed, foregroundColor: Colors.white),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.statusRed,
+              foregroundColor: Colors.white,
+            ),
             child: const Text('Delete & Free Slot'),
           ),
         ],
@@ -140,7 +166,9 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Removed ${widget.product!.name}. Slot freed for new fragrance registration.'),
+            content: Text(
+              'Removed ${widget.product!.name}. Slot freed for new fragrance registration.',
+            ),
             backgroundColor: AppColors.statusGreen,
           ),
         );
@@ -153,7 +181,9 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
     if (!widget.isEditMode && isShelfFull) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Shelf is at maximum physical capacity (30/30 slots). No more slots available.'),
+          content: Text(
+            'Shelf is at maximum physical capacity (30/30 slots). No more slots available.',
+          ),
           backgroundColor: AppColors.statusRed,
         ),
       );
@@ -162,13 +192,18 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
 
     if (_formKey.currentState?.validate() ?? false) {
       final name = _nameController.text.trim();
-      final brand = _brandController.text.trim().isEmpty ? 'Otto Scents' : _brandController.text.trim();
+      final brand = _brandController.text.trim().isEmpty
+          ? 'Otto Scents'
+          : _brandController.text.trim();
       final baseCapCode = _capCodeController.text.trim().toUpperCase();
 
       String layerLetter = 'A';
       if (_selectedLayer.contains('Layer B')) layerLetter = 'B';
       if (_selectedLayer.contains('Layer C')) layerLetter = 'C';
-      final slotIdx = (_selectedSlotPosition - 1).clamp(0, _slotLetters.length - 1);
+      final slotIdx = (_selectedSlotPosition - 1).clamp(
+        0,
+        _slotLetters.length - 1,
+      );
       final slotLetter = _slotLetters[slotIdx];
       final prefix = '$layerLetter$slotLetter';
 
@@ -183,7 +218,7 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
           bottleSize: '100ml',
           shelfLayer: _selectedLayer,
           slotPosition: _selectedSlotPosition,
-          price: 0.0,
+          price: AppConstants.priceFor('100ml'),
           status: _isSeasonalOff ? 'seasonal_off' : 'active',
         );
         // Create Size 2 (50ml)
@@ -196,23 +231,29 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
           bottleSize: '50ml',
           shelfLayer: _selectedLayer,
           slotPosition: _selectedSlotPosition,
-          price: 0.0,
+          price: AppConstants.priceFor('50ml'),
           status: _isSeasonalOff ? 'seasonal_off' : 'active',
         );
 
         await SqliteService.instance.saveProduct(p1);
         await SqliteService.instance.saveProduct(p2);
       } else {
+        final bSize = _selectedBottleSize.toLowerCase();
+        final defaultPrice = AppConstants.priceFor(bSize);
         final product = ProductModel(
-          id: widget.product?.id ?? 'prod_${baseCapCode}_${DateTime.now().millisecondsSinceEpoch}',
+          id:
+              widget.product?.id ??
+              'prod_${baseCapCode}_${DateTime.now().millisecondsSinceEpoch}',
           name: name,
           perfumeCode: baseCapCode,
           brand: brand,
           category: _selectedCategory,
-          bottleSize: _selectedBottleSize.toLowerCase(),
+          bottleSize: bSize,
           shelfLayer: _selectedLayer,
           slotPosition: _selectedSlotPosition,
-          price: 0.0,
+          price: widget.product?.price != null && widget.product!.price > 0
+              ? widget.product!.price
+              : defaultPrice,
           status: _isSeasonalOff ? 'seasonal_off' : 'active',
         );
 
@@ -245,7 +286,11 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
     final allItems = productsAsync.valueOrNull ?? [];
 
     final uniqueVariants = allItems
-        .map((p) => p.perfumeCode.length >= 2 ? p.perfumeCode.substring(0, 2) : p.name)
+        .map(
+          (p) => p.perfumeCode.length >= 2
+              ? p.perfumeCode.substring(0, 2)
+              : p.name,
+        )
         .toSet();
     final variantCount = uniqueVariants.length;
     final isShelfFull = !widget.isEditMode && variantCount >= 30;
@@ -258,15 +303,24 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
     }
 
     final isFemale = _selectedCategory == 'Women';
-    final themeGenderColor = isFemale ? AppColors.femalePink : AppColors.maleBlue;
+    final themeGenderColor = isFemale
+        ? AppColors.femalePink
+        : AppColors.maleBlue;
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.isEditMode ? 'Edit Fragrance SKU' : 'Register Fragrance Product'),
+        title: Text(
+          widget.isEditMode
+              ? 'Edit Fragrance SKU'
+              : 'Register Fragrance Product',
+        ),
         actions: [
           if (widget.isEditMode)
             IconButton(
-              icon: const Icon(Icons.delete_outline_rounded, color: AppColors.statusRed),
+              icon: const Icon(
+                Icons.delete_outline_rounded,
+                color: AppColors.statusRed,
+              ),
               tooltip: 'Delete & Free Slot',
               onPressed: _confirmDeleteProduct,
             ),
@@ -288,11 +342,18 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                   decoration: BoxDecoration(
                     color: AppColors.statusRedBg,
                     borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: AppColors.statusRed.withValues(alpha: 0.5), width: 1.5),
+                    border: Border.all(
+                      color: AppColors.statusRed.withValues(alpha: 0.5),
+                      width: 1.5,
+                    ),
                   ),
                   child: Row(
                     children: [
-                      const Icon(Icons.lock_outline_rounded, color: AppColors.statusRed, size: 30),
+                      const Icon(
+                        Icons.lock_outline_rounded,
+                        color: AppColors.statusRed,
+                        size: 30,
+                      ),
                       const SizedBox(width: 14),
                       Expanded(
                         child: Column(
@@ -309,7 +370,10 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                             const SizedBox(height: 2),
                             Text(
                               'No more slots available on the 3-layer shelf. Adding new products is locked until a slot is freed or an existing fragrance is edited from the inventory list.',
-                              style: TextStyle(fontSize: 12, color: context.textPrimaryColor),
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: context.textPrimaryColor,
+                              ),
                             ),
                           ],
                         ),
@@ -331,7 +395,11 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                         children: [
                           Row(
                             children: [
-                              const Icon(Icons.shelves, color: AppColors.brandAccent, size: 22),
+                              const Icon(
+                                Icons.shelves,
+                                color: AppColors.brandAccent,
+                                size: 22,
+                              ),
                               const SizedBox(width: 10),
                               Text(
                                 'Physical Shelf Slot Selector (30 Slots)',
@@ -344,11 +412,16 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                             ],
                           ),
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 4,
+                            ),
                             decoration: BoxDecoration(
                               color: themeGenderColor.withValues(alpha: 0.15),
                               borderRadius: BorderRadius.circular(8),
-                              border: Border.all(color: themeGenderColor.withValues(alpha: 0.4)),
+                              border: Border.all(
+                                color: themeGenderColor.withValues(alpha: 0.4),
+                              ),
                             ),
                             child: Text(
                               'Selected: $_selectedLayer • Slot ${_slotLetters[_selectedSlotPosition - 1]}',
@@ -364,7 +437,10 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                       const SizedBox(height: 6),
                       Text(
                         'Tap any slot partition on the shelf to configure position and cap OCR alignment.',
-                        style: TextStyle(fontSize: 12, color: context.textSecondaryColor),
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: context.textSecondaryColor,
+                        ),
                       ),
                       Divider(height: 24, color: context.borderColor),
 
@@ -420,7 +496,9 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  widget.isEditMode ? 'Fragrance Specifications' : 'Fragrance Registration Details',
+                                  widget.isEditMode
+                                      ? 'Fragrance Specifications'
+                                      : 'Fragrance Registration Details',
                                   style: TextStyle(
                                     fontSize: 18,
                                     fontWeight: FontWeight.w800,
@@ -430,7 +508,10 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                                 const SizedBox(height: 4),
                                 Text(
                                   'Bottle name, brand, gender category, and PaddleOCR recognition code.',
-                                  style: TextStyle(fontSize: 12, color: context.textSecondaryColor),
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: context.textSecondaryColor,
+                                  ),
                                 ),
                               ],
                             ),
@@ -438,19 +519,30 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
 
                           // Live Cap OCR Preview Badge
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 10,
+                            ),
                             decoration: BoxDecoration(
                               gradient: LinearGradient(
                                 colors: isFemale
-                                    ? const [Color(0xFFEC4899), Color(0xFFBE185D)]
-                                    : const [Color(0xFF0284C7), Color(0xFF0369A1)],
+                                    ? const [
+                                        Color(0xFFEC4899),
+                                        Color(0xFFBE185D),
+                                      ]
+                                    : const [
+                                        Color(0xFF0284C7),
+                                        Color(0xFF0369A1),
+                                      ],
                                 begin: Alignment.topLeft,
                                 end: Alignment.bottomRight,
                               ),
                               borderRadius: BorderRadius.circular(14),
                               boxShadow: [
                                 BoxShadow(
-                                  color: themeGenderColor.withValues(alpha: 0.35),
+                                  color: themeGenderColor.withValues(
+                                    alpha: 0.35,
+                                  ),
                                   blurRadius: 10,
                                   offset: const Offset(0, 3),
                                 ),
@@ -459,7 +551,9 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                             child: Column(
                               children: [
                                 Text(
-                                  _capCodeController.text.isEmpty ? 'AA1' : _capCodeController.text.toUpperCase(),
+                                  _capCodeController.text.isEmpty
+                                      ? 'AA1'
+                                      : _capCodeController.text.toUpperCase(),
                                   style: const TextStyle(
                                     fontSize: 22,
                                     fontWeight: FontWeight.w900,
@@ -505,26 +599,42 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                               },
                               borderRadius: BorderRadius.circular(12),
                               child: Container(
-                                padding: const EdgeInsets.symmetric(vertical: 12),
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 12,
+                                ),
                                 decoration: BoxDecoration(
-                                  color: !isFemale ? AppColors.maleBlue.withValues(alpha: 0.15) : context.surfaceElevatedColor,
+                                  color: !isFemale
+                                      ? AppColors.maleBlue.withValues(
+                                          alpha: 0.15,
+                                        )
+                                      : context.surfaceElevatedColor,
                                   borderRadius: BorderRadius.circular(12),
                                   border: Border.all(
-                                    color: !isFemale ? AppColors.maleBlue : context.borderColor,
+                                    color: !isFemale
+                                        ? AppColors.maleBlue
+                                        : context.borderColor,
                                     width: !isFemale ? 2 : 1,
                                   ),
                                 ),
                                 child: Row(
                                   mainAxisAlignment: MainAxisAlignment.center,
                                   children: [
-                                    Icon(Icons.male_rounded, color: !isFemale ? AppColors.maleBlue : context.textSecondaryColor, size: 18),
+                                    Icon(
+                                      Icons.male_rounded,
+                                      color: !isFemale
+                                          ? AppColors.maleBlue
+                                          : context.textSecondaryColor,
+                                      size: 18,
+                                    ),
                                     const SizedBox(width: 8),
                                     Text(
                                       'Men\'s Fragrance',
                                       style: TextStyle(
                                         fontWeight: FontWeight.w800,
                                         fontSize: 13,
-                                        color: !isFemale ? AppColors.maleBlue : context.textPrimaryColor,
+                                        color: !isFemale
+                                            ? AppColors.maleBlue
+                                            : context.textPrimaryColor,
                                       ),
                                     ),
                                   ],
@@ -543,26 +653,42 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                               },
                               borderRadius: BorderRadius.circular(12),
                               child: Container(
-                                padding: const EdgeInsets.symmetric(vertical: 12),
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 12,
+                                ),
                                 decoration: BoxDecoration(
-                                  color: isFemale ? AppColors.femalePink.withValues(alpha: 0.15) : context.surfaceElevatedColor,
+                                  color: isFemale
+                                      ? AppColors.femalePink.withValues(
+                                          alpha: 0.15,
+                                        )
+                                      : context.surfaceElevatedColor,
                                   borderRadius: BorderRadius.circular(12),
                                   border: Border.all(
-                                    color: isFemale ? AppColors.femalePink : context.borderColor,
+                                    color: isFemale
+                                        ? AppColors.femalePink
+                                        : context.borderColor,
                                     width: isFemale ? 2 : 1,
                                   ),
                                 ),
                                 child: Row(
                                   mainAxisAlignment: MainAxisAlignment.center,
                                   children: [
-                                    Icon(Icons.female_rounded, color: isFemale ? AppColors.femalePink : context.textSecondaryColor, size: 18),
+                                    Icon(
+                                      Icons.female_rounded,
+                                      color: isFemale
+                                          ? AppColors.femalePink
+                                          : context.textSecondaryColor,
+                                      size: 18,
+                                    ),
                                     const SizedBox(width: 8),
                                     Text(
                                       'Women\'s Fragrance',
                                       style: TextStyle(
                                         fontWeight: FontWeight.w800,
                                         fontSize: 13,
-                                        color: isFemale ? AppColors.femalePink : context.textPrimaryColor,
+                                        color: isFemale
+                                            ? AppColors.femalePink
+                                            : context.textPrimaryColor,
                                       ),
                                     ),
                                   ],
@@ -577,20 +703,31 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                       // Fragrance Name
                       TextFormField(
                         controller: _nameController,
-                        style: TextStyle(fontSize: 15, color: context.textPrimaryColor, fontWeight: FontWeight.bold),
+                        style: TextStyle(
+                          fontSize: 15,
+                          color: context.textPrimaryColor,
+                          fontWeight: FontWeight.bold,
+                        ),
                         decoration: const InputDecoration(
                           labelText: 'Fragrance Name',
-                          hintText: 'e.g. Sauvage, Bleu de Chanel, Eclat D\'Arpege',
+                          hintText:
+                              'e.g. Sauvage, Bleu de Chanel, Eclat D\'Arpege',
                           prefixIcon: Icon(Icons.sanitizer_rounded),
                         ),
-                        validator: (value) => (value == null || value.trim().isEmpty) ? 'Please enter fragrance name' : null,
+                        validator: (value) =>
+                            (value == null || value.trim().isEmpty)
+                            ? 'Please enter fragrance name'
+                            : null,
                       ),
                       const SizedBox(height: 16),
 
                       // Brand
                       TextFormField(
                         controller: _brandController,
-                        style: TextStyle(fontSize: 15, color: context.textPrimaryColor),
+                        style: TextStyle(
+                          fontSize: 15,
+                          color: context.textPrimaryColor,
+                        ),
                         decoration: const InputDecoration(
                           labelText: 'Brand / Fragrance House',
                           hintText: 'e.g. Otto Scents, Dior, Chanel, Bvlgari',
@@ -601,18 +738,38 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                       SingleChildScrollView(
                         scrollDirection: Axis.horizontal,
                         child: Row(
-                          children: ['Otto Scents', 'Dior', 'Chanel', 'YSL', 'Tom Ford', 'Creed', 'Bvlgari', 'Jo Malone'].map((b) {
-                            return Padding(
-                              padding: const EdgeInsets.only(right: 6),
-                              child: ActionChip(
-                                label: Text(b, style: const TextStyle(fontSize: 11)),
-                                onPressed: () => setState(() => _brandController.text = b),
-                                backgroundColor: context.surfaceElevatedColor,
-                                side: BorderSide(color: context.borderColor),
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                              ),
-                            );
-                          }).toList(),
+                          children:
+                              [
+                                'Otto Scents',
+                                'Dior',
+                                'Chanel',
+                                'YSL',
+                                'Tom Ford',
+                                'Creed',
+                                'Bvlgari',
+                                'Jo Malone',
+                              ].map((b) {
+                                return Padding(
+                                  padding: const EdgeInsets.only(right: 6),
+                                  child: ActionChip(
+                                    label: Text(
+                                      b,
+                                      style: const TextStyle(fontSize: 11),
+                                    ),
+                                    onPressed: () => setState(
+                                      () => _brandController.text = b,
+                                    ),
+                                    backgroundColor:
+                                        context.surfaceElevatedColor,
+                                    side: BorderSide(
+                                      color: context.borderColor,
+                                    ),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                  ),
+                                );
+                              }).toList(),
                         ),
                       ),
                       const SizedBox(height: 18),
@@ -624,14 +781,23 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                             child: DropdownButtonFormField<String>(
                               initialValue: _selectedBottleSize,
                               dropdownColor: context.surfaceElevatedColor,
-                              style: TextStyle(fontSize: 14, color: context.textPrimaryColor),
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: context.textPrimaryColor,
+                              ),
                               decoration: const InputDecoration(
                                 labelText: 'Bottle Size / SKU',
                                 prefixIcon: Icon(Icons.local_drink_rounded),
                               ),
                               items: const [
-                                DropdownMenuItem(value: '100ml', child: Text('100ML (Size 1)')),
-                                DropdownMenuItem(value: '50ml', child: Text('50ML (Size 2)')),
+                                DropdownMenuItem(
+                                  value: '100ml',
+                                  child: Text('100ML (Size 1)'),
+                                ),
+                                DropdownMenuItem(
+                                  value: '50ml',
+                                  child: Text('50ML (Size 2)'),
+                                ),
                               ],
                               onChanged: (val) {
                                 if (val != null) {
@@ -658,14 +824,22 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                                 hintText: 'e.g. AA1',
                                 prefixIcon: const Icon(Icons.qr_code_2_rounded),
                                 suffixIcon: IconButton(
-                                  icon: const Icon(Icons.auto_awesome_rounded, size: 18),
+                                  icon: const Icon(
+                                    Icons.auto_awesome_rounded,
+                                    size: 18,
+                                  ),
                                   tooltip: 'Auto-Generate',
-                                  onPressed: () => setState(() => _autoGenerateCapCode()),
+                                  onPressed: () =>
+                                      setState(() => _autoGenerateCapCode()),
                                 ),
                               ),
                               validator: (value) {
-                                if (value == null || value.trim().isEmpty) return 'Enter 3-character code';
-                                if (value.trim().length != 3) return 'Must be 3 chars';
+                                if (value == null || value.trim().isEmpty) {
+                                  return 'Enter 3-character code';
+                                }
+                                if (value.trim().length != 3) {
+                                  return 'Must be 3 chars';
+                                }
                                 return null;
                               },
                             ),
@@ -679,15 +853,22 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                           contentPadding: EdgeInsets.zero,
                           title: const Text(
                             'Register both 100ML (Size 1) and 50ML (Size 2) for this slot',
-                            style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                           subtitle: Text(
                             'Generates both SKUs for this fragrance slot partition automatically.',
-                            style: TextStyle(fontSize: 12, color: context.textSecondaryColor),
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: context.textSecondaryColor,
+                            ),
                           ),
                           value: _createBothSizes,
                           activeColor: AppColors.brandAccent,
-                          onChanged: (val) => setState(() => _createBothSizes = val ?? false),
+                          onChanged: (val) =>
+                              setState(() => _createBothSizes = val ?? false),
                           controlAffinity: ListTileControlAffinity.leading,
                         ),
                       ],
@@ -696,14 +877,21 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
 
                       // Seasonal Fragrance Rotation Switch
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
+                        ),
                         decoration: BoxDecoration(
                           color: _isSeasonalOff
-                              ? (context.isDark ? const Color(0xFF1F1A14) : const Color(0xFFFFFBEB))
+                              ? (context.isDark
+                                    ? const Color(0xFF1F1A14)
+                                    : const Color(0xFFFFFBEB))
                               : context.surfaceElevatedColor,
                           borderRadius: BorderRadius.circular(14),
                           border: Border.all(
-                            color: _isSeasonalOff ? AppColors.statusOrange.withValues(alpha: 0.6) : context.borderColor,
+                            color: _isSeasonalOff
+                                ? AppColors.statusOrange.withValues(alpha: 0.6)
+                                : context.borderColor,
                           ),
                         ),
                         child: Row(
@@ -711,12 +899,20 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                             Container(
                               padding: const EdgeInsets.all(8),
                               decoration: BoxDecoration(
-                                color: (_isSeasonalOff ? AppColors.statusOrange : AppColors.statusGreen).withValues(alpha: 0.15),
+                                color:
+                                    (_isSeasonalOff
+                                            ? AppColors.statusOrange
+                                            : AppColors.statusGreen)
+                                        .withValues(alpha: 0.15),
                                 borderRadius: BorderRadius.circular(10),
                               ),
                               child: Icon(
-                                _isSeasonalOff ? Icons.wb_sunny_outlined : Icons.check_circle_outline_rounded,
-                                color: _isSeasonalOff ? AppColors.statusOrange : AppColors.statusGreen,
+                                _isSeasonalOff
+                                    ? Icons.wb_sunny_outlined
+                                    : Icons.check_circle_outline_rounded,
+                                color: _isSeasonalOff
+                                    ? AppColors.statusOrange
+                                    : AppColors.statusGreen,
                                 size: 20,
                               ),
                             ),
@@ -726,7 +922,9 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    _isSeasonalOff ? 'Seasonal Scent (Turned Off)' : 'Active On Shelf',
+                                    _isSeasonalOff
+                                        ? 'Seasonal Scent (Turned Off)'
+                                        : 'Active On Shelf',
                                     style: TextStyle(
                                       fontWeight: FontWeight.w800,
                                       fontSize: 13,
@@ -737,7 +935,10 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                                     _isSeasonalOff
                                         ? 'Paused from active shelf inventory scans.'
                                         : 'Actively stocked and monitored on the kiosk shelf.',
-                                    style: TextStyle(fontSize: 11, color: context.textSecondaryColor),
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: context.textSecondaryColor,
+                                    ),
                                   ),
                                 ],
                               ),
@@ -745,9 +946,10 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                             const SizedBox(width: 12),
                             Switch(
                               value: !_isSeasonalOff,
-                              activeColor: AppColors.statusGreen,
+                              activeThumbColor: AppColors.statusGreen,
                               inactiveThumbColor: AppColors.statusOrange,
-                              onChanged: (active) => setState(() => _isSeasonalOff = !active),
+                              onChanged: (active) =>
+                                  setState(() => _isSeasonalOff = !active),
                             ),
                           ],
                         ),
@@ -760,16 +962,32 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                         width: double.infinity,
                         height: 54,
                         child: ElevatedButton.icon(
-                          onPressed: isShelfFull ? null : () => _saveProduct(isShelfFull),
-                          icon: Icon(widget.isEditMode ? Icons.save_rounded : (isShelfFull ? Icons.lock_outline_rounded : Icons.add_circle_outline_rounded), size: 20),
+                          onPressed: isShelfFull
+                              ? null
+                              : () => _saveProduct(isShelfFull),
+                          icon: Icon(
+                            widget.isEditMode
+                                ? Icons.save_rounded
+                                : (isShelfFull
+                                      ? Icons.lock_outline_rounded
+                                      : Icons.add_circle_outline_rounded),
+                            size: 20,
+                          ),
                           label: Text(
                             widget.isEditMode
                                 ? 'Update Fragrance SKU'
-                                : (isShelfFull ? 'Shelf Full (30/30 Slots Occupied)' : 'Save Fragrance Product'),
-                            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
+                                : (isShelfFull
+                                      ? 'Shelf Full (30/30 Slots Occupied)'
+                                      : 'Save Fragrance Product'),
+                            style: const TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w800,
+                            ),
                           ),
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: isShelfFull ? Colors.grey : AppColors.brandAccent,
+                            backgroundColor: isShelfFull
+                                ? Colors.grey
+                                : AppColors.brandAccent,
                             foregroundColor: Colors.white,
                           ),
                         ),
@@ -798,11 +1016,19 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
       children: [
         Row(
           children: [
-            Container(width: 8, height: 8, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+            Container(
+              width: 8,
+              height: 8,
+              decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+            ),
             const SizedBox(width: 6),
             Text(
               layerTitle,
-              style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12, color: context.textPrimaryColor),
+              style: TextStyle(
+                fontWeight: FontWeight.w800,
+                fontSize: 12,
+                color: context.textPrimaryColor,
+              ),
             ),
           ],
         ),
@@ -811,13 +1037,16 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
           children: List.generate(10, (idx) {
             final slotNum = idx + 1;
             final slotLetter = _slotLetters[idx];
-            final isSelected = _selectedLayer == layerKey && _selectedSlotPosition == slotNum;
+            final isSelected =
+                _selectedLayer == layerKey && _selectedSlotPosition == slotNum;
             final key = '${layerKey}_$slotNum';
             final occupiedProduct = slotMap[key];
 
             Color slotColor = color;
             if (isMixed) {
-              slotColor = slotNum <= 5 ? AppColors.maleBlue : AppColors.femalePink;
+              slotColor = slotNum <= 5
+                  ? AppColors.maleBlue
+                  : AppColors.femalePink;
             }
 
             return Expanded(
@@ -832,13 +1061,17 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                       color: isSelected
                           ? slotColor
                           : (occupiedProduct != null
-                              ? slotColor.withValues(alpha: context.isDark ? 0.25 : 0.15)
-                              : context.surfaceElevatedColor),
+                                ? slotColor.withValues(
+                                    alpha: context.isDark ? 0.25 : 0.15,
+                                  )
+                                : context.surfaceElevatedColor),
                       borderRadius: BorderRadius.circular(8),
                       border: Border.all(
                         color: isSelected
                             ? Colors.white
-                            : (occupiedProduct != null ? slotColor.withValues(alpha: 0.5) : context.borderColor),
+                            : (occupiedProduct != null
+                                  ? slotColor.withValues(alpha: 0.5)
+                                  : context.borderColor),
                         width: isSelected ? 2 : 1,
                       ),
                     ),
@@ -850,7 +1083,9 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                           style: TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.w900,
-                            color: isSelected ? Colors.white : context.textPrimaryColor,
+                            color: isSelected
+                                ? Colors.white
+                                : context.textPrimaryColor,
                           ),
                         ),
                         const SizedBox(height: 2),
@@ -863,7 +1098,9 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                             fontWeight: FontWeight.w700,
                             color: isSelected
                                 ? Colors.white70
-                                : (occupiedProduct != null ? slotColor : context.textMutedColor),
+                                : (occupiedProduct != null
+                                      ? slotColor
+                                      : context.textMutedColor),
                           ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,

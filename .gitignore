@@ -47,3 +47,13 @@ app.*.map.json
 
 # Widget Preview related
 .widget_preview/
+
+# Project-specific
+manuscript.docx
+*.docx
+camera_assignments.json
+*.tar.gz
+
+# Python (vision_backend)
+venv/
+__pycache__/

@@ -1,6 +1,7 @@
 class ProductModel {
   final String id;
-  final String perfumeCode; // 3-char code printed on cap, e.g. 'AA1', 'AA2', 'BF1', 'CK2'
+  final String
+  perfumeCode; // 3-char code printed on cap, e.g. 'AA1', 'AA2', 'BF1', 'CK2'
   final String name;
   final String brand;
   final String category; // 'Men', 'Women'
@@ -27,21 +28,25 @@ class ProductModel {
     final productId = id ?? (map['id'] as String? ?? '');
     return ProductModel(
       id: productId,
-      perfumeCode: map['perfumeCode'] as String? ??
+      perfumeCode:
+          map['perfumeCode'] as String? ??
           map['perfume_code'] as String? ??
           map['code'] as String? ??
           '',
       name: map['name'] as String? ?? map['productName'] as String? ?? '',
       brand: map['brand'] as String? ?? 'Otto Scents',
       category: map['category'] as String? ?? 'Men',
-      bottleSize: map['bottleSize'] as String? ??
+      bottleSize:
+          map['bottleSize'] as String? ??
           map['bottle_size'] as String? ??
           '50ml',
-      shelfLayer: map['shelfLayer'] as String? ??
+      shelfLayer:
+          map['shelfLayer'] as String? ??
           map['shelf_layer'] as String? ??
           map['shelf'] as String? ??
           'Layer A',
-      slotPosition: (map['slotPosition'] ?? map['slot_position'] as num?)?.toInt() ?? 1,
+      slotPosition:
+          (map['slotPosition'] ?? map['slot_position'] as num?)?.toInt() ?? 1,
       price: (map['price'] as num?)?.toDouble() ?? 0.0,
       status: map['status'] as String? ?? 'active',
     );

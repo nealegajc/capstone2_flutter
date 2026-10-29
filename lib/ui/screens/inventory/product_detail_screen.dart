@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/theme_helper.dart';
 import '../../../data/models/product_model.dart';
 import '../../../providers/kiosk_providers.dart';
 import '../../components/status_badge.dart';
+import '../reports/record_sale_dialog.dart';
 
 class ProductDetailScreen extends ConsumerWidget {
   final ProductModel? product;
@@ -20,7 +22,14 @@ class ProductDetailScreen extends ConsumerWidget {
       data: (products) {
         // Resolve target product (either passed via router or fallback to first matching)
         final p = product != null
-            ? (products.where((item) => item.id == product!.id || item.perfumeCode == product!.perfumeCode).firstOrNull ?? product!)
+            ? (products
+                      .where(
+                        (item) =>
+                            item.id == product!.id ||
+                            item.perfumeCode == product!.perfumeCode,
+                      )
+                      .firstOrNull ??
+                  product!)
             : (products.isNotEmpty ? products.first : null);
 
         if (p == null) {
@@ -31,23 +40,45 @@ class ProductDetailScreen extends ConsumerWidget {
         }
 
         final capCode = p.perfumeCode;
-        final isFemale = p.category.toLowerCase().contains('women') ||
+        final isFemale =
+            p.category.toLowerCase().contains('women') ||
             p.category.toLowerCase().contains('female') ||
             p.shelfLayer.contains('Layer C') ||
             (p.shelfLayer.contains('Layer B') && p.slotPosition >= 6);
 
-        final genderColor = isFemale ? AppColors.femalePink : AppColors.maleBlue;
+        final genderColor = isFemale
+            ? AppColors.femalePink
+            : AppColors.maleBlue;
 
         return Scaffold(
           appBar: AppBar(
             title: const Text('Product Details & Vision Specs'),
             actions: [
               ElevatedButton.icon(
-                onPressed: () => context.push(AppRoutePaths.productForm, extra: p),
+                onPressed: () =>
+                    RecordSaleDialog.show(context, initialProduct: p),
+                icon: const Icon(Icons.point_of_sale_rounded, size: 18),
+                label: const Text('Record Sale'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.statusGreen,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 10,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              ElevatedButton.icon(
+                onPressed: () =>
+                    context.push(AppRoutePaths.productForm, extra: p),
                 icon: const Icon(Icons.edit_rounded, size: 18),
                 label: const Text('Edit Product'),
                 style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 10,
+                  ),
                 ),
               ),
               const SizedBox(width: 16),
@@ -73,7 +104,10 @@ class ProductDetailScreen extends ConsumerWidget {
                             gradient: LinearGradient(
                               colors: isFemale
                                   ? const [Color(0xFFEC4899), Color(0xFFBE185D)]
-                                  : const [Color(0xFF0284C7), Color(0xFF0369A1)],
+                                  : const [
+                                      Color(0xFF0284C7),
+                                      Color(0xFF0369A1),
+                                    ],
                               begin: Alignment.topLeft,
                               end: Alignment.bottomRight,
                             ),
@@ -137,39 +171,71 @@ class ProductDetailScreen extends ConsumerWidget {
                                 children: [
                                   if (p.isSeasonalOff) ...[
                                     Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 10,
+                                        vertical: 4,
+                                      ),
                                       decoration: BoxDecoration(
-                                        color: AppColors.statusOrange.withValues(alpha: 0.15),
+                                        color: AppColors.statusOrange
+                                            .withValues(alpha: 0.15),
                                         borderRadius: BorderRadius.circular(6),
-                                        border: Border.all(color: AppColors.statusOrange.withValues(alpha: 0.5)),
+                                        border: Border.all(
+                                          color: AppColors.statusOrange
+                                              .withValues(alpha: 0.5),
+                                        ),
                                       ),
                                       child: const Row(
                                         mainAxisSize: MainAxisSize.min,
                                         children: [
-                                          Icon(Icons.wb_sunny_outlined, size: 14, color: AppColors.statusOrange),
+                                          Icon(
+                                            Icons.wb_sunny_outlined,
+                                            size: 14,
+                                            color: AppColors.statusOrange,
+                                          ),
                                           SizedBox(width: 4),
                                           Text(
                                             'Seasonal / Turned Off',
-                                            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: AppColors.statusOrange),
+                                            style: TextStyle(
+                                              fontSize: 11,
+                                              fontWeight: FontWeight.w800,
+                                              color: AppColors.statusOrange,
+                                            ),
                                           ),
                                         ],
                                       ),
                                     ),
                                   ] else ...[
-                                    const StatusBadge(type: StatusBadgeType.good, large: true),
+                                    const StatusBadge(
+                                      type: StatusBadgeType.good,
+                                      large: true,
+                                    ),
                                   ],
                                   const SizedBox(width: 12),
-                                  const StatusBadge(type: StatusBadgeType.synced, customLabel: 'Synced to Supabase'),
+                                  const StatusBadge(
+                                    type: StatusBadgeType.synced,
+                                    customLabel: 'Synced to Supabase',
+                                  ),
                                   const SizedBox(width: 12),
                                   Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 8,
+                                      vertical: 4,
+                                    ),
                                     decoration: BoxDecoration(
-                                      color: genderColor.withValues(alpha: 0.15),
+                                      color: genderColor.withValues(
+                                        alpha: 0.15,
+                                      ),
                                       borderRadius: BorderRadius.circular(6),
-                                      border: Border.all(color: genderColor.withValues(alpha: 0.4)),
+                                      border: Border.all(
+                                        color: genderColor.withValues(
+                                          alpha: 0.4,
+                                        ),
+                                      ),
                                     ),
                                     child: Text(
-                                      isFemale ? 'Women\'s Scent' : 'Men\'s Scent',
+                                      isFemale
+                                          ? 'Women\'s Scent'
+                                          : 'Men\'s Scent',
                                       style: TextStyle(
                                         fontSize: 11,
                                         fontWeight: FontWeight.w800,
@@ -191,7 +257,9 @@ class ProductDetailScreen extends ConsumerWidget {
                 // Seasonal Availability Toggle Banner Card
                 Card(
                   color: p.isSeasonalOff
-                      ? (context.isDark ? const Color(0xFF1F1A14) : const Color(0xFFFFFBEB))
+                      ? (context.isDark
+                            ? const Color(0xFF1F1A14)
+                            : const Color(0xFFFFFBEB))
                       : context.surfaceColor,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(16),
@@ -202,18 +270,29 @@ class ProductDetailScreen extends ConsumerWidget {
                     ),
                   ),
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 16,
+                    ),
                     child: Row(
                       children: [
                         Container(
                           padding: const EdgeInsets.all(10),
                           decoration: BoxDecoration(
-                            color: (p.isSeasonalOff ? AppColors.statusOrange : AppColors.statusGreen).withValues(alpha: 0.15),
+                            color:
+                                (p.isSeasonalOff
+                                        ? AppColors.statusOrange
+                                        : AppColors.statusGreen)
+                                    .withValues(alpha: 0.15),
                             borderRadius: BorderRadius.circular(12),
                           ),
                           child: Icon(
-                            p.isSeasonalOff ? Icons.wb_sunny_outlined : Icons.check_circle_outline_rounded,
-                            color: p.isSeasonalOff ? AppColors.statusOrange : AppColors.statusGreen,
+                            p.isSeasonalOff
+                                ? Icons.wb_sunny_outlined
+                                : Icons.check_circle_outline_rounded,
+                            color: p.isSeasonalOff
+                                ? AppColors.statusOrange
+                                : AppColors.statusGreen,
                             size: 24,
                           ),
                         ),
@@ -223,7 +302,9 @@ class ProductDetailScreen extends ConsumerWidget {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                p.isSeasonalOff ? 'Seasonal Fragrance (Turned Off)' : 'Active On Shelf',
+                                p.isSeasonalOff
+                                    ? 'Seasonal Fragrance (Turned Off)'
+                                    : 'Active On Shelf',
                                 style: TextStyle(
                                   fontSize: 15,
                                   fontWeight: FontWeight.w800,
@@ -235,7 +316,10 @@ class ProductDetailScreen extends ConsumerWidget {
                                 p.isSeasonalOff
                                     ? 'This seasonal variant is currently paused from active shelf scanning. Turn on to resume.'
                                     : 'This fragrance variant is actively monitored on the shelf in its designated tray slot.',
-                                style: TextStyle(fontSize: 12, color: context.textSecondaryColor),
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: context.textSecondaryColor,
+                                ),
                               ),
                             ],
                           ),
@@ -243,14 +327,16 @@ class ProductDetailScreen extends ConsumerWidget {
                         const SizedBox(width: 16),
                         Switch(
                           value: !p.isSeasonalOff,
-                          activeColor: AppColors.statusGreen,
+                          activeThumbColor: AppColors.statusGreen,
                           inactiveThumbColor: AppColors.statusOrange,
                           onChanged: (val) async {
                             final newStatus = val ? 'active' : 'seasonal_off';
-                            await ref.read(sqliteServiceProvider).toggleProductStatus(
-                              productId: p.id,
-                              newStatus: newStatus,
-                            );
+                            await ref
+                                .read(sqliteServiceProvider)
+                                .toggleProductStatus(
+                                  productId: p.id,
+                                  newStatus: newStatus,
+                                );
                             ref.invalidate(masterProductsProvider);
                             ref.invalidate(liveInventoryProvider('San Pablo'));
                             ref.invalidate(dashboardStatsProvider('San Pablo'));
@@ -285,11 +371,27 @@ class ProductDetailScreen extends ConsumerWidget {
                               ),
                               Divider(height: 24, color: context.borderColor),
                               _buildDetailRow(context, 'Cap OCR Code', capCode),
-                              _buildDetailRow(context, 'Bottle Size', '${p.bottleSize.toUpperCase()} Bottle'),
-                              _buildDetailRow(context, 'Assigned Shelf Layer', p.shelfLayer),
-                              _buildDetailRow(context, 'Slot Position', 'Slot ${p.slotPosition}'),
+                              _buildDetailRow(
+                                context,
+                                'Bottle Size',
+                                '${p.bottleSize.toUpperCase()} Bottle',
+                              ),
+                              _buildDetailRow(
+                                context,
+                                'Assigned Shelf Layer',
+                                p.shelfLayer,
+                              ),
+                              _buildDetailRow(
+                                context,
+                                'Slot Position',
+                                'Slot ${p.slotPosition}',
+                              ),
                               _buildDetailRow(context, 'Category', p.category),
-                              _buildDetailRow(context, 'Brand / House', p.brand),
+                              _buildDetailRow(
+                                context,
+                                'Brand / House',
+                                p.brand,
+                              ),
                             ],
                           ),
                         ),
@@ -315,11 +417,31 @@ class ProductDetailScreen extends ConsumerWidget {
                                 ),
                               ),
                               Divider(height: 24, color: context.borderColor),
-                              _buildDetailRow(context, 'OCR Recognition Confidence', '99.2% Confirmed'),
-                              _buildDetailRow(context, 'Bounding Box ROI Target', 'ROI Sector [Slot ${p.slotPosition}]'),
-                              _buildDetailRow(context, 'Slot Capacity', '5 / 5 Bottles Max'),
-                              _buildDetailRow(context, 'Physical Alignment', 'Calibrated Grid'),
-                              _buildDetailRow(context, 'Vision Pipeline Status', 'Active'),
+                              _buildDetailRow(
+                                context,
+                                'OCR Recognition Confidence',
+                                '99.2% Confirmed',
+                              ),
+                              _buildDetailRow(
+                                context,
+                                'Bounding Box ROI Target',
+                                'ROI Sector [Slot ${p.slotPosition}]',
+                              ),
+                              _buildDetailRow(
+                                context,
+                                'Slot Capacity',
+                                '5 / 5 Bottles Max',
+                              ),
+                              _buildDetailRow(
+                                context,
+                                'Physical Alignment',
+                                'Calibrated Grid',
+                              ),
+                              _buildDetailRow(
+                                context,
+                                'Vision Pipeline Status',
+                                'Active',
+                              ),
                             ],
                           ),
                         ),
@@ -332,8 +454,11 @@ class ProductDetailScreen extends ConsumerWidget {
           ),
         );
       },
-      loading: () => const Scaffold(body: Center(child: CircularProgressIndicator())),
-      error: (_, __) => const Scaffold(body: Center(child: Text('Unable to load product data.'))),
+      loading: () =>
+          const Scaffold(body: Center(child: CircularProgressIndicator())),
+      error: (_, _) => const Scaffold(
+        body: Center(child: Text('Unable to load product data.')),
+      ),
     );
   }
 

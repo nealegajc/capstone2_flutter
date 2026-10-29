@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/theme_helper.dart';
 import '../../../providers/kiosk_providers.dart';
@@ -39,16 +40,27 @@ class StockMovementLogsScreen extends ConsumerWidget {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.history_rounded, size: 64, color: context.textMutedColor),
+                  Icon(
+                    Icons.history_rounded,
+                    size: 64,
+                    color: context.textMutedColor,
+                  ),
                   const SizedBox(height: 16),
                   Text(
                     'No Stock Movement Events',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: context.textPrimaryColor),
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: context.textPrimaryColor,
+                    ),
                   ),
                   const SizedBox(height: 6),
                   Text(
                     'Camera detections and inventory movements will appear here.',
-                    style: TextStyle(fontSize: 14, color: context.textSecondaryColor),
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: context.textSecondaryColor,
+                    ),
                   ),
                 ],
               ),
@@ -60,16 +72,22 @@ class StockMovementLogsScreen extends ConsumerWidget {
             itemCount: logs.length,
             itemBuilder: (context, index) {
               final log = logs[index];
-              final isRestock = log.eventType == 'RESTOCKED' || log.eventType == 'ADDED';
-              final isRemoved = log.eventType == 'REMOVED' || log.eventType == 'MISSING';
+              final isRestock =
+                  log.eventType == 'RESTOCKED' || log.eventType == 'ADDED';
+              final isRemoved =
+                  log.eventType == 'REMOVED' || log.eventType == 'MISSING';
 
               final badgeType = isRestock
                   ? StatusBadgeType.synced
-                  : (isRemoved ? StatusBadgeType.lowStock : StatusBadgeType.good);
+                  : (isRemoved
+                        ? StatusBadgeType.lowStock
+                        : StatusBadgeType.good);
 
               final icon = isRestock
                   ? Icons.add_circle_outline_rounded
-                  : (isRemoved ? Icons.remove_circle_outline_rounded : Icons.camera_alt_outlined);
+                  : (isRemoved
+                        ? Icons.remove_circle_outline_rounded
+                        : Icons.camera_alt_outlined);
 
               return Padding(
                 padding: const EdgeInsets.only(bottom: 12),
@@ -87,7 +105,8 @@ class StockMovementLogsScreen extends ConsumerWidget {
           );
         },
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (err, _) => Center(child: Text('Error loading movement logs: $err')),
+        error: (err, _) =>
+            Center(child: Text('Error loading movement logs: $err')),
       ),
     );
   }
@@ -110,7 +129,9 @@ class StockMovementLogsScreen extends ConsumerWidget {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: AppColors.brandAccent.withValues(alpha: context.isDark ? 0.15 : 0.1),
+                color: AppColors.brandAccent.withValues(
+                  alpha: context.isDark ? 0.15 : 0.1,
+                ),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Icon(icon, color: AppColors.brandAccent, size: 24),
@@ -131,7 +152,10 @@ class StockMovementLogsScreen extends ConsumerWidget {
                   const SizedBox(height: 4),
                   Text(
                     'Shelf Region: $roi • Logged at: $timestamp',
-                    style: TextStyle(fontSize: 13, color: context.textSecondaryColor),
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: context.textSecondaryColor,
+                    ),
                   ),
                 ],
               ),

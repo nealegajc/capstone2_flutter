@@ -47,7 +47,11 @@ extension DateTimeExtensions on DateTime {
 
 extension CurrencyExtensions on num {
   String toPhp() {
-    final formatter = NumberFormat.currency(locale: 'en_PH', symbol: '₱', decimalDigits: 2);
+    final formatter = NumberFormat.currency(
+      locale: 'en_PH',
+      symbol: '₱',
+      decimalDigits: 2,
+    );
     return formatter.format(this);
   }
 }

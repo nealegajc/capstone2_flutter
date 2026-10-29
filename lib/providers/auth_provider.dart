@@ -1,5 +1,7 @@
 import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import '../core/constants/app_constants.dart';
 import '../data/models/auth_state.dart';
 import '../data/services/auth_service.dart';
@@ -7,7 +9,9 @@ import 'api_provider.dart';
 
 import '../data/services/sqlite_service.dart';
 
-final authNotifierProvider = StateNotifierProvider<AuthNotifier, AuthState>((ref) {
+final authNotifierProvider = StateNotifierProvider<AuthNotifier, AuthState>((
+  ref,
+) {
   final authService = ref.watch(authServiceProvider);
   return AuthNotifier(authService);
 });
@@ -29,10 +33,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
     if (state.enteredPin.length >= AppConstants.pinLength) return;
 
     final newPin = '${state.enteredPin}$digit';
-    state = state.copyWith(
-      enteredPin: newPin,
-      clearError: true,
-    );
+    state = state.copyWith(enteredPin: newPin, clearError: true);
 
     // Automatically verify once 6 digits are typed
     if (newPin.length == AppConstants.pinLength) {
@@ -52,10 +53,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
 
   void clearPin() {
     if (state.isLockedOut || state.isLoading) return;
-    state = state.copyWith(
-      enteredPin: '',
-      clearError: true,
-    );
+    state = state.copyWith(enteredPin: '', clearError: true);
   }
 
   Future<bool> verifyPin(String pin) async {
@@ -91,7 +89,8 @@ class AuthNotifier extends StateNotifier<AuthState> {
         try {
           await SqliteService.instance.logActivity(
             type: 'AUTH_FAILURE',
-            description: 'Failed PIN authentication attempt ($attempts of ${AppConstants.maxFailedAttempts}).',
+            description:
+                'Failed PIN authentication attempt ($attempts of ${AppConstants.maxFailedAttempts}).',
           );
         } catch (_) {}
 
@@ -103,7 +102,8 @@ class AuthNotifier extends StateNotifier<AuthState> {
             isLoading: false,
             enteredPin: '',
             failedAttempts: attempts,
-            errorMessage: 'Incorrect PIN, please try again (${AppConstants.maxFailedAttempts - attempts} attempts left)',
+            errorMessage:
+                'Incorrect PIN, please try again (${AppConstants.maxFailedAttempts - attempts} attempts left)',
           );
         }
         return false;
@@ -126,14 +126,16 @@ class AuthNotifier extends StateNotifier<AuthState> {
       lockoutRemainingSeconds: AppConstants.lockoutDurationSeconds,
       enteredPin: '',
       isLoading: false,
-      errorMessage: 'Too many incorrect attempts. Please wait ${AppConstants.lockoutDurationSeconds}s.',
+      errorMessage:
+          'Too many incorrect attempts. Please wait ${AppConstants.lockoutDurationSeconds}s.',
     );
 
     // Log security lockout audit
     try {
       SqliteService.instance.logActivity(
         type: 'SECURITY_LOCKOUT',
-        description: 'Security lockout initiated for ${AppConstants.lockoutDurationSeconds}s after repeated invalid PIN attempts.',
+        description:
+            'Security lockout initiated for ${AppConstants.lockoutDurationSeconds}s after repeated invalid PIN attempts.',
       );
     } catch (_) {}
 
@@ -150,10 +152,16 @@ class AuthNotifier extends StateNotifier<AuthState> {
       } else {
         state = state.copyWith(
           lockoutRemainingSeconds: remaining,
-          errorMessage: 'Too many incorrect attempts. Please wait ${remaining}s.',
+          errorMessage:
+              'Too many incorrect attempts. Please wait ${remaining}s.',
         );
       }
     });
+  }
+
+  void resetLockoutAndState() {
+    _lockoutTimer?.cancel();
+    state = const AuthState();
   }
 
   void logout() {

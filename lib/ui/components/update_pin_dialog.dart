@@ -1,14 +1,12 @@
 import 'package:flutter/material.dart';
+
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/theme_helper.dart';
 import '../../data/services/sqlite_service.dart';
+import 'kiosk_numpad.dart';
 import 'pin_dots_indicator.dart';
 
-enum UpdatePinStep {
-  currentPin,
-  newPin,
-  confirmPin,
-}
+enum UpdatePinStep { currentPin, newPin, confirmPin }
 
 class UpdatePinDialog extends StatefulWidget {
   const UpdatePinDialog({super.key});
@@ -74,7 +72,10 @@ class _UpdatePinDialogState extends State<UpdatePinDialog> {
       switch (_currentStep) {
         case UpdatePinStep.currentPin:
           if (_currentPinInput.isNotEmpty) {
-            _currentPinInput = _currentPinInput.substring(0, _currentPinInput.length - 1);
+            _currentPinInput = _currentPinInput.substring(
+              0,
+              _currentPinInput.length - 1,
+            );
           }
           break;
         case UpdatePinStep.newPin:
@@ -84,7 +85,10 @@ class _UpdatePinDialogState extends State<UpdatePinDialog> {
           break;
         case UpdatePinStep.confirmPin:
           if (_confirmPinInput.isNotEmpty) {
-            _confirmPinInput = _confirmPinInput.substring(0, _confirmPinInput.length - 1);
+            _confirmPinInput = _confirmPinInput.substring(
+              0,
+              _confirmPinInput.length - 1,
+            );
           } else {
             // Go back to new pin step
             _currentStep = UpdatePinStep.newPin;
@@ -114,7 +118,9 @@ class _UpdatePinDialogState extends State<UpdatePinDialog> {
 
   Future<void> _validateCurrentPin() async {
     setState(() => _isLoading = true);
-    final isValid = await SqliteService.instance.verifyOwnerPin(_currentPinInput);
+    final isValid = await SqliteService.instance.verifyOwnerPin(
+      _currentPinInput,
+    );
 
     if (!mounted) return;
     if (isValid) {
@@ -191,16 +197,52 @@ class _UpdatePinDialogState extends State<UpdatePinDialog> {
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        _buildStepBadge(context, 1, 'Current', _currentStep == UpdatePinStep.currentPin, _currentStep.index > 0),
-        Container(width: 10, height: 2, color: _currentStep.index >= 1 ? AppColors.brandAccent : context.borderColor),
-        _buildStepBadge(context, 2, 'New PIN', _currentStep == UpdatePinStep.newPin, _currentStep.index > 1),
-        Container(width: 10, height: 2, color: _currentStep.index >= 2 ? AppColors.brandAccent : context.borderColor),
-        _buildStepBadge(context, 3, 'Confirm', _currentStep == UpdatePinStep.confirmPin, false),
+        _buildStepBadge(
+          context,
+          1,
+          'Current',
+          _currentStep == UpdatePinStep.currentPin,
+          _currentStep.index > 0,
+        ),
+        Container(
+          width: 14,
+          height: 2,
+          color: _currentStep.index >= 1
+              ? AppColors.brandAccent
+              : context.borderColor,
+        ),
+        _buildStepBadge(
+          context,
+          2,
+          'New PIN',
+          _currentStep == UpdatePinStep.newPin,
+          _currentStep.index > 1,
+        ),
+        Container(
+          width: 14,
+          height: 2,
+          color: _currentStep.index >= 2
+              ? AppColors.brandAccent
+              : context.borderColor,
+        ),
+        _buildStepBadge(
+          context,
+          3,
+          'Confirm',
+          _currentStep == UpdatePinStep.confirmPin,
+          false,
+        ),
       ],
     );
   }
 
-  Widget _buildStepBadge(BuildContext context, int step, String title, bool isCurrent, bool isCompleted) {
+  Widget _buildStepBadge(
+    BuildContext context,
+    int step,
+    String title,
+    bool isCurrent,
+    bool isCompleted,
+  ) {
     Color bg;
     Color border;
     Color text;
@@ -220,50 +262,40 @@ class _UpdatePinDialogState extends State<UpdatePinDialog> {
     }
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
       decoration: BoxDecoration(
         color: bg,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: border, width: isCurrent ? 1.5 : 1),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: border, width: isCurrent ? 2 : 1),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           if (isCompleted)
-            const Icon(Icons.check_rounded, color: AppColors.statusGreen, size: 12)
+            const Icon(
+              Icons.check_rounded,
+              color: AppColors.statusGreen,
+              size: 14,
+            )
           else
             Text(
               '$step',
-              style: TextStyle(color: text, fontWeight: FontWeight.bold, fontSize: 11),
+              style: TextStyle(
+                color: text,
+                fontWeight: FontWeight.bold,
+                fontSize: 13,
+              ),
             ),
-          const SizedBox(width: 4),
+          const SizedBox(width: 6),
           Text(
             title,
-            style: TextStyle(color: text, fontWeight: FontWeight.w700, fontSize: 11),
+            style: TextStyle(
+              color: text,
+              fontWeight: FontWeight.w800,
+              fontSize: 13,
+            ),
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildNumpadKey(BuildContext context, String label, {VoidCallback? onTap, Color? color}) {
-    return SizedBox(
-      width: 72,
-      height: 60,
-      child: ElevatedButton(
-        onPressed: _isLoading ? null : (onTap ?? () => _onKeyPress(label)),
-        style: ElevatedButton.styleFrom(
-          backgroundColor: color ?? context.surfaceElevatedColor,
-          foregroundColor: context.textPrimaryColor,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          padding: EdgeInsets.zero,
-          elevation: 0,
-          side: BorderSide(color: context.borderColor),
-        ),
-        child: Text(
-          label,
-          style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-        ),
       ),
     );
   }
@@ -290,156 +322,150 @@ class _UpdatePinDialogState extends State<UpdatePinDialog> {
 
     return Dialog(
       backgroundColor: context.surfaceColor,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(28),
+        side: BorderSide(color: context.borderColor, width: 1.5),
+      ),
+      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
       child: Container(
-        width: 440,
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Header
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Row(
-                  children: [
-                    const Icon(Icons.lock_reset_rounded, color: AppColors.brandAccent, size: 24),
-                    const SizedBox(width: 10),
-                    Text(
-                      'Update Security PIN',
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: context.textPrimaryColor),
+        width: 580,
+        padding: const EdgeInsets.symmetric(horizontal: 36, vertical: 32),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Header
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: AppColors.brandAccent.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(14),
                     ),
-                  ],
-                ),
-                IconButton(
-                  onPressed: () => Navigator.of(context).pop(false),
-                  icon: Icon(Icons.close_rounded, color: context.textSecondaryColor),
-                  tooltip: 'Cancel',
-                ),
-              ],
-            ),
-            Divider(height: 20, color: context.borderColor),
-
-            // Stepper
-            _buildStepIndicator(context),
-            const SizedBox(height: 18),
-
-            // Step Title & Subtitle
-            Text(
-              stepTitle,
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: context.textPrimaryColor),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              stepSubtitle,
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 12, color: context.textSecondaryColor),
-            ),
-            const SizedBox(height: 16),
-
-            // Pin Dots
-            PinDotsIndicator(
-              pinLength: 6,
-              enteredLength: _currentPinLength,
-              hasError: _errorMessage != null,
-            ),
-
-            if (_errorMessage != null) ...[
-              const SizedBox(height: 12),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  color: AppColors.statusRedBg,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: AppColors.statusRed.withValues(alpha: 0.5)),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.error_outline_rounded, color: AppColors.statusRed, size: 16),
-                    const SizedBox(width: 6),
-                    Flexible(
-                      child: Text(
-                        _errorMessage!,
-                        style: const TextStyle(color: AppColors.statusRed, fontSize: 12, fontWeight: FontWeight.bold),
-                      ),
+                    child: const Icon(
+                      Icons.lock_reset_rounded,
+                      color: AppColors.brandAccent,
+                      size: 28,
                     ),
-                  ],
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Update Security PIN',
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w800,
+                            color: context.textPrimaryColor,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          'Configure 6-digit manager terminal access',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: context.textSecondaryColor,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: () => Navigator.of(context).pop(false),
+                    icon: Icon(
+                      Icons.close_rounded,
+                      color: context.textSecondaryColor,
+                      size: 26,
+                    ),
+                    tooltip: 'Cancel',
+                  ),
+                ],
+              ),
+              Divider(height: 24, color: context.borderColor),
+
+              // Stepper
+              _buildStepIndicator(context),
+              const SizedBox(height: 18),
+
+              // Step Title & Subtitle
+              Text(
+                stepTitle,
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                  color: context.textPrimaryColor,
                 ),
               ),
-            ],
+              const SizedBox(height: 4),
+              Text(
+                stepSubtitle,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 13,
+                  color: context.textSecondaryColor,
+                ),
+              ),
+              const SizedBox(height: 18),
 
-            const SizedBox(height: 20),
+              // Pin Dots
+              PinDotsIndicator(
+                pinLength: 6,
+                enteredLength: _currentPinLength,
+                hasError: _errorMessage != null,
+              ),
 
-            // On-screen Touch Numpad
-            Column(
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    _buildNumpadKey(context, '1'),
-                    const SizedBox(width: 12),
-                    _buildNumpadKey(context, '2'),
-                    const SizedBox(width: 12),
-                    _buildNumpadKey(context, '3'),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    _buildNumpadKey(context, '4'),
-                    const SizedBox(width: 12),
-                    _buildNumpadKey(context, '5'),
-                    const SizedBox(width: 12),
-                    _buildNumpadKey(context, '6'),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    _buildNumpadKey(context, '7'),
-                    const SizedBox(width: 12),
-                    _buildNumpadKey(context, '8'),
-                    const SizedBox(width: 12),
-                    _buildNumpadKey(context, '9'),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    _buildNumpadKey(
-                      context,
-                      'C',
-                      onTap: _onClear,
-                      color: AppColors.statusOrangeBg,
+              if (_errorMessage != null) ...[
+                const SizedBox(height: 14),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 8,
+                  ),
+                  decoration: BoxDecoration(
+                    color: AppColors.statusRedBg,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: AppColors.statusRed.withValues(alpha: 0.5),
                     ),
-                    const SizedBox(width: 12),
-                    _buildNumpadKey(context, '0'),
-                    const SizedBox(width: 12),
-                    SizedBox(
-                      width: 72,
-                      height: 60,
-                      child: ElevatedButton(
-                        onPressed: _isLoading ? null : _onBackspace,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: context.surfaceElevatedColor,
-                          foregroundColor: context.textPrimaryColor,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                          padding: EdgeInsets.zero,
-                          elevation: 0,
-                          side: BorderSide(color: context.borderColor),
-                        ),
-                        child: Icon(Icons.backspace_outlined, size: 20, color: context.textPrimaryColor),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(
+                        Icons.error_outline_rounded,
+                        color: AppColors.statusRed,
+                        size: 18,
                       ),
-                    ),
-                  ],
+                      const SizedBox(width: 8),
+                      Flexible(
+                        child: Text(
+                          _errorMessage!,
+                          style: const TextStyle(
+                            color: AppColors.statusRed,
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ],
-            ),
-          ],
+
+              const SizedBox(height: 18),
+
+              // On-screen Touch Numpad (Exact match to Login Screen Numpad)
+              KioskNumpad(
+                isEnabled: !_isLoading,
+                onDigitPressed: _onKeyPress,
+                onDeletePressed: _onBackspace,
+                onClearPressed: _onClear,
+              ),
+            ],
+          ),
         ),
       ),
     );

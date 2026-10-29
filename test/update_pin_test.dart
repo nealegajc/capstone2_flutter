@@ -5,7 +5,9 @@ import 'package:smart_shelf_linux/core/theme/app_theme.dart';
 import 'package:smart_shelf_linux/ui/components/update_pin_dialog.dart';
 
 void main() {
-  testWidgets('UpdatePinDialog renders 3-step wizard and touch numpad', (tester) async {
+  testWidgets('UpdatePinDialog renders 3-step wizard and touch numpad', (
+    tester,
+  ) async {
     tester.view.physicalSize = const Size(1920, 1080);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(() => tester.view.resetPhysicalSize());
@@ -13,27 +15,24 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         theme: AppTheme.darkKioskTheme,
-        home: const Scaffold(
-          body: ProviderScope(
-            child: UpdatePinDialog(),
-          ),
-        ),
+        home: const Scaffold(body: ProviderScope(child: UpdatePinDialog())),
       ),
     );
 
     // Verify dialog header & step indicator
-    expect(find.text('Update Owner PIN'), findsOneWidget);
+    expect(find.text('Update Security PIN'), findsOneWidget);
     expect(find.text('Current'), findsOneWidget);
     expect(find.text('New PIN'), findsOneWidget);
     expect(find.text('Confirm'), findsOneWidget);
 
     // Verify initial prompt
-    expect(find.text('Enter Current Owner PIN'), findsOneWidget);
+    expect(find.text('Enter Current Security PIN'), findsOneWidget);
 
     // Verify keypad keys
-    expect(find.widgetWithText(ElevatedButton, '1'), findsOneWidget);
-    expect(find.widgetWithText(ElevatedButton, '9'), findsOneWidget);
-    expect(find.widgetWithText(ElevatedButton, '0'), findsOneWidget);
-    expect(find.text('C'), findsOneWidget);
+    expect(find.byKey(const ValueKey('numpad_key_1')), findsOneWidget);
+    expect(find.byKey(const ValueKey('numpad_key_9')), findsOneWidget);
+    expect(find.byKey(const ValueKey('numpad_key_0')), findsOneWidget);
+    expect(find.text('CLEAR'), findsOneWidget);
+    expect(find.text('DELETE'), findsOneWidget);
   });
 }

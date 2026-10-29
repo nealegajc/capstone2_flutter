@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:smart_shelf_linux/data/services/sqlite_service.dart';
+import 'package:smart_shelf_linux/data/models/system_log_model.dart';
 import 'package:smart_shelf_linux/data/models/inventory_record_model.dart';
 import 'package:smart_shelf_linux/data/models/alert_model.dart';
 import 'package:smart_shelf_linux/core/constants/app_constants.dart';
@@ -22,17 +23,27 @@ void main() {
     test('Initial seeding populates master products catalog', () async {
       final products = await sqliteService.getProducts();
       expect(products.length, equals(60));
-      expect(products.map((p) => p.perfumeCode).toList(), containsAll(['AA1', 'AA2', 'BA1', 'CK2']));
+      expect(
+        products.map((p) => p.perfumeCode).toList(),
+        containsAll(['AA1', 'AA2', 'BA1', 'CK2']),
+      );
     });
 
-    test('Initial seeding populates branch shelf regions for 3 cameras', () async {
-      final spRegions = await sqliteService.getShelfRegions('San Pablo');
-      expect(spRegions.length, equals(3));
-      expect(spRegions.first.code, equals('Layer A'));
-      expect(spRegions.first.cameraId, equals(1));
-      expect(spRegions[1].cameraId, equals(2));
-      expect(spRegions[2].cameraId, equals(3));
-    });
+    test(
+      'Initial seeding populates branch shelf regions for 6 cameras (100ML + 50ML zones)',
+      () async {
+        final spRegions = await sqliteService.getShelfRegions('San Pablo');
+        expect(spRegions.length, equals(12));
+        final cameraIds = spRegions.map((r) => r.cameraId).toSet();
+        expect(cameraIds, equals({1, 2, 3, 4, 5, 6}));
+        for (final id in cameraIds) {
+          final zones = spRegions.where((r) => r.cameraId == id).toList();
+          expect(zones.length, equals(2));
+          expect(zones.any((r) => r.code.endsWith('100ML')), isTrue);
+          expect(zones.any((r) => r.code.endsWith('50ML')), isTrue);
+        }
+      },
+    );
 
     test('Inventory CRUD operations work properly', () async {
       final initialInv = await sqliteService.getInventoryRecords('San Pablo');
@@ -100,13 +111,19 @@ void main() {
       pending = await sqliteService.getPendingSyncItems();
       expect(pending.any((i) => i['id'] == 'sync_item_1'), isFalse);
 
-      final allQueue = await sqliteService.getSyncQueue('San Pablo');
+      final allQueue = await sqliteService.getSyncQueue(
+        'San Pablo',
+        pendingOnly: false,
+      );
       final syncedItem = allQueue.firstWhere((i) => i.id == 'sync_item_1');
       expect(syncedItem.status, equals('synced'));
     });
 
     test('System Settings persistence in SQLite', () async {
-      await sqliteService.setSystemSetting('captureSchedule', 'Every 30 minutes');
+      await sqliteService.setSystemSetting(
+        'captureSchedule',
+        'Every 30 minutes',
+      );
       await sqliteService.setSystemSetting('lowStockThreshold', '3');
 
       final settings = await sqliteService.getSystemSettings();
@@ -114,21 +131,31 @@ void main() {
       expect(settings['lowStockThreshold'], equals('3'));
     });
 
-    test('Offline User Authentication and Password Verification in SQLite', () async {
-      // 1. Initial seeded users exist
-      final adminCreds = await sqliteService.getUserWithCredentials('admin@ottoscents.com');
-      expect(adminCreds, isNotNull);
-      expect(adminCreds!['user'].role, equals('admin'));
-      expect(adminCreds['passwordHash'], equals(SqliteService.hashPassword(AppConstants.defaultOwnerPin)));
+    test(
+      'Offline User Authentication and Password Verification in SQLite',
+      () async {
+        // 1. Initial seeded users exist
+        final adminCreds = await sqliteService.getUserWithCredentials(
+          'admin@ottoscents.com',
+        );
+        expect(adminCreds, isNotNull);
+        expect(adminCreds!['user'].role, equals('admin'));
+        expect(
+          adminCreds['passwordHash'],
+          equals(SqliteService.hashPassword(AppConstants.defaultOwnerPin)),
+        );
 
-      // 2. Wrong password verification fails
-      final wrongPasswordHash = SqliteService.hashPassword('wrongpassword');
-      expect(adminCreds['passwordHash'] == wrongPasswordHash, isFalse);
+        // 2. Wrong password verification fails
+        final wrongPasswordHash = SqliteService.hashPassword('wrongpassword');
+        expect(adminCreds['passwordHash'] == wrongPasswordHash, isFalse);
 
-      // 3. Correct password verification succeeds
-      final correctPasswordHash = SqliteService.hashPassword(AppConstants.defaultOwnerPin);
-      expect(adminCreds['passwordHash'] == correctPasswordHash, isTrue);
-    });
+        // 3. Correct password verification succeeds
+        final correctPasswordHash = SqliteService.hashPassword(
+          AppConstants.defaultOwnerPin,
+        );
+        expect(adminCreds['passwordHash'] == correctPasswordHash, isTrue);
+      },
+    );
 
     test('Store Owner PIN update strictly invalidates old PIN', () async {
       // 1. Initial default PIN is valid
@@ -136,7 +163,10 @@ void main() {
       expect(initialValid, isTrue);
 
       // 2. Update PIN to new 6-digit code
-      final updated = await sqliteService.updateOwnerPin(oldPin: '123456', newPin: '852963');
+      final updated = await sqliteService.updateOwnerPin(
+        oldPin: '123456',
+        newPin: '852963',
+      );
       expect(updated, isTrue);
 
       // 3. New PIN works
@@ -150,6 +180,86 @@ void main() {
       // 5. Arbitrary PIN is rejected
       final wrongPinValid = await sqliteService.verifyOwnerPin('000000');
       expect(wrongPinValid, isFalse);
+    });
+
+    test(
+      'System Activity Logs uniqueness, batch upsert, and deletion',
+      () async {
+        // 1. Rapid consecutive logs have distinct IDs due to microsecond resolution + sequence counter
+        await sqliteService.logActivity(
+          type: 'TEST_OP',
+          description: 'Log A',
+          enqueueSync: false,
+        );
+        await sqliteService.logActivity(
+          type: 'TEST_OP',
+          description: 'Log B',
+          enqueueSync: false,
+        );
+
+        final logs = await sqliteService.getSystemLogs('San Pablo');
+        expect(logs.length, greaterThanOrEqualTo(2));
+        final ids = logs.map((l) => l.id).toSet();
+        expect(ids.length, equals(logs.length));
+
+        // 2. Batch upsert from cloud
+        final cloudLogs = [
+          SystemLogModel(
+            id: 'cloud_log_1',
+            type: 'SALE_TRANSACTION',
+            description: 'Cloud Sale 1',
+            user: 'CloudUser',
+            branch: 'San Pablo',
+            timestamp: DateTime.now(),
+          ),
+          SystemLogModel(
+            id: 'cloud_log_2',
+            type: 'PRODUCT_CATALOG',
+            description: 'Cloud Product 2',
+            user: 'CloudUser',
+            branch: 'San Pablo',
+            timestamp: DateTime.now(),
+          ),
+        ];
+        await sqliteService.upsertSystemLogsFromCloud(cloudLogs);
+
+        final logsAfterBatch = await sqliteService.getSystemLogs('San Pablo');
+        expect(logsAfterBatch.any((l) => l.id == 'cloud_log_1'), isTrue);
+        expect(logsAfterBatch.any((l) => l.id == 'cloud_log_2'), isTrue);
+
+        // 3. Delete single log
+        await sqliteService.deleteSystemLog('cloud_log_1', enqueueSync: false);
+        final logsAfterDel = await sqliteService.getSystemLogs('San Pablo');
+        expect(logsAfterDel.any((l) => l.id == 'cloud_log_1'), isFalse);
+
+        // 4. Clear all logs
+        await sqliteService.clearAllSystemLogs('San Pablo', enqueueSync: false);
+        final logsAfterClear = await sqliteService.getSystemLogs('San Pablo');
+        expect(logsAfterClear.isEmpty, isTrue);
+      },
+    );
+
+    test('SystemLogModel UTC and Local timestamp formatting and category categorization', () {
+      final utcStr = '2026-10-28T11:29:07.000Z';
+      final model = SystemLogModel.fromMap({
+        'id': 'test_ts_log',
+        'type': 'SALE_TRANSACTION',
+        'description': 'Sale item',
+        'timestamp': utcStr,
+      });
+
+      expect(model.timestamp.isUtc, isFalse); // Enforces .toLocal()
+      expect(model.toSupabaseMap()['timestamp'], endsWith('Z'));
+      expect(model.category, equals('Sales'));
+
+      final invModel = SystemLogModel(
+        id: 'test_inv',
+        type: 'PRODUCT_CATALOG',
+        description: 'Product updated',
+        user: 'Admin',
+        branch: 'San Pablo',
+      );
+      expect(invModel.category, equals('Inventory'));
     });
   });
 }

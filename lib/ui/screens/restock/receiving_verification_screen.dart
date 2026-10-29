@@ -1,127 +1,212 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+
+import '../../../core/router/route_names.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/theme_helper.dart';
+import '../../../data/models/restock_record_model.dart';
+import '../../../data/services/sqlite_service.dart';
+import '../../../providers/kiosk_providers.dart';
 import '../../components/status_badge.dart';
 
-class ReceivingVerificationScreen extends StatefulWidget {
+class ReceivingVerificationScreen extends ConsumerStatefulWidget {
   const ReceivingVerificationScreen({super.key});
 
   @override
-  State<ReceivingVerificationScreen> createState() => _ReceivingVerificationScreenState();
+  ConsumerState<ReceivingVerificationScreen> createState() =>
+      _ReceivingVerificationScreenState();
 }
 
-class _ReceivingVerificationScreenState extends State<ReceivingVerificationScreen> {
-  bool _isConfirmed = false;
+class _ReceivingVerificationScreenState
+    extends ConsumerState<ReceivingVerificationScreen> {
+  final Set<String> _confirmedBatchIds = {};
 
-  void _confirmBatch() {
-    setState(() => _isConfirmed = true);
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Restock batch verified and updated in store inventory & cloud database!'),
-        backgroundColor: AppColors.statusGreen,
-      ),
-    );
+  Future<void> _confirmBatch(RestockRecordModel record) async {
+    await SqliteService.instance.updateRestockStatus(record.id, 'verified');
+    setState(() {
+      _confirmedBatchIds.add(record.id);
+    });
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Delivery batch #${record.id} confirmed and marked as verified.',
+          ),
+          backgroundColor: AppColors.statusGreen,
+        ),
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    const branch = 'San Pablo';
+    final inventoryAsync = ref.watch(liveInventoryProvider(branch));
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Receiving Verification & Camera Check'),
+        title: const Text('Confirm Delivered Stock'),
         actions: [
           ElevatedButton.icon(
-            onPressed: _isConfirmed ? null : _confirmBatch,
-            icon: const Icon(Icons.check_circle_rounded, size: 22),
-            label: Text(_isConfirmed ? 'Batch Confirmed' : 'Confirm & Update Stock'),
+            onPressed: () => context.push(AppRoutePaths.createRestock),
+            icon: const Icon(Icons.add_rounded, size: 20),
+            label: const Text('New Delivery Batch'),
           ),
           const SizedBox(width: 16),
         ],
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Top Instructions Card
-            Card(
-              color: context.surfaceColor,
+      body: FutureBuilder<List<RestockRecordModel>>(
+        future: SqliteService.instance.getRestockRecords(branch),
+        builder: (context, snapshot) {
+          final restocks = snapshot.data ?? [];
+
+          if (restocks.isEmpty) {
+            return Center(
               child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Row(
+                padding: const EdgeInsets.all(32.0),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: const BoxDecoration(
-                        color: AppColors.statusGreenBg,
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(Icons.fact_check_rounded, color: AppColors.statusGreen, size: 36),
+                    Icon(
+                      Icons.inventory_2_outlined,
+                      size: 64,
+                      color: context.textMutedColor,
                     ),
-                    const SizedBox(width: 20),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Delivery Verification Comparison',
-                            style: TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.w800,
-                              color: context.textPrimaryColor,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            'Verify that the computer vision model detected the expected bottle quantities on the shelf.',
-                            style: TextStyle(fontSize: 14, color: context.textSecondaryColor),
-                          ),
-                        ],
+                    const SizedBox(height: 16),
+                    Text(
+                      'No Deliveries Awaiting Verification',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                        color: context.textPrimaryColor,
                       ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'When a new restock is logged, physical invoice amounts will be compared here against live computer vision shelf detections.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: context.textSecondaryColor,
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    ElevatedButton.icon(
+                      onPressed: () =>
+                          context.push(AppRoutePaths.createRestock),
+                      icon: const Icon(Icons.add_rounded),
+                      label: const Text('Log Incoming Restock'),
                     ),
                   ],
                 ),
               ),
-            ),
-            const SizedBox(height: 20),
+            );
+          }
 
-            // Comparison Items
-            _buildVerificationCard(
-              context: context,
-              product: 'Sauvage Eau de Parfum (100ml)',
-              roi: 'Camera 1: Layer A (Top - Slot A) • Code: AA1',
-              expected: 5,
-              detected: 5,
-              statusLabel: 'Verified Match (5/5 Bottles)',
-              statusType: StatusBadgeType.synced,
-              isMatch: true,
+          final invMap = {
+            for (final item in (inventoryAsync.valueOrNull ?? []))
+              item.perfumeCode: item,
+          };
+
+          return SingleChildScrollView(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Top Instructions Card
+                Card(
+                  color: context.surfaceColor,
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: const BoxDecoration(
+                            color: AppColors.statusGreenBg,
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(
+                            Icons.fact_check_rounded,
+                            color: AppColors.statusGreen,
+                            size: 36,
+                          ),
+                        ),
+                        const SizedBox(width: 20),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Delivery Verification & Stock Auditing',
+                                style: TextStyle(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.w800,
+                                  color: context.textPrimaryColor,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                'Compare physical invoice restock quantities against actual shelf detected inventory counts.',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  color: context.textSecondaryColor,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 20),
+
+                ...restocks.map((r) {
+                  final liveInv = invMap[r.perfumeCode];
+                  final detected = liveInv?.detected ?? 0;
+                  final isMatch = detected >= r.quantity;
+                  final isConfirmed =
+                      _confirmedBatchIds.contains(r.id) ||
+                      r.status == 'verified';
+
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 14),
+                    child: _buildVerificationCard(
+                      context: context,
+                      record: r,
+                      detectedQty: detected,
+                      isMatch: isMatch,
+                      isConfirmed: isConfirmed,
+                      onConfirm: () => _confirmBatch(r),
+                    ),
+                  );
+                }),
+              ],
             ),
-            const SizedBox(height: 14),
-            _buildVerificationCard(
-              context: context,
-              product: 'Chanel Chance Eau Tendre (50ml)',
-              roi: 'Camera 3: Layer C (Bottom - Slot A) • Code: CA2',
-              expected: 5,
-              detected: 4,
-              statusLabel: 'Under Count (-1 Bottle)',
-              statusType: StatusBadgeType.lowStock,
-              isMatch: false,
-            ),
-          ],
-        ),
+          );
+        },
       ),
     );
   }
 
   Widget _buildVerificationCard({
     required BuildContext context,
-    required String product,
-    required String roi,
-    required int expected,
-    required int detected,
-    required String statusLabel,
-    required StatusBadgeType statusType,
+    required RestockRecordModel record,
+    required int detectedQty,
     required bool isMatch,
+    required bool isConfirmed,
+    required VoidCallback onConfirm,
   }) {
+    final statusLabel = isConfirmed
+        ? 'Verified Batch'
+        : (isMatch ? 'Quantity Match' : 'Discrepancy (Detected $detectedQty)');
+
+    final statusType = isConfirmed
+        ? StatusBadgeType.synced
+        : (isMatch ? StatusBadgeType.good : StatusBadgeType.lowStock);
+
     return Card(
       color: context.surfaceColor,
       child: Padding(
@@ -132,19 +217,24 @@ class _ReceivingVerificationScreenState extends State<ReceivingVerificationScree
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  product,
-                  style: TextStyle(
-                    fontSize: 17,
-                    fontWeight: FontWeight.w800,
-                    color: context.textPrimaryColor,
+                Expanded(
+                  child: Text(
+                    '${record.productName} (${record.perfumeCode})',
+                    style: TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w800,
+                      color: context.textPrimaryColor,
+                    ),
                   ),
                 ),
                 StatusBadge(type: statusType, customLabel: statusLabel),
               ],
             ),
             const SizedBox(height: 4),
-            Text(roi, style: TextStyle(fontSize: 13, color: context.textSecondaryColor)),
+            Text(
+              'Batch #${record.id} • From ${record.fromBranch} to ${record.toBranch}',
+              style: TextStyle(fontSize: 13, color: context.textSecondaryColor),
+            ),
             Divider(height: 24, color: context.borderColor),
             Row(
               children: [
@@ -152,11 +242,21 @@ class _ReceivingVerificationScreenState extends State<ReceivingVerificationScree
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('Expected on Invoice', style: TextStyle(fontSize: 12, color: context.textMutedColor)),
+                      Text(
+                        'Expected on Invoice',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: context.textMutedColor,
+                        ),
+                      ),
                       const SizedBox(height: 2),
                       Text(
-                        '$expected Bottles',
-                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: context.textPrimaryColor),
+                        '${record.quantity} Bottles',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: context.textPrimaryColor,
+                        ),
                       ),
                     ],
                   ),
@@ -165,22 +265,40 @@ class _ReceivingVerificationScreenState extends State<ReceivingVerificationScree
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('YOLO Camera Detection', style: TextStyle(fontSize: 12, color: context.textMutedColor)),
+                      Text(
+                        'Camera Vision Count',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: context.textMutedColor,
+                        ),
+                      ),
                       const SizedBox(height: 2),
                       Text(
-                        '$detected Bottles',
+                        '$detectedQty Bottles',
                         style: TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.bold,
-                          color: isMatch ? AppColors.statusGreen : AppColors.statusRed,
+                          color: isMatch
+                              ? AppColors.statusGreen
+                              : AppColors.statusRed,
                         ),
                       ),
                     ],
                   ),
                 ),
-                OutlinedButton(
-                  onPressed: () {},
-                  child: const Text('Inspect Camera Crop'),
+                ElevatedButton.icon(
+                  onPressed: isConfirmed ? null : onConfirm,
+                  icon: const Icon(
+                    Icons.check_circle_outline_rounded,
+                    size: 18,
+                  ),
+                  label: Text(isConfirmed ? 'Verified' : 'Confirm Stock'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: isConfirmed
+                        ? Colors.grey
+                        : AppColors.statusGreen,
+                    foregroundColor: Colors.white,
+                  ),
                 ),
               ],
             ),

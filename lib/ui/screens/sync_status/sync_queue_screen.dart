@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/theme_helper.dart';
 import '../../../providers/kiosk_providers.dart';
@@ -16,7 +17,7 @@ class SyncQueueScreen extends ConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Pending Synchronization Queue (SQLite)'),
+        title: const Text('Pending Cloud Uploads'),
         actions: [
           ElevatedButton.icon(
             onPressed: syncService.isSyncing
@@ -29,7 +30,9 @@ class SyncQueueScreen extends ConsumerWidget {
                     if (context.mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(
-                          content: Text('Offline sync queue processed with Supabase.'),
+                          content: Text(
+                            'Offline records uploaded to cloud successfully.',
+                          ),
                           backgroundColor: AppColors.statusGreen,
                         ),
                       );
@@ -39,10 +42,13 @@ class SyncQueueScreen extends ConsumerWidget {
                 ? const SizedBox(
                     width: 18,
                     height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
                   )
-                : const Icon(Icons.refresh_rounded, size: 20),
-            label: Text(syncService.isSyncing ? 'Syncing...' : 'Process Queue'),
+                : const Icon(Icons.cloud_upload_rounded, size: 20),
+            label: Text(syncService.isSyncing ? 'Uploading...' : 'Upload Now'),
           ),
           const SizedBox(width: 16),
         ],
@@ -60,7 +66,11 @@ class SyncQueueScreen extends ConsumerWidget {
             ),
             child: Row(
               children: [
-                const Icon(Icons.inventory_rounded, color: AppColors.brandAccent, size: 32),
+                const Icon(
+                  Icons.inventory_rounded,
+                  color: AppColors.brandAccent,
+                  size: 32,
+                ),
                 const SizedBox(width: 16),
                 Expanded(
                   child: Column(
@@ -77,7 +87,10 @@ class SyncQueueScreen extends ConsumerWidget {
                       const SizedBox(height: 4),
                       Text(
                         'When offline, all vision detection logs and inventory modifications are safely buffered in local SQLite and uploaded when network resumes.',
-                        style: TextStyle(fontSize: 13, color: context.textSecondaryColor),
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: context.textSecondaryColor,
+                        ),
                       ),
                     ],
                   ),
@@ -98,16 +111,27 @@ class SyncQueueScreen extends ConsumerWidget {
                     child: Center(
                       child: Column(
                         children: [
-                          Icon(Icons.cloud_done_rounded, size: 54, color: AppColors.statusGreen.withValues(alpha: 0.8)),
+                          Icon(
+                            Icons.cloud_done_rounded,
+                            size: 54,
+                            color: AppColors.statusGreen.withValues(alpha: 0.8),
+                          ),
                           const SizedBox(height: 12),
                           Text(
                             'Queue is Clear',
-                            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: context.textPrimaryColor),
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: context.textPrimaryColor,
+                            ),
                           ),
                           const SizedBox(height: 4),
                           Text(
                             'All local records and events are completely synchronized with Supabase.',
-                            style: TextStyle(fontSize: 13, color: context.textSecondaryColor),
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: context.textSecondaryColor,
+                            ),
                           ),
                         ],
                       ),
@@ -133,7 +157,8 @@ class SyncQueueScreen extends ConsumerWidget {
               );
             },
             loading: () => const Center(child: CircularProgressIndicator()),
-            error: (err, _) => Center(child: Text('Error loading sync queue: $err')),
+            error: (err, _) =>
+                Center(child: Text('Error loading sync queue: $err')),
           ),
         ],
       ),
@@ -161,9 +186,14 @@ class SyncQueueScreen extends ConsumerWidget {
                 Row(
                   children: [
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
                       decoration: BoxDecoration(
-                        color: AppColors.brandAccent.withValues(alpha: context.isDark ? 0.15 : 0.1),
+                        color: AppColors.brandAccent.withValues(
+                          alpha: context.isDark ? 0.15 : 0.1,
+                        ),
                         borderRadius: BorderRadius.circular(6),
                       ),
                       child: Text(
@@ -178,7 +208,11 @@ class SyncQueueScreen extends ConsumerWidget {
                     const SizedBox(width: 10),
                     Text(
                       'Table: $table',
-                      style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: context.textPrimaryColor),
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 14,
+                        color: context.textPrimaryColor,
+                      ),
                     ),
                   ],
                 ),
@@ -191,7 +225,11 @@ class SyncQueueScreen extends ConsumerWidget {
             const SizedBox(height: 10),
             Text(
               'Pending Event ID: $eventId',
-              style: TextStyle(fontSize: 13, color: context.textSecondaryColor, fontFamily: 'monospace'),
+              style: TextStyle(
+                fontSize: 13,
+                color: context.textSecondaryColor,
+                fontFamily: 'monospace',
+              ),
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
             ),
