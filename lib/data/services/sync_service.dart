@@ -64,6 +64,169 @@ class SyncService extends ChangeNotifier {
     return DateTime.now().toUtc().toIso8601String();
   }
 
+  bool _isPartialPayload(String targetCollection, Map<String, dynamic> payload) {
+    switch (targetCollection) {
+      case 'alerts':
+        return !payload.containsKey('title') &&
+            !payload.containsKey('perfumeCode') &&
+            !payload.containsKey('perfume_code');
+      case 'restock_records':
+        return !payload.containsKey('productName') &&
+            !payload.containsKey('product_name');
+      case 'products':
+        return !payload.containsKey('name') ||
+            (!payload.containsKey('perfumeCode') &&
+                !payload.containsKey('perfume_code'));
+      case 'inventory_records':
+        return !payload.containsKey('name');
+      case 'users':
+        return !payload.containsKey('email');
+      case 'system_settings':
+        return false;
+      default:
+        return false;
+    }
+  }
+
+  @visibleForTesting
+  bool isPartialPayload(String targetCollection, Map<String, dynamic> payload) =>
+      _isPartialPayload(targetCollection, payload);
+
+  Map<String, dynamic> _buildPartialUpdateMap(
+    String targetCollection,
+    Map<String, dynamic> payload,
+  ) {
+    final Map<String, dynamic> updateMap = {};
+
+    switch (targetCollection) {
+      case 'alerts':
+        if (payload.containsKey('isRead') || payload.containsKey('is_read')) {
+          final val = payload['isRead'] ?? payload['is_read'];
+          updateMap['is_read'] = val == 1 || val == true;
+        }
+        if (payload.containsKey('title')) {
+          updateMap['title'] = payload['title'];
+        }
+        if (payload.containsKey('desc') || payload.containsKey('description')) {
+          updateMap['description'] = payload['desc'] ?? payload['description'];
+        }
+        if (payload.containsKey('type')) {
+          updateMap['type'] = payload['type'];
+        }
+        if (payload.containsKey('perfumeCode') ||
+            payload.containsKey('perfume_code')) {
+          updateMap['perfume_code'] =
+              payload['perfumeCode'] ?? payload['perfume_code'];
+        }
+        break;
+
+      case 'restock_records':
+        if (payload.containsKey('status')) {
+          updateMap['status'] = payload['status'];
+        }
+        if (payload.containsKey('verifiedAt') ||
+            payload.containsKey('verified_at')) {
+          final val = payload['verifiedAt'] ?? payload['verified_at'];
+          updateMap['verified_at'] = _toUtcIso(val);
+        }
+        if (payload.containsKey('quantity')) {
+          updateMap['quantity'] = (payload['quantity'] as num?)?.toInt();
+        }
+        break;
+
+      case 'products':
+        if (payload.containsKey('status')) {
+          updateMap['status'] = payload['status'];
+        }
+        if (payload.containsKey('price')) {
+          updateMap['price'] = (payload['price'] as num?)?.toDouble();
+        }
+        if (payload.containsKey('name')) {
+          updateMap['name'] = payload['name'];
+        }
+        break;
+
+      case 'inventory_records':
+        if (payload.containsKey('detected')) {
+          updateMap['detected'] = (payload['detected'] as num?)?.toInt();
+        }
+        if (payload.containsKey('recorded')) {
+          updateMap['recorded'] = (payload['recorded'] as num?)?.toInt();
+        }
+        if (payload.containsKey('status')) {
+          updateMap['status'] = payload['status'];
+        }
+        if (payload.containsKey('misplacementDetails') ||
+            payload.containsKey('misplacement_details')) {
+          updateMap['misplacement_details'] =
+              payload['misplacementDetails'] ?? payload['misplacement_details'];
+        }
+        if (payload.containsKey('lastUpdated') ||
+            payload.containsKey('last_updated')) {
+          updateMap['last_updated'] =
+              _toUtcIso(payload['lastUpdated'] ?? payload['last_updated']);
+        }
+        break;
+
+      case 'users':
+        if (payload.containsKey('passwordHash') ||
+            payload.containsKey('password_hash')) {
+          updateMap['password_hash'] =
+              payload['passwordHash'] ?? payload['password_hash'];
+        }
+        if (payload.containsKey('salt')) {
+          updateMap['salt'] = payload['salt'];
+        }
+        if (payload.containsKey('role')) {
+          updateMap['role'] = payload['role'];
+        }
+        if (payload.containsKey('lastLogin') ||
+            payload.containsKey('last_login')) {
+          updateMap['last_login'] = DateTime.now().toUtc().toIso8601String();
+        }
+        break;
+
+      default:
+        for (final entry in payload.entries) {
+          if (entry.key == 'id' || entry.key == 'docId') continue;
+          updateMap[entry.key] = entry.value;
+        }
+        break;
+    }
+    return updateMap;
+  }
+
+  @visibleForTesting
+  Map<String, dynamic> buildPartialUpdateMap(
+    String targetCollection,
+    Map<String, dynamic> payload,
+  ) =>
+      _buildPartialUpdateMap(targetCollection, payload);
+
+  Future<void> _syncPartialUpdate(
+    SupabaseClient client,
+    String targetCollection,
+    String docId,
+    Map<String, dynamic> payload,
+  ) async {
+    final updateMap = _buildPartialUpdateMap(targetCollection, payload);
+    if (updateMap.isNotEmpty) {
+      final idCol = (targetCollection == 'users')
+          ? 'uid'
+          : ((targetCollection == 'system_settings') ? 'key' : 'id');
+      await client.from(targetCollection).update(updateMap).eq(idCol, docId);
+    }
+  }
+
+  @visibleForTesting
+  Future<void> syncPartialUpdate(
+    SupabaseClient client,
+    String targetCollection,
+    String docId,
+    Map<String, dynamic> payload,
+  ) =>
+      _syncPartialUpdate(client, targetCollection, docId, payload);
+
   void initialize({bool enableAutoSync = true}) {
     if (_initialized) return;
     _initialized = true;
@@ -95,6 +258,7 @@ class SyncService extends ChangeNotifier {
   @override
   void dispose() {
     stop();
+    _instance = null;
     super.dispose();
   }
 
@@ -137,6 +301,7 @@ class SyncService extends ChangeNotifier {
         return online;
       }
 
+      final defaultBranch = await _sqlite.getBranchName();
       int syncedCount = 0;
       for (final item in pendingItems) {
         final id = item['id'] as String;
@@ -150,7 +315,7 @@ class SyncService extends ChangeNotifier {
           if (operation == 'CLEAR_ALL' ||
               (operation == 'DELETE' && docId == 'all')) {
             if (targetCollection == 'system_logs') {
-              final b = payload['branch'] as String? ?? 'San Pablo';
+              final b = payload['branch'] as String? ?? defaultBranch;
               await client.from('system_logs').delete().eq('branch', b);
             }
           } else if (operation == 'DELETE') {
@@ -161,8 +326,11 @@ class SyncService extends ChangeNotifier {
             } else {
               await client.from(targetCollection).delete().eq('id', docId);
             }
+          } else if (operation == 'UPDATE' ||
+              _isPartialPayload(targetCollection, payload)) {
+            await _syncPartialUpdate(client, targetCollection, docId, payload);
           } else {
-            // Precise Table-Aware Mapping to Supabase Cloud Schema
+            // Precise Table-Aware Mapping to Supabase Cloud Schema (Full UPSERT)
             switch (targetCollection) {
               case 'system_settings':
                 final key = payload['key'] as String? ?? docId;
@@ -178,7 +346,7 @@ class SyncService extends ChangeNotifier {
                   'uid': payload['id'] ?? payload['uid'] ?? docId,
                   'email': payload['email'] ?? 'admin@ottoscents.com',
                   'role': payload['role'] ?? 'staff',
-                  'branch': payload['branch'] ?? 'San Pablo',
+                  'branch': payload['branch'] ?? defaultBranch,
                   'last_login': DateTime.now().toUtc().toIso8601String(),
                 }, onConflict: 'uid');
                 break;
@@ -217,7 +385,7 @@ class SyncService extends ChangeNotifier {
                   'assigned_product_name':
                       payload['assignedProductName'] ??
                       payload['assigned_product_name'],
-                  'branch': payload['branch'] ?? 'San Pablo',
+                  'branch': payload['branch'] ?? defaultBranch,
                   'camera_id':
                       (payload['cameraId'] ?? payload['camera_id'] as num?)
                           ?.toInt() ??
@@ -269,7 +437,7 @@ class SyncService extends ChangeNotifier {
                   'description':
                       payload['description'] ?? payload['desc'] ?? '',
                   'user': payload['user'] ?? 'Store Staff',
-                  'branch': payload['branch'] ?? 'San Pablo',
+                  'branch': payload['branch'] ?? defaultBranch,
                   'timestamp': _toUtcIso(payload['timestamp']),
                 });
                 break;
@@ -289,7 +457,7 @@ class SyncService extends ChangeNotifier {
                       payload['shelfArea'] ??
                       payload['shelf_area'] ??
                       'Layer A',
-                  'branch': payload['branch'] ?? 'San Pablo',
+                  'branch': payload['branch'] ?? defaultBranch,
                   'quantity': (payload['quantity'] as num?)?.toInt() ?? 1,
                   'timestamp': _toUtcIso(payload['timestamp']),
                   'sync_status': 'synced',
@@ -306,7 +474,7 @@ class SyncService extends ChangeNotifier {
                       payload['perfumeCode'] ?? payload['perfume_code'] ?? '',
                   'name': payload['name'] ?? '',
                   'category': payload['category'] ?? 'Men',
-                  'branch': payload['branch'] ?? 'San Pablo',
+                  'branch': payload['branch'] ?? defaultBranch,
                   'shelf':
                       payload['shelf'] ?? payload['shelfLayer'] ?? 'Layer A',
                   'recorded': (payload['recorded'] as num?)?.toInt() ?? 5,
@@ -327,7 +495,7 @@ class SyncService extends ChangeNotifier {
                   'title': payload['title'] ?? '',
                   'description':
                       payload['desc'] ?? payload['description'] ?? '',
-                  'branch': payload['branch'] ?? 'San Pablo',
+                  'branch': payload['branch'] ?? defaultBranch,
                   'type': payload['type'] ?? 'notice',
                   'perfume_code':
                       payload['perfumeCode'] ?? payload['perfume_code'] ?? '',
@@ -364,7 +532,7 @@ class SyncService extends ChangeNotifier {
                           ?.toInt() ??
                       0,
                   'status': payload['status'] ?? 'ACCEPTED',
-                  'branch': payload['branch'] ?? 'San Pablo',
+                  'branch': payload['branch'] ?? defaultBranch,
                   'timestamp': _toUtcIso(payload['timestamp']),
                 });
                 break;
@@ -382,7 +550,7 @@ class SyncService extends ChangeNotifier {
                   'to_branch':
                       payload['toBranch'] ??
                       payload['to_branch'] ??
-                      'San Pablo',
+                      defaultBranch,
                   'requested_by':
                       payload['requestedBy'] ??
                       payload['requested_by'] ??
@@ -436,7 +604,7 @@ class SyncService extends ChangeNotifier {
                   'quantity_sold': qty,
                   'unit_price': price,
                   'total_amount': total,
-                  'branch': payload['branch'] ?? 'San Pablo',
+                  'branch': payload['branch'] ?? defaultBranch,
                   'sold_by': payload['soldBy'] ?? payload['sold_by'] ?? 'staff',
                   'sold_at': _toUtcIso(payload['soldAt'] ?? payload['sold_at']),
                   'sync_status': 'synced',
@@ -508,11 +676,13 @@ class SyncService extends ChangeNotifier {
   }
 
   /// Pulls latest Supabase cloud data into local SQLite cache without echo re-enqueuing
-  Future<void> pullRemoteData(String branch) async {
+  Future<void> pullRemoteData([String? branch]) async {
     final client = _supabase;
     if (client == null) return;
 
     try {
+      final effectiveBranch = branch ?? await _sqlite.getBranchName();
+
       // 1. Pull Products Catalog (pass enqueueSync: false to prevent mutation loop)
       final prodData = await client.from('products').select();
       for (final row in prodData) {
@@ -524,27 +694,39 @@ class SyncService extends ChangeNotifier {
       final roiData = await client
           .from('shelf_regions')
           .select()
-          .eq('branch', branch);
+          .eq('branch', effectiveBranch);
       for (final row in roiData) {
         final region = ShelfRegionModel.fromMap(row);
         await _sqlite.updateShelfRegion(region, enqueueSync: false);
       }
 
-      // 3. Pull Inventory Records
+      // 3. Pull Inventory Records (Preserving local physical camera detections)
       final invData = await client
           .from('inventory_records')
           .select()
-          .eq('branch', branch);
+          .eq('branch', effectiveBranch);
       for (final row in invData) {
-        final record = InventoryRecordModel.fromMap(row);
-        await _sqlite.upsertInventoryRecord(record, enqueueSync: false);
+        final remoteRecord = InventoryRecordModel.fromMap(row);
+        final local = await _sqlite.getInventoryRecord(
+          remoteRecord.perfumeCode,
+          effectiveBranch,
+        );
+        final effectiveRecord = local != null
+            ? remoteRecord.copyWith(
+                detected: local.detected,
+                status: (local.detected != remoteRecord.recorded)
+                    ? 'needs_review'
+                    : remoteRecord.status,
+              )
+            : remoteRecord;
+        await _sqlite.upsertInventoryRecord(effectiveRecord, enqueueSync: false);
       }
 
       // 4. Pull Inventory Events
       final eventsData = await client
           .from('inventory_events')
           .select()
-          .eq('branch', branch)
+          .eq('branch', effectiveBranch)
           .limit(50);
       for (final row in eventsData) {
         final event = InventoryEventModel.fromMap(row);
@@ -555,7 +737,7 @@ class SyncService extends ChangeNotifier {
       final alertsData = await client
           .from('alerts')
           .select()
-          .eq('branch', branch)
+          .eq('branch', effectiveBranch)
           .limit(50);
       for (final row in alertsData) {
         final alert = AlertModel.fromMap(row);
@@ -576,7 +758,7 @@ class SyncService extends ChangeNotifier {
       final restockData = await client
           .from('restock_records')
           .select()
-          .or('to_branch.eq.$branch,from_branch.eq.$branch')
+          .or('to_branch.eq.$effectiveBranch,from_branch.eq.$effectiveBranch')
           .limit(50);
       for (final row in restockData) {
         final restock = RestockRecordModel.fromMap(row);
@@ -587,7 +769,7 @@ class SyncService extends ChangeNotifier {
       final iqData = await client
           .from('image_quality_logs')
           .select()
-          .eq('branch', branch)
+          .eq('branch', effectiveBranch)
           .limit(50);
       for (final row in iqData) {
         final iq = ImageQualityLogModel.fromMap(row);
@@ -609,7 +791,7 @@ class SyncService extends ChangeNotifier {
       final salesData = await client
           .from('sales_records')
           .select()
-          .eq('branch', branch)
+          .eq('branch', effectiveBranch)
           .limit(100);
       for (final row in salesData) {
         final sale = SaleRecordModel.fromMap(row);
@@ -704,7 +886,7 @@ class SyncService extends ChangeNotifier {
   /// Uploads all local SQLite records (products, shelf regions, inventory, sales, restocks, system logs, settings)
   /// directly to Supabase cloud. Throws an exception if Supabase is unreachable.
   Future<Map<String, int>> pushFullBackupToSupabase({
-    String branch = 'San Pablo',
+    String? branch,
   }) async {
     final client = _supabase;
     if (client == null) {
@@ -719,6 +901,8 @@ class SyncService extends ChangeNotifier {
     notifyListeners();
 
     try {
+      final effectiveBranch = branch ?? await _sqlite.getBranchName();
+
       // 1. Pre-flight connectivity check to verify host is up
       final isUp = await checkSupabaseConnectivity();
       if (!isUp) {
@@ -743,7 +927,7 @@ class SyncService extends ChangeNotifier {
       }
 
       // 3. Backup Shelf Regions
-      final regions = await _sqlite.getShelfRegions(branch);
+      final regions = await _sqlite.getShelfRegions(effectiveBranch);
       if (regions.isNotEmpty) {
         final List<Map<String, dynamic>> regMaps = regions
             .map((r) => r.toSupabaseMap())
@@ -758,7 +942,7 @@ class SyncService extends ChangeNotifier {
       }
 
       // 4. Backup Inventory Records
-      final inventory = await _sqlite.getInventory(branch);
+      final inventory = await _sqlite.getInventory(effectiveBranch);
       if (inventory.isNotEmpty) {
         final List<Map<String, dynamic>> invMaps = inventory
             .map((inv) => inv.toSupabaseMap())
@@ -773,7 +957,7 @@ class SyncService extends ChangeNotifier {
       }
 
       // 5. Backup Sales Records
-      final sales = await _sqlite.getSalesRecords(branch, limit: 1000);
+      final sales = await _sqlite.getSalesRecords(effectiveBranch, limit: 1000);
       if (sales.isNotEmpty) {
         final List<Map<String, dynamic>> saleMaps = sales
             .map((s) => s.toSupabaseMap())
@@ -788,7 +972,7 @@ class SyncService extends ChangeNotifier {
       }
 
       // 6. Backup Restock Records
-      final restocks = await _sqlite.getRestockRecords(branch);
+      final restocks = await _sqlite.getRestockRecords(effectiveBranch);
       if (restocks.isNotEmpty) {
         final List<Map<String, dynamic>> restockMaps = restocks
             .map((r) => r.toSupabaseMap())
@@ -805,7 +989,7 @@ class SyncService extends ChangeNotifier {
       }
 
       // 7. Backup System Logs
-      final logs = await _sqlite.getSystemLogs(branch, limit: 500);
+      final logs = await _sqlite.getSystemLogs(effectiveBranch, limit: 500);
       if (logs.isNotEmpty) {
         final List<Map<String, dynamic>> logMaps = logs
             .map((l) => l.toSupabaseMap())
@@ -878,10 +1062,11 @@ class SyncService extends ChangeNotifier {
   }
 
   /// Manually requested Force Sync from UI: pushes full backup to cloud, then pulls remote modifications
-  Future<Map<String, int>> forceSyncNow(String branch) async {
-    final stats = await pushFullBackupToSupabase(branch: branch);
+  Future<Map<String, int>> forceSyncNow([String? branch]) async {
+    final effectiveBranch = branch ?? await _sqlite.getBranchName();
+    final stats = await pushFullBackupToSupabase(branch: effectiveBranch);
     try {
-      await pullRemoteData(branch);
+      await pullRemoteData(effectiveBranch);
     } catch (_) {}
     await _refreshPendingCount();
     return stats;

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../core/constants/app_constants.dart';
 import '../../core/theme/app_colors.dart';
@@ -25,6 +26,8 @@ class _PinRecoveryDialogState extends State<PinRecoveryDialog> {
   bool _isLoading = false;
   String? _errorMessage;
 
+  int _activeField = 0; // 0: ans1, 1: ans2, 2: ans3
+
   @override
   void dispose() {
     _ans1Controller.dispose();
@@ -33,6 +36,51 @@ class _PinRecoveryDialogState extends State<PinRecoveryDialog> {
     _newPinController.dispose();
     _confirmPinController.dispose();
     super.dispose();
+  }
+
+  void _onVirtualKeyPress(String char) {
+    TextEditingController target;
+    if (_currentStep == 0) {
+      target = _activeField == 0
+          ? _ans1Controller
+          : (_activeField == 1 ? _ans2Controller : _ans3Controller);
+    } else {
+      target = _activeField == 0 ? _newPinController : _confirmPinController;
+      if (target.text.length >= AppConstants.pinLength) return;
+    }
+    setState(() {
+      target.text += char;
+    });
+  }
+
+  void _onVirtualBackspace() {
+    TextEditingController target;
+    if (_currentStep == 0) {
+      target = _activeField == 0
+          ? _ans1Controller
+          : (_activeField == 1 ? _ans2Controller : _ans3Controller);
+    } else {
+      target = _activeField == 0 ? _newPinController : _confirmPinController;
+    }
+    if (target.text.isNotEmpty) {
+      setState(() {
+        target.text = target.text.substring(0, target.text.length - 1);
+      });
+    }
+  }
+
+  void _onVirtualClear() {
+    TextEditingController target;
+    if (_currentStep == 0) {
+      target = _activeField == 0
+          ? _ans1Controller
+          : (_activeField == 1 ? _ans2Controller : _ans3Controller);
+    } else {
+      target = _activeField == 0 ? _newPinController : _confirmPinController;
+    }
+    setState(() {
+      target.clear();
+    });
   }
 
   Future<void> _handleVerifyQuestions() async {
@@ -63,6 +111,7 @@ class _PinRecoveryDialogState extends State<PinRecoveryDialog> {
         setState(() {
           _isLoading = false;
           _currentStep = 1;
+          _activeField = 0;
           _errorMessage = null;
         });
       } else {
@@ -148,8 +197,8 @@ class _PinRecoveryDialogState extends State<PinRecoveryDialog> {
       ),
       insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
       child: Container(
-        width: 580,
-        padding: const EdgeInsets.symmetric(horizontal: 36, vertical: 32),
+        width: 640,
+        padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 28),
         child: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -211,13 +260,13 @@ class _PinRecoveryDialogState extends State<PinRecoveryDialog> {
                   ),
                 ],
               ),
-              Divider(height: 28, color: context.borderColor),
+              Divider(height: 24, color: context.borderColor),
 
               if (_errorMessage != null) ...[
                 Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 16,
-                    vertical: 12,
+                    vertical: 10,
                   ),
                   decoration: BoxDecoration(
                     color: AppColors.statusRedBg,
@@ -247,39 +296,42 @@ class _PinRecoveryDialogState extends State<PinRecoveryDialog> {
                     ],
                   ),
                 ),
-                const SizedBox(height: 18),
+                const SizedBox(height: 14),
               ],
 
               if (_currentStep == 0) ...[
                 // Question 1
                 _buildQuestionField(
+                  fieldIndex: 0,
                   label: AppConstants.recoveryQuestion1,
-                  hint: 'Enter founding year (e.g., 2024)',
+                  hint: 'Enter founding year (e.g., 2020)',
                   controller: _ans1Controller,
                   icon: Icons.calendar_today_rounded,
                 ),
-                const SizedBox(height: 18),
+                const SizedBox(height: 12),
 
                 // Question 2
                 _buildQuestionField(
+                  fieldIndex: 1,
                   label: AppConstants.recoveryQuestion2,
-                  hint: 'Enter security answer',
+                  hint: 'Enter security answer (e.g., mj)',
                   controller: _ans2Controller,
                   icon: Icons.badge_outlined,
                 ),
-                const SizedBox(height: 18),
+                const SizedBox(height: 12),
 
                 // Question 3
                 _buildQuestionField(
+                  fieldIndex: 2,
                   label: AppConstants.recoveryQuestion3,
-                  hint: 'Enter registered branch name (e.g., San Pablo)',
+                  hint: 'Enter business name (e.g., ottoscents)',
                   controller: _ans3Controller,
                   icon: Icons.storefront_outlined,
                 ),
-                const SizedBox(height: 26),
+                const SizedBox(height: 16),
 
                 SizedBox(
-                  height: 54,
+                  height: 52,
                   child: ElevatedButton(
                     onPressed: _isLoading ? null : _handleVerifyQuestions,
                     style: ElevatedButton.styleFrom(
@@ -310,18 +362,24 @@ class _PinRecoveryDialogState extends State<PinRecoveryDialog> {
               ] else ...[
                 // Step 1: Set New PIN
                 _buildPinField(
+                  fieldIndex: 0,
                   label: 'New 6-Digit Store PIN',
                   controller: _newPinController,
                 ),
-                const SizedBox(height: 18),
+                const SizedBox(height: 14),
                 _buildPinField(
+                  fieldIndex: 1,
                   label: 'Confirm New PIN',
                   controller: _confirmPinController,
                 ),
-                const SizedBox(height: 26),
+                const SizedBox(height: 16),
+
+                // Touch Virtual Numpad for PIN Setting
+                _buildVirtualNumpad(),
+                const SizedBox(height: 16),
 
                 SizedBox(
-                  height: 54,
+                  height: 52,
                   child: ElevatedButton(
                     onPressed: _isLoading ? null : _handleSaveNewPin,
                     style: ElevatedButton.styleFrom(
@@ -358,123 +416,347 @@ class _PinRecoveryDialogState extends State<PinRecoveryDialog> {
   }
 
   Widget _buildQuestionField({
+    required int fieldIndex,
     required String label,
     required String hint,
     required TextEditingController controller,
     required IconData icon,
   }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: TextStyle(
-            color: context.textPrimaryColor,
-            fontSize: 14.5,
-            fontWeight: FontWeight.w800,
+    final isSelected = _activeField == fieldIndex;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => setState(() => _activeField = fieldIndex),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  label,
+                  style: TextStyle(
+                    color: isSelected
+                        ? AppColors.brandAccent
+                        : context.textPrimaryColor,
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+              if (isSelected) ...[
+                const SizedBox(width: 8),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: AppColors.brandAccent.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: const Text(
+                    'Active Touch Input',
+                    style: TextStyle(
+                      color: AppColors.brandAccent,
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ],
+            ],
           ),
-        ),
-        const SizedBox(height: 8),
-        TextField(
-          controller: controller,
-          style: TextStyle(color: context.textPrimaryColor, fontSize: 16),
-          decoration: InputDecoration(
-            hintText: hint,
-            hintStyle: TextStyle(color: context.textMutedColor),
-            prefixIcon: Icon(icon, color: AppColors.brandAccent, size: 22),
-            filled: true,
-            fillColor: context.isDark
-                ? const Color(0xFF161922)
-                : const Color(0xFFF3F4F6),
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 18,
-              vertical: 16,
-            ),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(14),
-              borderSide: BorderSide(color: context.borderColor, width: 1.5),
-            ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(14),
-              borderSide: BorderSide(color: context.borderColor, width: 1.5),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(14),
-              borderSide: const BorderSide(
-                color: AppColors.brandAccent,
-                width: 2,
+          const SizedBox(height: 6),
+          TextField(
+            controller: controller,
+            onTap: () => setState(() => _activeField = fieldIndex),
+            style: TextStyle(color: context.textPrimaryColor, fontSize: 15),
+            decoration: InputDecoration(
+              hintText: hint,
+              hintStyle: TextStyle(color: context.textMutedColor),
+              prefixIcon: Icon(
+                icon,
+                color: isSelected
+                    ? AppColors.brandAccent
+                    : context.textSecondaryColor,
+                size: 20,
+              ),
+              filled: true,
+              fillColor: isSelected
+                  ? AppColors.brandAccent.withValues(alpha: 0.08)
+                  : (context.isDark
+                      ? const Color(0xFF161922)
+                      : const Color(0xFFF3F4F6)),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 12,
+              ),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: context.borderColor, width: 1.5),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(
+                  color: isSelected ? AppColors.brandAccent : context.borderColor,
+                  width: isSelected ? 2 : 1.5,
+                ),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: const BorderSide(
+                  color: AppColors.brandAccent,
+                  width: 2,
+                ),
               ),
             ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
   Widget _buildPinField({
+    required int fieldIndex,
     required String label,
     required TextEditingController controller,
   }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: TextStyle(
-            color: context.textPrimaryColor,
-            fontSize: 14.5,
-            fontWeight: FontWeight.w800,
+    final isSelected = _activeField == fieldIndex;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => setState(() => _activeField = fieldIndex),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text(
+                label,
+                style: TextStyle(
+                  color: isSelected
+                      ? AppColors.brandAccent
+                      : context.textPrimaryColor,
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              if (isSelected) ...[
+                const SizedBox(width: 8),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: AppColors.brandAccent.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: const Text(
+                    'Active Touch Input',
+                    style: TextStyle(
+                      color: AppColors.brandAccent,
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ],
+            ],
           ),
-        ),
-        const SizedBox(height: 8),
-        TextField(
-          controller: controller,
-          keyboardType: TextInputType.number,
-          maxLength: AppConstants.pinLength,
-          obscureText: true,
-          style: TextStyle(
-            color: context.textPrimaryColor,
-            fontSize: 24,
-            letterSpacing: 8,
-          ),
-          decoration: InputDecoration(
-            counterText: '',
-            hintText: '••••••',
-            hintStyle: TextStyle(
-              color: context.textMutedColor,
-              letterSpacing: 8,
+          const SizedBox(height: 6),
+          TextField(
+            controller: controller,
+            onTap: () => setState(() => _activeField = fieldIndex),
+            keyboardType: TextInputType.number,
+            maxLength: AppConstants.pinLength,
+            obscureText: true,
+            style: TextStyle(
+              color: context.textPrimaryColor,
+              fontSize: 20,
+              letterSpacing: 6,
             ),
-            prefixIcon: const Icon(
-              Icons.pin_rounded,
-              color: AppColors.brandAccent,
-              size: 24,
-            ),
-            filled: true,
-            fillColor: context.isDark
-                ? const Color(0xFF161922)
-                : const Color(0xFFF3F4F6),
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 20,
-              vertical: 18,
-            ),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(14),
-              borderSide: BorderSide(color: context.borderColor, width: 1.5),
-            ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(14),
-              borderSide: BorderSide(color: context.borderColor, width: 1.5),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(14),
-              borderSide: const BorderSide(
-                color: AppColors.brandAccent,
-                width: 2,
+            decoration: InputDecoration(
+              counterText: '',
+              hintText: '••••••',
+              hintStyle: TextStyle(
+                color: context.textMutedColor,
+                letterSpacing: 6,
+              ),
+              prefixIcon: Icon(
+                Icons.pin_rounded,
+                color: isSelected
+                    ? AppColors.brandAccent
+                    : context.textSecondaryColor,
+                size: 20,
+              ),
+              filled: true,
+              fillColor: isSelected
+                  ? AppColors.brandAccent.withValues(alpha: 0.08)
+                  : (context.isDark
+                      ? const Color(0xFF161922)
+                      : const Color(0xFFF3F4F6)),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 12,
+              ),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: context.borderColor, width: 1.5),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(
+                  color: isSelected ? AppColors.brandAccent : context.borderColor,
+                  width: isSelected ? 2 : 1.5,
+                ),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: const BorderSide(
+                  color: AppColors.brandAccent,
+                  width: 2,
+                ),
               ),
             ),
           ),
-        ),
-      ],
+        ],
+      ),
+    );
+  }
+
+
+  Widget _buildVirtualNumpad() {
+    final digits = [
+      ['1', '2', '3'],
+      ['4', '5', '6'],
+      ['7', '8', '9'],
+      ['CLR', '0', '⌫'],
+    ];
+
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: context.isDark ? const Color(0xFF12151C) : const Color(0xFFE5E7EB),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: context.borderColor),
+      ),
+      child: Column(
+        children: [
+          for (final row in digits)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 3),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  for (final key in row)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      child: _VirtualKey(
+                        label: key,
+                        color: key == 'CLR'
+                            ? AppColors.statusRed
+                            : (key == '⌫' ? AppColors.statusOrange : null),
+                        icon: key == '⌫' ? Icons.backspace_outlined : null,
+                        width: 72,
+                        height: 44,
+                        onTap: () {
+                          if (key == 'CLR') {
+                            _onVirtualClear();
+                          } else if (key == '⌫') {
+                            _onVirtualBackspace();
+                          } else {
+                            _onVirtualKeyPress(key);
+                          }
+                        },
+                      ),
+                    ),
+                ],
+              ),
+            ),
+        ],
+      ),
     );
   }
 }
+
+class _VirtualKey extends StatefulWidget {
+  const _VirtualKey({
+    required this.label,
+    this.icon,
+    this.color,
+    this.width,
+    this.height,
+    required this.onTap,
+  });
+
+  final String label;
+  final IconData? icon;
+  final Color? color;
+  final double? width;
+  final double? height;
+  final VoidCallback onTap;
+
+  @override
+  State<_VirtualKey> createState() => _VirtualKeyState();
+}
+
+class _VirtualKeyState extends State<_VirtualKey> {
+  bool _isPressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final double keyWidth = widget.width ?? 42.0;
+    final double keyHeight = widget.height ?? 38.0;
+
+    final bg = widget.color != null
+        ? widget.color!.withValues(alpha: _isPressed ? 0.7 : 0.85)
+        : (context.isDark
+            ? (_isPressed ? const Color(0xFF2C3242) : const Color(0xFF1E222D))
+            : (_isPressed ? const Color(0xFFD1D5DB) : Colors.white));
+
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTapDown: (_) {
+        setState(() => _isPressed = true);
+        SystemSound.play(SystemSoundType.click);
+        HapticFeedback.lightImpact();
+      },
+      onTapUp: (_) => setState(() => _isPressed = false),
+      onTapCancel: () => setState(() => _isPressed = false),
+      onTap: widget.onTap,
+      child: AnimatedScale(
+        scale: _isPressed ? 0.92 : 1.0,
+        duration: const Duration(milliseconds: 50),
+        child: Container(
+          width: keyWidth,
+          height: keyHeight,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: bg,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+              color: widget.color ?? context.borderColor,
+              width: 1.2,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.15),
+                blurRadius: 2,
+                offset: const Offset(0, 1),
+              ),
+            ],
+          ),
+          child: widget.icon != null
+              ? Icon(widget.icon, size: 18, color: Colors.white)
+              : Text(
+                  widget.label,
+                  style: TextStyle(
+                    color: widget.color != null
+                        ? Colors.white
+                        : context.textPrimaryColor,
+                    fontSize: 15,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+        ),
+      ),
+    );
+  }
+}
+

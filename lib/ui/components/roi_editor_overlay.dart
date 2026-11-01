@@ -614,13 +614,13 @@ class _TrayRoiPainter extends CustomPainter {
       // Check if slot or variant is disabled in disabledCapCodes
       final isOff = disabledCapCodes.any((c) {
         final upper = c.trim().toUpperCase();
-        return upper == code.toUpperCase();
+        return upper == code.toUpperCase() || upper.startsWith(code.toUpperCase());
       });
 
-      // Background fill
+      // Background fill: amber tint when paused/seasonal-off
       final fillPaint = Paint()
         ..color = isOff
-            ? const Color(0xFF1C1308).withValues(alpha: 0.85)
+            ? const Color(0xFFF59E0B).withValues(alpha: 0.22)
             : (isTraySelected
                 ? AppColors.brandAccent.withValues(alpha: 0.18)
                 : Colors.white.withValues(alpha: 0.06))
@@ -631,8 +631,20 @@ class _TrayRoiPainter extends CustomPainter {
         fillPaint,
       );
 
-      // Border outline
-      if (isTraySelected && isInteractive) {
+      // Border outline: amber dashed outline when seasonal-off
+      if (isOff) {
+        final dashedPaint = Paint()
+          ..color = const Color(0xFFF59E0B)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 2.2;
+        _drawDashedRRect(
+          canvas,
+          RRect.fromRectAndRadius(box, const Radius.circular(10)),
+          dashedPaint,
+          dashWidth: 7.0,
+          dashSpace: 4.0,
+        );
+      } else if (isTraySelected && isInteractive) {
         final glowPaint = Paint()
           ..color = AppColors.brandAccent.withValues(alpha: 0.40)
           ..style = PaintingStyle.stroke
@@ -652,8 +664,7 @@ class _TrayRoiPainter extends CustomPainter {
         );
       } else {
         final normalBorderPaint = Paint()
-          ..color = (isOff ? AppColors.statusOrange : Colors.white)
-              .withValues(alpha: 0.70)
+          ..color = Colors.white.withValues(alpha: 0.70)
           ..style = PaintingStyle.stroke
           ..strokeWidth = 1.8;
         canvas.drawRRect(
@@ -662,44 +673,81 @@ class _TrayRoiPainter extends CustomPainter {
         );
       }
 
-      // Tray Header Pill (drawn outside/at top of tray)
-      final pillCenterX = box.center.dx;
-      final pillCenterY = math.max(10.0, box.top + 10);
-      final tagWidth = math.min(80.0, box.width * 0.85);
-      final tagRect = Rect.fromCenter(
-        center: Offset(pillCenterX, pillCenterY),
-        width: tagWidth,
-        height: 18,
-      );
+      // Tray Header Pill or Paused Banner (drawn at top of tray)
+      if (isOff) {
+        final bannerWidth = math.min(box.width * 0.95, 160.0);
+        final bannerHeight = 20.0;
+        final pillCenterY = math.max(12.0, box.top + 12);
+        final bannerRect = Rect.fromCenter(
+          center: Offset(box.center.dx, pillCenterY),
+          width: bannerWidth,
+          height: bannerHeight,
+        );
+        final bannerPaint = Paint()
+          ..color = const Color(0xFFF59E0B)
+          ..style = PaintingStyle.fill;
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(bannerRect, const Radius.circular(10)),
+          bannerPaint,
+        );
 
-      final tagBgPaint = Paint()
-        ..color = isTraySelected
-            ? AppColors.brandAccent
-            : Colors.black.withValues(alpha: 0.85)
-        ..style = PaintingStyle.fill;
-      canvas.drawRRect(
-        RRect.fromRectAndRadius(tagRect, const Radius.circular(9)),
-        tagBgPaint,
-      );
+        textPainter.text = const TextSpan(
+          text: 'SEASONAL / OFF (PAUSED)',
+          style: TextStyle(
+            color: Colors.black,
+            fontSize: 8.5,
+            fontWeight: FontWeight.w900,
+            letterSpacing: 0.3,
+          ),
+        );
+        textPainter.textAlign = TextAlign.center;
+        textPainter.layout();
+        textPainter.paint(
+          canvas,
+          Offset(
+            box.center.dx - (textPainter.width / 2),
+            bannerRect.center.dy - (textPainter.height / 2),
+          ),
+        );
+      } else {
+        final pillCenterX = box.center.dx;
+        final pillCenterY = math.max(10.0, box.top + 10);
+        final tagWidth = math.min(80.0, box.width * 0.85);
+        final tagRect = Rect.fromCenter(
+          center: Offset(pillCenterX, pillCenterY),
+          width: tagWidth,
+          height: 18,
+        );
 
-      textPainter.text = TextSpan(
-        text: 'TRAY $code',
-        style: TextStyle(
-          color: isTraySelected ? Colors.black : Colors.white,
-          fontSize: 9.5,
-          fontWeight: FontWeight.w900,
-          letterSpacing: 0.4,
-        ),
-      );
-      textPainter.textAlign = TextAlign.center;
-      textPainter.layout();
-      textPainter.paint(
-        canvas,
-        Offset(
-          pillCenterX - (textPainter.width / 2),
-          tagRect.center.dy - (textPainter.height / 2),
-        ),
-      );
+        final tagBgPaint = Paint()
+          ..color = isTraySelected
+              ? AppColors.brandAccent
+              : Colors.black.withValues(alpha: 0.85)
+          ..style = PaintingStyle.fill;
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(tagRect, const Radius.circular(9)),
+          tagBgPaint,
+        );
+
+        textPainter.text = TextSpan(
+          text: 'TRAY $code',
+          style: TextStyle(
+            color: isTraySelected ? Colors.black : Colors.white,
+            fontSize: 9.5,
+            fontWeight: FontWeight.w900,
+            letterSpacing: 0.4,
+          ),
+        );
+        textPainter.textAlign = TextAlign.center;
+        textPainter.layout();
+        textPainter.paint(
+          canvas,
+          Offset(
+            pillCenterX - (textPainter.width / 2),
+            tagRect.center.dy - (textPainter.height / 2),
+          ),
+        );
+      }
 
       // Center Scent Watermark / Label
       textPainter.text = TextSpan(
@@ -815,6 +863,25 @@ class _TrayRoiPainter extends CustomPainter {
           Offset(activeTarget.right, activeTarget.bottom - cornerLen),
           cornerPaint,
         );
+      }
+    }
+  }
+
+  void _drawDashedRRect(
+    Canvas canvas,
+    RRect rrect,
+    Paint paint, {
+    double dashWidth = 6.0,
+    double dashSpace = 4.0,
+  }) {
+    final path = Path()..addRRect(rrect);
+    for (final metric in path.computeMetrics()) {
+      double distance = 0.0;
+      while (distance < metric.length) {
+        final double length = math.min(dashWidth, metric.length - distance);
+        final extract = metric.extractPath(distance, distance + length);
+        canvas.drawPath(extract, paint);
+        distance += dashWidth + dashSpace;
       }
     }
   }

@@ -115,6 +115,7 @@ class NetworkService extends ChangeNotifier {
   @override
   void dispose() {
     _monitorTimer?.cancel();
+    _instance = null;
     super.dispose();
   }
 

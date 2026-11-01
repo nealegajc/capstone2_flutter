@@ -87,8 +87,8 @@ class StatusBadge extends StatelessWidget {
 
     return Container(
       padding: EdgeInsets.symmetric(
-        horizontal: large ? 16 : 12,
-        vertical: large ? 8 : 6,
+        horizontal: large ? 18 : 14,
+        vertical: large ? 10 : 8,
       ),
       decoration: BoxDecoration(
         color: bgColor,
@@ -98,14 +98,14 @@ class StatusBadge extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, color: textColor, size: large ? 20 : 16),
+          Icon(icon, color: textColor, size: large ? 22 : 18),
           const SizedBox(width: 6),
           Text(
             label,
             style: TextStyle(
               color: textColor,
-              fontSize: large ? 15 : 13,
-              fontWeight: FontWeight.w700,
+              fontSize: large ? 16 : 14,
+              fontWeight: FontWeight.w800,
               letterSpacing: 0.3,
             ),
           ),

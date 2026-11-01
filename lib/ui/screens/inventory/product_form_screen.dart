@@ -436,7 +436,7 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                       ),
                       const SizedBox(height: 6),
                       Text(
-                        'Tap any slot partition on the shelf to configure position and cap OCR alignment.',
+                        'Tap any slot partition on the shelf to configure position and cap sticker code alignment.',
                         style: TextStyle(
                           fontSize: 12,
                           color: context.textSecondaryColor,
@@ -507,7 +507,7 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                                 ),
                                 const SizedBox(height: 4),
                                 Text(
-                                  'Bottle name, brand, gender category, and PaddleOCR recognition code.',
+                                  'Bottle name, brand, gender category, and 3-character cap sticker code.',
                                   style: TextStyle(
                                     fontSize: 12,
                                     color: context.textSecondaryColor,
@@ -820,7 +820,7 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                                 letterSpacing: 1.5,
                               ),
                               decoration: InputDecoration(
-                                labelText: 'Cap OCR Code',
+                                labelText: 'Bottle Cap Sticker Code',
                                 hintText: 'e.g. AA1',
                                 prefixIcon: const Icon(Icons.qr_code_2_rounded),
                                 suffixIcon: IconButton(

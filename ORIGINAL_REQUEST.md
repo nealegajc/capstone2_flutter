@@ -1,0 +1,1 @@
+/home/jc/capstone-flutter/capstone2_flutter/.agents/ORIGINAL_REQUEST.md

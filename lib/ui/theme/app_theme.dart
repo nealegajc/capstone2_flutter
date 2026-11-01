@@ -53,4 +53,6 @@ class AppColors {
 class AppTheme {
   static ThemeData get lightTheme => core_theme.AppTheme.lightKioskTheme;
   static ThemeData get darkTheme => core_theme.AppTheme.darkKioskTheme;
+  static ThemeData get lightKioskTheme => core_theme.AppTheme.lightKioskTheme;
+  static ThemeData get darkKioskTheme => core_theme.AppTheme.darkKioskTheme;
 }

@@ -17,7 +17,9 @@ final authNotifierProvider = StateNotifierProvider<AuthNotifier, AuthState>((
 });
 
 class AuthNotifier extends StateNotifier<AuthState> {
-  AuthNotifier(this._authService) : super(const AuthState());
+  AuthNotifier(this._authService) : super(const AuthState()) {
+    checkKioskLockout();
+  }
 
   final AuthService _authService;
   Timer? _lockoutTimer;
@@ -28,7 +30,23 @@ class AuthNotifier extends StateNotifier<AuthState> {
     super.dispose();
   }
 
-  void appendDigit(String digit) {
+  /// Checks SQLite for persistent lockout state across app restarts
+  Future<void> checkKioskLockout() async {
+    try {
+      final status = await _authService.getLockoutStatus();
+      if (status.isLockedOut) {
+        _resumeLockout(status.remainingSeconds, status.failedAttempts);
+      } else {
+        state = state.copyWith(
+          isLockedOut: false,
+          lockoutRemainingSeconds: 0,
+          failedAttempts: status.failedAttempts,
+        );
+      }
+    } catch (_) {}
+  }
+
+  void appendDigit(String digit, {bool autoVerify = true}) {
     if (state.isLockedOut || state.isLoading) return;
     if (state.enteredPin.length >= AppConstants.pinLength) return;
 
@@ -36,7 +54,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
     state = state.copyWith(enteredPin: newPin, clearError: true);
 
     // Automatically verify once 6 digits are typed
-    if (newPin.length == AppConstants.pinLength) {
+    if (autoVerify && newPin.length == AppConstants.pinLength) {
       verifyPin(newPin);
     }
   }
@@ -65,45 +83,29 @@ class AuthNotifier extends StateNotifier<AuthState> {
       final isSuccess = await _authService.verifyPin(pin);
 
       if (isSuccess) {
+        _lockoutTimer?.cancel();
         state = state.copyWith(
           isAuthenticated: true,
           isLoading: false,
           enteredPin: '',
           failedAttempts: 0,
+          isLockedOut: false,
+          lockoutRemainingSeconds: 0,
           clearError: true,
         );
-
-        // Log successful authentication audit
-        try {
-          await SqliteService.instance.logActivity(
-            type: 'USER_LOGIN',
-            description: 'Store Owner authenticated successfully via PIN at kiosk terminal.',
-          );
-        } catch (_) {}
-
         return true;
       } else {
-        final attempts = state.failedAttempts + 1;
-
-        // Log failed attempt audit
-        try {
-          await SqliteService.instance.logActivity(
-            type: 'AUTH_FAILURE',
-            description:
-                'Failed PIN authentication attempt ($attempts of ${AppConstants.maxFailedAttempts}).',
-          );
-        } catch (_) {}
-
-        if (attempts >= AppConstants.maxFailedAttempts) {
-          _startLockout();
+        final status = await _authService.getLockoutStatus();
+        if (status.isLockedOut) {
+          _resumeLockout(status.remainingSeconds, status.failedAttempts);
         } else {
           state = state.copyWith(
             isAuthenticated: false,
             isLoading: false,
             enteredPin: '',
-            failedAttempts: attempts,
+            failedAttempts: status.failedAttempts,
             errorMessage:
-                'Incorrect PIN, please try again (${AppConstants.maxFailedAttempts - attempts} attempts left)',
+                'Incorrect PIN, please try again (${5 - status.failedAttempts} attempts left)',
           );
         }
         return false;
@@ -119,30 +121,33 @@ class AuthNotifier extends StateNotifier<AuthState> {
     }
   }
 
-  void _startLockout() {
+  void _resumeLockout(int seconds, int attempts) {
     _lockoutTimer?.cancel();
+    if (seconds <= 0) {
+      unawaited(_authService.resetLockout());
+      state = state.copyWith(
+        isLockedOut: false,
+        lockoutRemainingSeconds: 0,
+        failedAttempts: 0,
+        clearError: true,
+      );
+      return;
+    }
+
     state = state.copyWith(
       isLockedOut: true,
-      lockoutRemainingSeconds: AppConstants.lockoutDurationSeconds,
+      lockoutRemainingSeconds: seconds,
       enteredPin: '',
+      failedAttempts: attempts,
       isLoading: false,
-      errorMessage:
-          'Too many incorrect attempts. Please wait ${AppConstants.lockoutDurationSeconds}s.',
+      errorMessage: 'Too many incorrect attempts. Please wait ${seconds}s.',
     );
-
-    // Log security lockout audit
-    try {
-      SqliteService.instance.logActivity(
-        type: 'SECURITY_LOCKOUT',
-        description:
-            'Security lockout initiated for ${AppConstants.lockoutDurationSeconds}s after repeated invalid PIN attempts.',
-      );
-    } catch (_) {}
 
     _lockoutTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       final remaining = state.lockoutRemainingSeconds - 1;
       if (remaining <= 0) {
         timer.cancel();
+        unawaited(_authService.resetLockout());
         state = state.copyWith(
           isLockedOut: false,
           lockoutRemainingSeconds: 0,
@@ -159,8 +164,75 @@ class AuthNotifier extends StateNotifier<AuthState> {
     });
   }
 
+  /// Sets up initial 6-digit owner PIN during first-time terminal setup
+  Future<bool> setupInitialOwnerPin(String pin) async {
+    state = state.copyWith(isLoading: true, clearError: true);
+    try {
+      final success = await _authService.setupInitialPin(pin);
+      if (success) {
+        _lockoutTimer?.cancel();
+        state = state.copyWith(
+          isAuthenticated: true,
+          isLoading: false,
+          enteredPin: '',
+          failedAttempts: 0,
+          isLockedOut: false,
+          lockoutRemainingSeconds: 0,
+          clearError: true,
+        );
+        return true;
+      } else {
+        state = state.copyWith(
+          isLoading: false,
+          errorMessage: 'Failed to configure PIN. Must be 6 digits.',
+        );
+        return false;
+      }
+    } catch (_) {
+      state = state.copyWith(
+        isLoading: false,
+        errorMessage: 'Error configuring PIN. Please try again.',
+      );
+      return false;
+    }
+  }
+
+  /// Emergency manager override bypassing security lockouts
+  Future<bool> emergencyOverride(String masterKey) async {
+    state = state.copyWith(isLoading: true, clearError: true);
+    try {
+      final success = await _authService.verifyEmergencyOverride(masterKey);
+      if (success) {
+        _lockoutTimer?.cancel();
+        state = state.copyWith(
+          isAuthenticated: true,
+          isLoading: false,
+          enteredPin: '',
+          failedAttempts: 0,
+          isLockedOut: false,
+          lockoutRemainingSeconds: 0,
+          clearError: true,
+        );
+        return true;
+      } else {
+        state = state.copyWith(
+          isLoading: false,
+          errorMessage: 'Invalid master recovery key. Access denied.',
+        );
+        return false;
+      }
+    } catch (_) {
+      state = state.copyWith(
+        isLoading: false,
+        errorMessage: 'Error processing emergency override.',
+      );
+      return false;
+    }
+  }
+
   void resetLockoutAndState() {
     _lockoutTimer?.cancel();
+    _authService.resetLockout();
     state = const AuthState();
   }
 

@@ -14,7 +14,7 @@ import '../../providers/theme_provider.dart';
 import '../../providers/kiosk_providers.dart';
 import 'system_restart_banner.dart';
 import 'wifi_connection_dialog.dart';
-import 'misplacement_banner.dart';
+import 'low_stock_banner.dart';
 
 class KioskShell extends ConsumerStatefulWidget {
   const KioskShell({super.key, required this.child});
@@ -28,8 +28,7 @@ class KioskShell extends ConsumerStatefulWidget {
 class _KioskShellState extends ConsumerState<KioskShell> {
   int _calculateSelectedIndex(BuildContext context) {
     final String location = GoRouterState.of(context).uri.path;
-    if (location.startsWith(AppRoutePaths.cameraMonitor) ||
-        location.startsWith(AppRoutePaths.roiDetail)) {
+    if (location.startsWith(AppRoutePaths.cameraMonitor)) {
       return 2;
     }
     if (location.startsWith(AppRoutePaths.productForm) ||
@@ -130,7 +129,7 @@ class _KioskShellState extends ConsumerState<KioskShell> {
             const SystemRestartBanner(),
             // Top Kiosk Header Bar
             Container(
-              height: 72,
+              height: 76,
               padding: const EdgeInsets.symmetric(horizontal: 24),
               decoration: BoxDecoration(
                 color: headerBg,
@@ -226,8 +225,8 @@ class _KioskShellState extends ConsumerState<KioskShell> {
                         onTap: () => WifiConnectionDialog.show(context),
                         borderRadius: BorderRadius.circular(12),
                         child: Container(
-                          height: 48,
-                          padding: const EdgeInsets.symmetric(horizontal: 14),
+                          height: 56,
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
                           decoration: BoxDecoration(
                             color: isDark
                                 ? AppColors.darkSurfaceElevated
@@ -244,7 +243,7 @@ class _KioskShellState extends ConsumerState<KioskShell> {
                                 color: netStatus.isOnline
                                     ? AppColors.statusGreen
                                     : AppColors.statusOrange,
-                                size: 20,
+                                size: 24,
                               ),
                               const SizedBox(width: 8),
                               Text(
@@ -253,8 +252,8 @@ class _KioskShellState extends ConsumerState<KioskShell> {
                                     : 'Saved Offline',
                                 style: TextStyle(
                                   color: textPrimary,
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.w700,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w800,
                                 ),
                               ),
                             ],
@@ -274,8 +273,8 @@ class _KioskShellState extends ConsumerState<KioskShell> {
                       },
                       borderRadius: BorderRadius.circular(12),
                       child: Container(
-                        height: 48,
-                        padding: const EdgeInsets.symmetric(horizontal: 14),
+                        height: 56,
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
                         decoration: BoxDecoration(
                           color: isDark
                               ? AppColors.darkSurfaceElevated
@@ -292,15 +291,15 @@ class _KioskShellState extends ConsumerState<KioskShell> {
                               color: isDark
                                   ? AppColors.brandGold
                                   : AppColors.brandAccent,
-                              size: 22,
+                              size: 24,
                             ),
                             const SizedBox(width: 8),
                             Text(
                               isDark ? 'Light' : 'Dark',
                               style: TextStyle(
                                 color: textPrimary,
-                                fontSize: 15,
-                                fontWeight: FontWeight.w700,
+                                fontSize: 16,
+                                fontWeight: FontWeight.w800,
                               ),
                             ),
                           ],
@@ -322,8 +321,8 @@ class _KioskShellState extends ConsumerState<KioskShell> {
                       },
                       borderRadius: BorderRadius.circular(12),
                       child: Container(
-                        height: 48,
-                        padding: const EdgeInsets.symmetric(horizontal: 14),
+                        height: 56,
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
                         decoration: BoxDecoration(
                           color: isDark
                               ? AppColors.darkSurfaceElevated
@@ -337,23 +336,24 @@ class _KioskShellState extends ConsumerState<KioskShell> {
                             const Icon(
                               Icons.lock_outline_rounded,
                               color: AppColors.statusOrange,
-                              size: 22,
+                              size: 24,
                             ),
                             const SizedBox(width: 8),
                             Text(
                               'Lock Screen',
                               style: TextStyle(
                                 color: textPrimary,
-                                fontSize: 15,
+                                fontSize: 16,
                                 fontWeight: FontWeight.w800,
                               ),
                             ),
                             if (autoLockState.isEnabled) ...[
                               const SizedBox(width: 8),
                               Container(
+                                height: 30,
                                 padding: const EdgeInsets.symmetric(
-                                  horizontal: 7,
-                                  vertical: 3,
+                                  horizontal: 8,
+                                  vertical: 4,
                                 ),
                                 decoration: BoxDecoration(
                                   color: isDark
@@ -373,7 +373,7 @@ class _KioskShellState extends ConsumerState<KioskShell> {
                                   children: [
                                     Icon(
                                       Icons.timer_outlined,
-                                      size: 14,
+                                      size: 16,
                                       color:
                                           autoLockState.remainingSeconds <= 30
                                           ? AppColors.statusRed
@@ -387,8 +387,8 @@ class _KioskShellState extends ConsumerState<KioskShell> {
                                             autoLockState.remainingSeconds <= 30
                                             ? AppColors.statusRed
                                             : textSecondary,
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w800,
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w900,
                                       ),
                                     ),
                                   ],
@@ -446,7 +446,7 @@ class _KioskShellState extends ConsumerState<KioskShell> {
                               ),
                               _buildNavItem(
                                 2,
-                                'Live Shelf & Cameras',
+                                'Live Shelf Cameras',
                                 Icons.videocam_rounded,
                                 selectedIndex,
                                 isDark,
@@ -505,7 +505,7 @@ class _KioskShellState extends ConsumerState<KioskShell> {
                               ),
                               _buildNavItem(
                                 9,
-                                'Staff Handbook',
+                                'User Guide',
                                 Icons.menu_book_rounded,
                                 selectedIndex,
                                 isDark,
@@ -523,12 +523,12 @@ class _KioskShellState extends ConsumerState<KioskShell> {
                     ),
                   ),
 
-                  // Active Screen Content with Persistent Misplacement Banner
+                  // Active Screen Content with Low Stock / Out of Stock Banner
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        const MisplacementBanner(),
+                        const LowStockBanner(),
                         Expanded(child: widget.child),
                       ],
                     ),
@@ -548,8 +548,8 @@ class _KioskShellState extends ConsumerState<KioskShell> {
       child: Text(
         label,
         style: TextStyle(
-          fontSize: 12,
-          fontWeight: FontWeight.w800,
+          fontSize: 13.5,
+          fontWeight: FontWeight.w900,
           color: color,
           letterSpacing: 1.2,
         ),
@@ -584,7 +584,7 @@ class _KioskShellState extends ConsumerState<KioskShell> {
           borderRadius: BorderRadius.circular(14),
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 150),
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
             decoration: BoxDecoration(
               color: isSelected
                   ? primaryColor.withValues(alpha: isDark ? 0.22 : 0.12)
@@ -601,15 +601,15 @@ class _KioskShellState extends ConsumerState<KioskShell> {
               children: [
                 Icon(
                   icon,
-                  size: 24,
+                  size: 26,
                   color: isSelected ? primaryColor : textSecondary,
                 ),
-                const SizedBox(width: 13),
+                const SizedBox(width: 14),
                 Expanded(
                   child: Text(
                     title,
                     style: TextStyle(
-                      fontSize: 16,
+                      fontSize: 17,
                       fontWeight: isSelected
                           ? FontWeight.w800
                           : FontWeight.w600,
@@ -621,8 +621,8 @@ class _KioskShellState extends ConsumerState<KioskShell> {
                   Container(
                     margin: const EdgeInsets.only(left: 6),
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 2,
+                      horizontal: 10,
+                      vertical: 4,
                     ),
                     decoration: BoxDecoration(
                       color: badgeColor,
@@ -632,8 +632,8 @@ class _KioskShellState extends ConsumerState<KioskShell> {
                       badgeCount > 99 ? '99+' : '$badgeCount',
                       style: const TextStyle(
                         color: Colors.white,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w800,
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w900,
                       ),
                     ),
                   )
@@ -685,7 +685,7 @@ class _KioskShellState extends ConsumerState<KioskShell> {
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  'Branch: San Pablo',
+                  'Otto Scents Kiosk',
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w800,
@@ -713,8 +713,11 @@ class _KioskShellState extends ConsumerState<KioskShell> {
             ],
           ),
           const SizedBox(height: 6),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 4,
+            runSpacing: 2,
             children: [
               Text(
                 'Kiosk Terminal #01',

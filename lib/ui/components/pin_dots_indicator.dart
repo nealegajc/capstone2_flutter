@@ -98,23 +98,23 @@ class _PinDotsIndicatorState extends State<PinDotsIndicator>
             return AnimatedContainer(
               duration: const Duration(milliseconds: 180),
               curve: Curves.easeOut,
-              margin: const EdgeInsets.symmetric(horizontal: 10),
-              width: isFilled ? 26 : 22,
-              height: isFilled ? 26 : 22,
+              margin: const EdgeInsets.symmetric(horizontal: 12),
+              width: isFilled ? 32 : 28,
+              height: isFilled ? 32 : 28,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 color: fillColor,
                 border: Border.all(
                   color: borderColor,
-                  width: isFilled || isCurrent ? 2.5 : 2.0,
+                  width: isFilled || isCurrent ? 3.0 : 2.5,
                 ),
                 boxShadow: [
                   BoxShadow(
                     color: isFilled
-                        ? AppColors.brandAccent.withValues(alpha: 0.35)
+                        ? AppColors.brandAccent.withValues(alpha: 0.4)
                         : Colors.transparent,
-                    blurRadius: isFilled ? 8.0 : 0.0,
-                    spreadRadius: isFilled ? 1.0 : 0.0,
+                    blurRadius: isFilled ? 12.0 : 0.0,
+                    spreadRadius: isFilled ? 1.5 : 0.0,
                   ),
                 ],
               ),

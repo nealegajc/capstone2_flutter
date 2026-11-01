@@ -23,10 +23,12 @@ class _ShelfAreaDetailScreenState extends ConsumerState<ShelfAreaDetailScreen> {
 
   static const List<Map<String, dynamic>> _shelfTiers = [
     {
-      'title': 'Top Shelf (Men\'s Fragrances)',
+      'title': 'Layer A Left (Men\'s Fragrances)',
       'layer': 'Layer A (Top)',
       'gender': 'Men',
-      'cam': 'Cam 1A & 1B',
+      'cam': 'Camera 1 (Left)',
+      'camId': 1,
+      'tierKey': 'A_LEFT',
       'color': AppColors.maleBlue,
       'slots': ['AA', 'AB', 'AC', 'AD', 'AE'],
       'scents': [
@@ -38,10 +40,29 @@ class _ShelfAreaDetailScreenState extends ConsumerState<ShelfAreaDetailScreen> {
       ],
     },
     {
-      'title': 'Middle Shelf (Mixed Fragrances)',
+      'title': 'Layer A Right (Men\'s Fragrances)',
+      'layer': 'Layer A (Top)',
+      'gender': 'Men',
+      'cam': 'Camera 2 (Right)',
+      'camId': 2,
+      'tierKey': 'A_RIGHT',
+      'color': AppColors.maleBlue,
+      'slots': ['AF', 'AG', 'AH', 'AJ', 'AK'],
+      'scents': [
+        'Davidoff Cool Water (AF1/AF2)',
+        'Polo Red (AG1/AG2)',
+        'Lacoste Black (AH1/AH2)',
+        'Hugo Boss (AJ1/AJ2)',
+        'Lacoste Essential (AK1/AK2)',
+      ],
+    },
+    {
+      'title': 'Layer B Left (Men\'s Fragrances)',
       'layer': 'Layer B (Middle)',
-      'gender': 'Mixed',
-      'cam': 'Cam 2A & 2B',
+      'gender': 'Men',
+      'cam': 'Camera 3 (Left)',
+      'camId': 3,
+      'tierKey': 'B_LEFT',
       'color': AppColors.brandAccent,
       'slots': ['BA', 'BB', 'BC', 'BD', 'BE'],
       'scents': [
@@ -53,10 +74,29 @@ class _ShelfAreaDetailScreenState extends ConsumerState<ShelfAreaDetailScreen> {
       ],
     },
     {
-      'title': 'Bottom Shelf (Women\'s Fragrances)',
+      'title': 'Layer B Right (Women\'s Fragrances)',
+      'layer': 'Layer B (Middle)',
+      'gender': 'Women',
+      'cam': 'Camera 4 (Right)',
+      'camId': 4,
+      'tierKey': 'B_RIGHT',
+      'color': AppColors.femalePink,
+      'slots': ['BF', 'BG', 'BH', 'BJ', 'BK'],
+      'scents': [
+        'Chanel Chance (BF1/BF2)',
+        'Chanel No.5 (BG1/BG2)',
+        'Clinique Happy Women (BH1/BH2)',
+        'Escada Moon Sparkle (BJ1/BJ2)',
+        'DKNY Be Delicious (BK1/BK2)',
+      ],
+    },
+    {
+      'title': 'Layer C Left (Women\'s Fragrances)',
       'layer': 'Layer C (Bottom)',
       'gender': 'Women',
-      'cam': 'Cam 3A & 3B',
+      'cam': 'Camera 5 (Left)',
+      'camId': 5,
+      'tierKey': 'C_LEFT',
       'color': AppColors.femalePink,
       'slots': ['CA', 'CB', 'CC', 'CD', 'CE'],
       'scents': [
@@ -67,21 +107,67 @@ class _ShelfAreaDetailScreenState extends ConsumerState<ShelfAreaDetailScreen> {
         'Incanto Shine (CE1/CE2)',
       ],
     },
+    {
+      'title': 'Layer C Right (Women\'s Fragrances)',
+      'layer': 'Layer C (Bottom)',
+      'gender': 'Women',
+      'cam': 'Camera 6 (Right)',
+      'camId': 6,
+      'tierKey': 'C_RIGHT',
+      'color': AppColors.femalePink,
+      'slots': ['CF', 'CG', 'CH', 'CJ', 'CK'],
+      'scents': [
+        'Jo Malone Mimosa & Cardamom (CF1/CF2)',
+        'Romance Ralph Lauren (CG1/CG2)',
+        'Lancome La Vie Est Belle (CH1/CH2)',
+        'Lanvin Eclat D\'Arpege (CJ1/CJ2)',
+        'Tommy Girl (CK1/CK2)',
+      ],
+    },
   ];
 
-  void _markReviewed(String regionName) {
-    setState(() => _isReviewed = true);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('$regionName verified & reviewed!'),
-        backgroundColor: AppColors.statusGreen,
-      ),
+  @override
+  void initState() {
+    super.initState();
+    _checkReviewedStatus();
+  }
+
+  Future<void> _checkReviewedStatus() async {
+    final tier = _shelfTiers[_selectedTierIndex];
+    final tierKey = tier['tierKey'] as String;
+    final val = await SqliteService.instance.getSetting('shelf_reviewed_$tierKey');
+    if (mounted) {
+      setState(() => _isReviewed = val != null && val.isNotEmpty);
+    }
+  }
+
+  Future<void> _markReviewed(String regionName) async {
+    final tier = _shelfTiers[_selectedTierIndex];
+    final tierKey = tier['tierKey'] as String;
+    final branch = await SqliteService.instance.getBranchName();
+    await SqliteService.instance.setSystemSetting(
+      'shelf_reviewed_$tierKey',
+      DateTime.now().toIso8601String(),
     );
+    await SqliteService.instance.logActivity(
+      type: 'SHELF_REVIEW',
+      description: 'Physical shelf inspection verified for $regionName.',
+      branch: branch,
+    );
+    if (mounted) {
+      setState(() => _isReviewed = true);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('$regionName verified & saved to system!'),
+          backgroundColor: AppColors.statusGreen,
+        ),
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    const branch = 'San Pablo';
+    final branch = ref.watch(currentBranchProvider).valueOrNull ?? 'San Pablo';
     final inventoryAsync = ref.watch(liveInventoryProvider(branch));
     final currentTier = _shelfTiers[_selectedTierIndex];
     final tierColor = currentTier['color'] as Color;
@@ -109,11 +195,12 @@ class _ShelfAreaDetailScreenState extends ConsumerState<ShelfAreaDetailScreen> {
         future: SqliteService.instance.getShelfRegions(branch),
         builder: (context, snapshot) {
           final invList = inventoryAsync.valueOrNull ?? [];
+          final slotPrefixes = currentTier['slots'] as List<String>;
           final matchingInv = invList
               .where(
-                (i) =>
-                    i.shelf.contains(currentTier['layer'] as String) ||
-                    i.category == currentTier['gender'],
+                (i) => slotPrefixes.any(
+                  (tray) => i.perfumeCode.startsWith(tray) || i.shelf.contains(tray),
+                ),
               )
               .toList();
           final totalDetected = matchingInv.fold<int>(
@@ -143,17 +230,20 @@ class _ShelfAreaDetailScreenState extends ConsumerState<ShelfAreaDetailScreen> {
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(color: context.borderColor),
                   ),
-                  child: Row(
-                    children: List.generate(_shelfTiers.length, (idx) {
-                      final tier = _shelfTiers[idx];
-                      final isSelected = _selectedTierIndex == idx;
-                      final color = tier['color'] as Color;
-                      return Expanded(
-                        child: Padding(
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: List.generate(_shelfTiers.length, (idx) {
+                        final tier = _shelfTiers[idx];
+                        final isSelected = _selectedTierIndex == idx;
+                        final color = tier['color'] as Color;
+                        return Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 4),
                           child: InkWell(
-                            onTap: () =>
-                                setState(() => _selectedTierIndex = idx),
+                            onTap: () {
+                              setState(() => _selectedTierIndex = idx);
+                              _checkReviewedStatus();
+                            },
                             borderRadius: BorderRadius.circular(12),
                             child: AnimatedContainer(
                               duration: const Duration(milliseconds: 150),
@@ -174,6 +264,7 @@ class _ShelfAreaDetailScreenState extends ConsumerState<ShelfAreaDetailScreen> {
                                 ),
                               ),
                               child: Row(
+                                mainAxisSize: MainAxisSize.min,
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
                                   Icon(
@@ -200,9 +291,9 @@ class _ShelfAreaDetailScreenState extends ConsumerState<ShelfAreaDetailScreen> {
                               ),
                             ),
                           ),
-                        ),
-                      );
-                    }),
+                        );
+                      }),
+                    ),
                   ),
                 ),
                 const SizedBox(height: 18),

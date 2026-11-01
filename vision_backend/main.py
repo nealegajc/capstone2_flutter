@@ -1,26 +1,26 @@
 import os
 os.environ["YOLO_CONFIG_DIR"] = "/tmp/ultralytics"
-"""FastAPI Entrypoint for Otto Scents Smart Shelf Vision Service."""
-import asyncio
-import io
+os.environ["CUDA_VISIBLE_DEVICES"] = ""
+"""FastAPI Entrypoint for Otto Scents Smart Shelf Vision Service (Pure YOLO Pipeline)."""
 import time
-import base64
+import asyncio
 import logging
+import threading
 from typing import List, Dict, Any, Optional
 import cv2
-from fastapi import FastAPI, HTTPException, Response
+from fastapi import FastAPI, HTTPException, Response, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
-from pipeline import ShelfVisionPipeline
+from pipeline import ShelfVisionPipeline, CAMERA_DEVICE_MAP
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger("vision_backend.main")
 
 app = FastAPI(
     title="Otto Scents Smart Shelf - Vision Backend",
-    version="1.0.0",
-    description="Edge Computer Vision service providing YOLO cap detection and OCR extraction"
+    version="2.0.0",
+    description="High-Speed Edge Computer Vision Service providing pure YOLO cap detection and ROI isolation"
 )
 
 # Enable CORS for Flutter Desktop & Web
@@ -33,11 +33,15 @@ app.add_middleware(
 )
 
 pipeline = ShelfVisionPipeline()
-pipeline_lock = asyncio.Lock()
+pipeline_lock = threading.Lock()
 
 class ScanTriggerRequest(BaseModel):
     branch: Optional[str] = "San Pablo"
     shelf_id: Optional[str] = "shelf_1"
+    camera_id: Optional[int] = None
+    cameraId: Optional[int] = None
+    camera_device: Optional[str] = None
+    target_tray: Optional[str] = None
 
 class RoiUpdateRequest(BaseModel):
     boundaries: List[float] = Field(..., description="List of normalized X boundary partitions")
@@ -47,9 +51,9 @@ class RoiUpdateRequest(BaseModel):
 @app.get("/")
 def root():
     return {
-        "service": "Otto Scents Vision Backend",
+        "service": "Otto Scents Vision Backend (Pure YOLO)",
+        "version": "2.0.0",
         "yolo_ready": pipeline.is_yolo_ready,
-        "ocr_ready": pipeline.ocr_engine.is_paddle_ready or True,
         "docs_url": "/docs"
     }
 
@@ -59,7 +63,6 @@ def health_check():
     return {
         "status": "ok",
         "yolo_ready": pipeline.is_yolo_ready,
-        "ocr_ready": pipeline.ocr_engine.is_paddle_ready or True,
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S")
     }
 
@@ -71,46 +74,175 @@ def get_hardware_status():
         "hardwareStatus": "Active (Local Edge Server)",
         "cameraActive": True,
         "yoloReady": pipeline.is_yolo_ready,
-        "ocrReady": True,
         "modelPath": str(pipeline.yolo_model.ckpt_path if pipeline.yolo_model else "not_loaded"),
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S")
     }
 
-@app.post("/scan/trigger")
-async def trigger_scan(req: ScanTriggerRequest):
-    """Triggers image capture, quality verification, YOLO inference, and OCR under concurrency lock."""
-    async with pipeline_lock:
-        logger.info(f"Triggering vision scan for branch: {req.branch}")
-        frame = pipeline.capture_frame()
-        if frame is None:
-            raise HTTPException(status_code=500, detail="Unable to capture shelf frame from camera.")
+def _perform_camera_scan(
+    cam_id: int,
+    branch: str = "San Pablo",
+    camera_device: Optional[str] = None,
+) -> Dict[str, Any]:
+    with pipeline_lock:
+        t0 = time.time()
+        logger.info(f"Triggering pure YOLO vision scan for branch: {branch}, camera_id: {cam_id}, device: {camera_device}")
+        try:
+            result = pipeline.scan_camera(
+                camera_id=cam_id,
+                branch=branch,
+                camera_device=camera_device
+            )
+            elapsed = time.time() - t0
+            logger.info(f"Scan completed in {elapsed:.3f}s: {result['totalBottles']} bottles detected across trays {list(result['trayCounts'].keys())}")
+            return result
+        except Exception as e:
+            logger.error(f"Scan error on camera {cam_id}: {e}")
+            raise HTTPException(status_code=500, detail=str(e))
 
-        detections = pipeline.run_inference(frame, branch=req.branch or "San Pablo")
+@app.api_route("/api/camera/scan", methods=["GET", "POST"])
+async def scan_camera_api(
+    request: Request,
+    camera_id: Optional[int] = None,
+    cameraId: Optional[int] = None,
+    branch: Optional[str] = "San Pablo",
+    camera_device: Optional[str] = None,
+):
+    """
+    Primary pure YOLO scan endpoint satisfying Requirement R1 & Auditor Gate 1.
+    Accepts GET or POST and returns exact JSON schema with totalBottles, trayCounts, and detections.
+    """
+    resolved_cam_id = camera_id if camera_id is not None else cameraId
+    resolved_branch = branch or "San Pablo"
+    resolved_device = camera_device
+
+    if request.method == "POST":
+        try:
+            body = await request.json()
+            if isinstance(body, dict):
+                if resolved_cam_id is None:
+                    if "camera_id" in body and body["camera_id"] is not None:
+                        resolved_cam_id = body["camera_id"]
+                    elif "cameraId" in body and body["cameraId"] is not None:
+                        resolved_cam_id = body["cameraId"]
+                resolved_branch = body.get("branch") or resolved_branch
+                resolved_device = body.get("camera_device") or resolved_device
+        except Exception:
+            pass
+
+    if resolved_cam_id is None:
+        resolved_cam_id = 1
+
+    try:
+        cam_int = int(resolved_cam_id)
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail=f"Invalid camera_id: {resolved_cam_id}. Must be an integer 1-6.")
+
+    if cam_int < 1 or cam_int > 6:
+        raise HTTPException(status_code=400, detail=f"Camera ID {cam_int} out of range (1-6).")
+
+    return await asyncio.to_thread(_perform_camera_scan, cam_int, resolved_branch, resolved_device)
+
+def _perform_camera_test(
+    cam_id: int,
+    branch: str = "San Pablo",
+    camera_device: Optional[str] = None,
+) -> Dict[str, Any]:
+    with pipeline_lock:
+        t0 = time.time()
+        frame = pipeline.capture_frame(camera_device=camera_device, camera_id=cam_id)
+        if frame is None:
+            raise HTTPException(status_code=500, detail=f"Failed to capture frame from camera {cam_id}")
+        detections = pipeline.run_inference(frame, branch=branch, camera_id=cam_id)
         del frame
+        elapsed = time.time() - t0
         return {
             "success": True,
-            "message": f"AI Shelf Vision scan completed for {req.branch}",
-            "bottlesDetected": len(detections),
-            "detections": detections
+            "cameraId": cam_id,
+            "device": camera_device or CAMERA_DEVICE_MAP.get(cam_id, f"/dev/cam{cam_id}a"),
+            "totalBottles": len(detections),
+            "detectionsCount": len(detections),
+            "quality": pipeline.last_quality_log,
+            "status": "OK",
+            "latencySeconds": round(elapsed, 3),
+            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S")
         }
+
+@app.api_route("/api/camera/test", methods=["GET", "POST"])
+async def test_camera_api(
+    request: Request,
+    camera_id: Optional[int] = None,
+    cameraId: Optional[int] = None,
+    branch: Optional[str] = "San Pablo",
+    camera_device: Optional[str] = None,
+):
+    """Tests camera capture and inference without blocking the FastAPI event loop."""
+    resolved_cam_id = camera_id if camera_id is not None else cameraId
+    resolved_branch = branch or "San Pablo"
+    resolved_device = camera_device
+
+    if request.method == "POST":
+        try:
+            body = await request.json()
+            if isinstance(body, dict):
+                if resolved_cam_id is None:
+                    if "camera_id" in body and body["camera_id"] is not None:
+                        resolved_cam_id = body["camera_id"]
+                    elif "cameraId" in body and body["cameraId"] is not None:
+                        resolved_cam_id = body["cameraId"]
+                resolved_branch = body.get("branch") or resolved_branch
+                resolved_device = body.get("camera_device") or resolved_device
+        except Exception:
+            pass
+
+    if resolved_cam_id is None:
+        resolved_cam_id = 1
+
+    try:
+        cam_int = int(resolved_cam_id)
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail=f"Invalid camera_id: {resolved_cam_id}. Must be an integer 1-6.")
+
+    if cam_int < 1 or cam_int > 6:
+        raise HTTPException(status_code=400, detail=f"Camera ID {cam_int} out of range (1-6).")
+
+    return await asyncio.to_thread(_perform_camera_test, cam_int, resolved_branch, resolved_device)
+
+@app.api_route("/scan-camera", methods=["GET", "POST"])
+async def scan_camera_alias(
+    request: Request,
+    camera_id: Optional[int] = None,
+    cameraId: Optional[int] = None,
+    branch: Optional[str] = "San Pablo",
+    camera_device: Optional[str] = None,
+):
+    """Alias for /api/camera/scan per specification."""
+    return await scan_camera_api(request, camera_id, cameraId, branch, camera_device)
+
+@app.api_route("/scan/trigger", methods=["GET", "POST"])
+async def scan_trigger_alias(
+    request: Request,
+    camera_id: Optional[int] = None,
+    cameraId: Optional[int] = None,
+    branch: Optional[str] = "San Pablo",
+    camera_device: Optional[str] = None,
+):
+    """Alias for backwards compatibility with legacy Flutter callers."""
+    return await scan_camera_api(request, camera_id, cameraId, branch, camera_device)
+
+def _get_last_scan_results_sync():
+    with pipeline_lock:
+        if not pipeline.last_detection_results:
+            pipeline.scan_camera(camera_id=1)
+        return pipeline.last_detection_results
 
 @app.get("/scan/last-result")
 async def get_last_scan_results():
     """Returns detections from the most recent scan."""
-    async with pipeline_lock:
-        if not pipeline.last_detection_results:
-            # Trigger an initial baseline inference if empty
-            frame = pipeline.capture_frame()
-            if frame is not None:
-                pipeline.run_inference(frame)
-                del frame
-        return pipeline.last_detection_results
+    return await asyncio.to_thread(_get_last_scan_results_sync)
 
-@app.get("/calibration/frame")
-async def get_calibration_frame():
-    """Returns current camera frame overlaid with ROI boundaries as JPEG image."""
-    async with pipeline_lock:
-        frame = pipeline.capture_frame()
+def _get_calibration_frame_bytes() -> bytes:
+    with pipeline_lock:
+        frame = pipeline.capture_frame(camera_id=1)
         if frame is None:
             raise HTTPException(status_code=500, detail="Failed to capture frame from camera.")
         vis = pipeline.render_calibration_frame(frame)
@@ -118,12 +250,18 @@ async def get_calibration_frame():
         del frame, vis
         if not ret:
             raise HTTPException(status_code=500, detail="Failed to encode calibration frame.")
-        return Response(content=jpeg.tobytes(), media_type="image/jpeg")
+        return jpeg.tobytes()
+
+@app.get("/calibration/frame")
+async def get_calibration_frame():
+    """Returns current camera frame overlaid with ROI boundaries without blocking event loop."""
+    jpeg_bytes = await asyncio.to_thread(_get_calibration_frame_bytes)
+    return Response(content=jpeg_bytes, media_type="image/jpeg")
 
 @app.post("/roi/update")
 async def update_rois(req: RoiUpdateRequest):
     """Updates ROI boundary partitions sent from the Flutter calibration screen."""
-    async with pipeline_lock:
+    with pipeline_lock:
         pipeline.update_rois(req.boundaries, req.top, req.bottom)
         return {
             "success": True,
@@ -135,7 +273,7 @@ async def update_rois(req: RoiUpdateRequest):
 
 @app.get("/cameras")
 def get_connected_cameras():
-    """Scans and returns hardware V4L2 video devices connected to the host."""
+    """Scans and returns hardware video devices connected to the host."""
     return pipeline.get_available_cameras()
 
 @app.get("/image-quality/log")

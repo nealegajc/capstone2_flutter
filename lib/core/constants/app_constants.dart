@@ -12,10 +12,7 @@ class AppConstants {
   static const double numpadKeyWidth = 120.0;
   static const int pinLength = 6;
   static const int maxFailedAttempts = 5;
-  static const int lockoutDurationSeconds = 30;
-
-  // Default Fallback PIN for emergency offline owner access
-  static const String defaultOwnerPin = '123456';
+  static const int lockoutDurationSeconds = 300;
   static const int defaultLowStockThreshold = 2;
 
   // Security Recovery Answers
@@ -26,8 +23,8 @@ class AppConstants {
   static const String recoveryAnswer2 = 'mj';
 
   static const String recoveryQuestion3 =
-      "Where was the first branch originated?";
-  static const String recoveryAnswer3 = 'san pablo';
+      'What is the name of the business?';
+  static const String recoveryAnswer3 = 'ottoscents';
 
   // Fragrance Pricing (Universal across branches)
   static const double price100ml = 260.0;

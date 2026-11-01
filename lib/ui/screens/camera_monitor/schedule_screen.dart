@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
@@ -5,6 +6,7 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/theme_helper.dart';
 
 import '../../../data/services/sqlite_service.dart';
+import '../../../data/services/kiosk_scheduler_service.dart';
 
 class ScheduleScreen extends StatefulWidget {
   const ScheduleScreen({super.key});
@@ -14,13 +16,18 @@ class ScheduleScreen extends StatefulWidget {
 }
 
 class _ScheduleScreenState extends State<ScheduleScreen> {
-  String _scheduleMode = 'interval'; // 'interval' or 'daily'
+  String _scheduleMode = 'daily'; // 'interval' or 'daily'
   String _selectedInterval = '1hour';
   final Map<String, bool> _dailyCaptureTimes = {
-    '09:00 AM (Opening Check)': true,
-    '12:00 PM (Midday Check)': true,
-    '03:00 PM (Afternoon Check)': true,
-    '06:00 PM (Closing Check)': true,
+    '09:00': true,
+    '14:00': true,
+    '21:00': true,
+  };
+
+  static const Map<String, String> _checkpointLabels = {
+    '09:00': '09:00 AM (Store Opening Check)',
+    '14:00': '02:00 PM (Shift Change Check)',
+    '21:00': '09:00 PM (Store Closing Check)',
   };
 
   @override
@@ -35,11 +42,29 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
       final interval = await SqliteService.instance.getSetting(
         'schedule_interval',
       );
+      final dailyTimesJson = await SqliteService.instance.getSetting(
+        'schedule_daily_times',
+      );
       if (mounted) {
         setState(() {
           if (mode != null && mode.isNotEmpty) _scheduleMode = mode;
           if (interval != null && interval.isNotEmpty) {
             _selectedInterval = interval;
+          }
+          if (dailyTimesJson != null && dailyTimesJson.isNotEmpty) {
+            final decoded = jsonDecode(dailyTimesJson);
+            if (decoded is Map<String, dynamic>) {
+              for (final entry in decoded.entries) {
+                final key = entry.key.contains(':')
+                    ? entry.key.substring(0, 5)
+                    : entry.key;
+                if (_dailyCaptureTimes.containsKey(key)) {
+                  _dailyCaptureTimes[key] = entry.value == true ||
+                      entry.value == 1 ||
+                      entry.value == 'true';
+                }
+              }
+            }
           }
         });
       }
@@ -48,6 +73,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
 
   void _saveSchedule() async {
     try {
+      final branch = await SqliteService.instance.getBranchName();
       await SqliteService.instance.setSystemSetting(
         'schedule_mode',
         _scheduleMode,
@@ -56,11 +82,20 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
         'schedule_interval',
         _selectedInterval,
       );
+      await SqliteService.instance.setSystemSetting(
+        'schedule_daily_times',
+        jsonEncode(_dailyCaptureTimes),
+      );
+      await KioskSchedulerService.instance.reloadSchedule();
+      final activeLabels = _dailyCaptureTimes.entries
+          .where((e) => e.value)
+          .map((e) => _checkpointLabels[e.key] ?? e.key)
+          .join(', ');
       await SqliteService.instance.logActivity(
         type: 'SCAN_SCHEDULE',
         description:
-            'Vision capture schedule set to $_scheduleMode ($_selectedInterval).',
-        branch: 'San Pablo',
+            'Vision capture schedule set to $_scheduleMode ($_selectedInterval). Active checkpoints: $activeLabels.',
+        branch: branch,
       );
     } catch (_) {}
 
@@ -143,7 +178,8 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
                           child: _buildScheduleOptionTile(
                             mode: 'daily',
                             title: 'Fixed Daily Times',
-                            subtitle: 'Trigger scans at specific business hours (e.g. 9 AM, 12 PM, 3 PM, 6 PM)',
+                            subtitle:
+                                'Trigger scans at specific business checkpoints (09:00 AM, 02:00 PM, 09:00 PM)',
                             icon: Icons.calendar_today_rounded,
                           ),
                         ),
@@ -240,9 +276,10 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
                       ),
                       const SizedBox(height: 14),
                       ..._dailyCaptureTimes.keys.map((timeKey) {
+                        final label = _checkpointLabels[timeKey] ?? timeKey;
                         return CheckboxListTile(
                           title: Text(
-                            timeKey,
+                            label,
                             style: TextStyle(color: context.textPrimaryColor),
                           ),
                           value: _dailyCaptureTimes[timeKey],

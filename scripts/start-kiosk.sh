@@ -14,6 +14,16 @@ set -u
 REAL_SCRIPT="$(readlink -f "${BASH_SOURCE[0]}")"
 SCRIPT_DIR="$(cd "$(dirname "$REAL_SCRIPT")" && pwd)"
 BASE_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+# Robust fallback for BASE_DIR if executed directly from /usr/local/bin or outside repo
+if [ ! -f "$BASE_DIR/build/linux/x64/release/bundle/smart_shelf_linux" ] && [ ! -f "$BASE_DIR/pubspec.yaml" ]; then
+    if [ -d "$HOME/capstone-flutter" ]; then
+        BASE_DIR="$HOME/capstone-flutter"
+    elif [ -d "/home/ottoscents/capstone-flutter" ]; then
+        BASE_DIR="/home/ottoscents/capstone-flutter"
+    fi
+fi
+
 LOG_DIR="/tmp/smart-shelf-logs"
 mkdir -p "$LOG_DIR"
 
@@ -126,7 +136,11 @@ gsettings set org.gnome.mutter edge-tiling false 2>/dev/null || true
 # to prevent simultaneous conflicting mouse and touch events in X11
 echo "Configuring and optimizing touchscreen input interfaces..."
 if command -v xinput >/dev/null 2>&1; then
+    # Map touchscreen coordinates to primary output (HDMI-1)
     for dev_id in $(xinput list --id-only 2>/dev/null); do
+        if xinput list-props "$dev_id" 2>/dev/null | grep -q -i "TouchScreen"; then
+            xinput map-to-output "$dev_id" HDMI-1 2>/dev/null || true
+        fi
         if xinput list-props "$dev_id" 2>/dev/null | grep -q "10176, 2137"; then
             if xinput list-props "$dev_id" 2>/dev/null | grep -q "Natural Scrolling Enabled"; then
                 echo "Disabling conflicting mouse emulation interface (device ID $dev_id)..."

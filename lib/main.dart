@@ -12,6 +12,7 @@ import 'core/router/app_router.dart';
 import 'core/theme/app_theme.dart';
 import 'data/services/sqlite_service.dart';
 import 'data/services/sync_service.dart';
+import 'data/services/kiosk_scheduler_service.dart';
 import 'providers/theme_provider.dart';
 
 void main() async {
@@ -71,11 +72,13 @@ void main() async {
   try {
     await SqliteService.instance.initialize();
     SyncService.instance.initialize(enableAutoSync: true);
+    await KioskSchedulerService.instance.initialize();
+    final branch = await SqliteService.instance.getBranchName();
     await SqliteService.instance.logActivity(
       type: 'SYSTEM_STARTUP',
       description: 'Otto Scents kiosk terminal initialized on host',
       user: 'System',
-      branch: 'San Pablo',
+      branch: branch,
     );
   } catch (_) {}
 

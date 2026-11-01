@@ -22,12 +22,13 @@ class _SyncStatusScreenState extends ConsumerState<SyncStatusScreen> {
   void _triggerSync() async {
     setState(() => _isManualSyncing = true);
     try {
+      final branch = ref.read(currentBranchProvider).valueOrNull ?? 'San Pablo';
       final syncService = ref.read(syncServiceProvider);
-      final stats = await syncService.forceSyncNow('San Pablo');
-      ref.invalidate(liveInventoryProvider('San Pablo'));
-      ref.invalidate(dashboardStatsProvider('San Pablo'));
-      ref.invalidate(syncQueueListProvider('San Pablo'));
-      ref.invalidate(systemActivityLogsProvider('San Pablo'));
+      final stats = await syncService.forceSyncNow(branch);
+      ref.invalidate(liveInventoryProvider(branch));
+      ref.invalidate(dashboardStatsProvider(branch));
+      ref.invalidate(syncQueueListProvider(branch));
+      ref.invalidate(systemActivityLogsProvider(branch));
 
       if (mounted) {
         final total = stats.values.fold<int>(0, (sum, count) => sum + count);

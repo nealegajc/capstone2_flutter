@@ -415,7 +415,7 @@ class CatalogSeedData {
           left: 0.05,
           right: 0.95,
           top: 0.52,
-          bottom: 0.90,
+          bottom: 0.98,
         ),
       );
     }

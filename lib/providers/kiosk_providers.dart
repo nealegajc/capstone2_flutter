@@ -16,6 +16,7 @@ import '../data/services/sqlite_service.dart';
 import '../data/services/sync_service.dart';
 import '../data/services/camera_hardware_service.dart';
 import '../data/services/network_service.dart';
+import '../data/services/kiosk_scheduler_service.dart';
 import '../data/repositories/python_api_repository.dart';
 
 final pythonApiRepositoryProvider = Provider<PythonApiRepository>((ref) {
@@ -40,9 +41,20 @@ final networkServiceProvider = ChangeNotifierProvider<NetworkService>((ref) {
   return NetworkService.instance;
 });
 
+final kioskSchedulerServiceProvider =
+    Provider<KioskSchedulerService>((ref) {
+  return KioskSchedulerService.instance;
+});
+
 final networkStatusProvider = Provider<NetworkStatus>((ref) {
   final netService = ref.watch(networkServiceProvider);
   return netService.status;
+});
+
+/// Dynamic Branch Provider
+final currentBranchProvider = FutureProvider.autoDispose<String>((ref) async {
+  final sqlite = ref.watch(sqliteServiceProvider);
+  return await sqlite.getBranchName();
 });
 
 /// Dynamic Inventory Records Provider
@@ -71,7 +83,14 @@ final shelfRegionsProvider = FutureProvider.autoDispose
 final liveAlertsProvider = FutureProvider.autoDispose
     .family<List<AlertModel>, String?>((ref, branch) async {
       final sqlite = ref.watch(sqliteServiceProvider);
-      return await sqlite.getAlerts(branch);
+      return await sqlite.getAlerts(branch, unreadOnly: true);
+    });
+
+/// Dynamic Resolved Alerts History Provider
+final resolvedAlertsHistoryProvider = FutureProvider.autoDispose
+    .family<List<AlertModel>, String?>((ref, branch) async {
+      final sqlite = ref.watch(sqliteServiceProvider);
+      return await sqlite.getAlertsHistory(branch);
     });
 
 /// Dynamic Stock Movement Events Logs Provider
@@ -155,6 +174,8 @@ class DashboardStats {
   final int needsVerificationCount;
   final int totalCapacity;
   final int activeItemCount;
+  final int outOfStockCount;
+  final int restockNeededCount;
 
   const DashboardStats({
     required this.totalInStock,
@@ -163,6 +184,8 @@ class DashboardStats {
     required this.needsVerificationCount,
     required this.totalCapacity,
     this.activeItemCount = 60,
+    this.outOfStockCount = 0,
+    this.restockNeededCount = 0,
   });
 }
 
@@ -173,6 +196,8 @@ final dashboardStatsProvider = FutureProvider.autoDispose
 
       int totalInStock = 0;
       int lowStock = 0;
+      int outOfStock = 0;
+      int restockNeeded = 0;
       int misplaced = 0;
       int needsVerification = 0;
       int activeItemCount = 0;
@@ -181,7 +206,13 @@ final dashboardStatsProvider = FutureProvider.autoDispose
         if (item.isSeasonalOff) continue;
         activeItemCount++;
         totalInStock += item.detected;
-        if (item.isLowStock) lowStock++;
+        if (item.isOutOfStock) {
+          outOfStock++;
+          restockNeeded++;
+        } else if (item.isLowStock) {
+          lowStock++;
+          restockNeeded++;
+        }
         if (item.status == 'misplaced') misplaced++;
       }
 
@@ -191,9 +222,8 @@ final dashboardStatsProvider = FutureProvider.autoDispose
         }
       }
 
-      final capacityItems = activeItemCount > 0
-          ? activeItemCount
-          : inventory.length;
+      final capacityItems = inventory.isEmpty ? 60 : activeItemCount;
+      final effectiveActiveCount = inventory.isEmpty ? 60 : activeItemCount;
 
       return DashboardStats(
         totalInStock: totalInStock,
@@ -201,7 +231,9 @@ final dashboardStatsProvider = FutureProvider.autoDispose
         misplacedCount: misplaced,
         needsVerificationCount: needsVerification,
         totalCapacity: capacityItems * 5, // 5 max bottles per active slot
-        activeItemCount: activeItemCount > 0 ? activeItemCount : 60,
+        activeItemCount: effectiveActiveCount,
+        outOfStockCount: outOfStock,
+        restockNeededCount: restockNeeded,
       );
     });
 

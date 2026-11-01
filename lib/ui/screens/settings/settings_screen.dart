@@ -6,16 +6,24 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/theme_helper.dart';
 import '../../../data/seeds/catalog_seed_data.dart';
 import '../../../data/services/sqlite_service.dart';
-import '../../../data/services/system_power_service.dart';
 import '../../../providers/auto_lock_provider.dart';
 import '../../../providers/kiosk_providers.dart';
-import '../../../providers/system_power_provider.dart';
+import '../../components/power_options_dialog.dart';
 import '../../components/wifi_connection_dialog.dart';
 import '../../components/update_pin_dialog.dart';
 import 'camera_assignment_dialog.dart';
 
 class SettingsScreen extends ConsumerWidget {
-  const SettingsScreen({super.key});
+  final Future<void> Function()? onRelaunchApp;
+  final void Function()? onRestartSystem;
+  final void Function()? onShutdownSystem;
+
+  const SettingsScreen({
+    super.key,
+    this.onRelaunchApp,
+    this.onRestartSystem,
+    this.onShutdownSystem,
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -148,8 +156,8 @@ class SettingsScreen extends ConsumerWidget {
                                 Divider(height: 18, color: context.borderColor),
                                 _buildConfigRow(
                                   context,
-                                  'Assigned Branch',
-                                  'San Pablo Branch (Kiosk #01)',
+                                  'Terminal ID',
+                                  'Kiosk Terminal #01',
                                 ),
                                 Divider(height: 18, color: context.borderColor),
                                 _buildConfigRow(
@@ -205,7 +213,7 @@ class SettingsScreen extends ConsumerWidget {
                                               CrossAxisAlignment.start,
                                           children: [
                                             Text(
-                                              'Manager Security PIN',
+                                              'Store Owner Security PIN',
                                               style: TextStyle(
                                                 fontSize: 15,
                                                 fontWeight: FontWeight.w800,
@@ -213,7 +221,7 @@ class SettingsScreen extends ConsumerWidget {
                                               ),
                                             ),
                                             Text(
-                                              '6-digit PIN required for manager access',
+                                              '6-digit PIN required for kiosk access',
                                               style: TextStyle(
                                                 fontSize: 12,
                                                 color:
@@ -596,194 +604,40 @@ class SettingsScreen extends ConsumerWidget {
                                     ),
                                   ],
                                 ),
-                                const SizedBox(height: 18),
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: SizedBox(
-                                        height: 48,
-                                        child: OutlinedButton.icon(
-                                          onPressed: () async {
-                                            final confirm = await showDialog<bool>(
-                                              context: context,
-                                              builder: (ctx) => AlertDialog(
-                                                title: const Row(
-                                                  children: [
-                                                    Icon(
-                                                      Icons.restart_alt_rounded,
-                                                      color:
-                                                          AppColors.brandAccent,
-                                                    ),
-                                                    SizedBox(width: 8),
-                                                    Text(
-                                                      'Relaunch Kiosk Application?',
-                                                    ),
-                                                  ],
-                                                ),
-                                                content: const Text(
-                                                  'This will restart the Otto Scents kiosk software process immediately.',
-                                                ),
-                                                actions: [
-                                                  TextButton(
-                                                    onPressed: () =>
-                                                        Navigator.pop(
-                                                          ctx,
-                                                          false,
-                                                        ),
-                                                    child: const Text('Cancel'),
-                                                  ),
-                                                  ElevatedButton(
-                                                    onPressed: () =>
-                                                        Navigator.pop(
-                                                          ctx,
-                                                          true,
-                                                        ),
-                                                    style:
-                                                        ElevatedButton.styleFrom(
-                                                          backgroundColor:
-                                                              AppColors
-                                                                  .brandAccent,
-                                                          foregroundColor:
-                                                              Colors.white,
-                                                        ),
-                                                    child: const Text(
-                                                      'Relaunch Now',
-                                                    ),
-                                                  ),
-                                                ],
-                                              ),
-                                            );
-                                            if (confirm == true) {
-                                              await SystemPowerService.instance
-                                                  .relaunchApp();
-                                            }
-                                          },
-                                          icon: const Icon(
-                                            Icons.restart_alt_rounded,
-                                            size: 20,
-                                          ),
-                                          label: const Text(
-                                            'Relaunch App',
-                                            style: TextStyle(
-                                              fontWeight: FontWeight.w800,
-                                            ),
-                                          ),
-                                          style: OutlinedButton.styleFrom(
-                                            side: BorderSide(
-                                              color: context.borderColor,
-                                            ),
-                                            shape: RoundedRectangleBorder(
-                                              borderRadius:
-                                                  BorderRadius.circular(12),
-                                            ),
-                                          ),
-                                        ),
+                                SizedBox(
+                                  height: 62,
+                                  width: double.infinity,
+                                  child: ElevatedButton.icon(
+                                    key: const Key('btn_power_options'),
+                                    onPressed: () {
+                                      PowerOptionsModalDialog.show(
+                                        context,
+                                        onRelaunchApp: onRelaunchApp,
+                                        onRestartSystem: onRestartSystem,
+                                        onShutdownSystem: onShutdownSystem,
+                                      );
+                                    },
+                                    icon: const Icon(
+                                      Icons.power_settings_new_rounded,
+                                      size: 24,
+                                    ),
+                                    label: const Text(
+                                      'Power & Restart Options',
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
                                       ),
                                     ),
-                                    const SizedBox(width: 12),
-                                    Expanded(
-                                      child: SizedBox(
-                                        height: 48,
-                                        child: OutlinedButton.icon(
-                                          onPressed: () {
-                                            ref
-                                                .read(
-                                                  systemRestartProvider
-                                                      .notifier,
-                                                )
-                                                .startCountdown(
-                                                  action:
-                                                      SystemPowerAction.restart,
-                                                );
-                                            ScaffoldMessenger.of(
-                                              context,
-                                            ).showSnackBar(
-                                              const SnackBar(
-                                                content: Text(
-                                                  'Reboot countdown active. See 15-second banner at top of screen.',
-                                                ),
-                                                backgroundColor:
-                                                    AppColors.statusOrange,
-                                                duration: Duration(seconds: 4),
-                                              ),
-                                            );
-                                          },
-                                          icon: const Icon(
-                                            Icons.sync_rounded,
-                                            size: 20,
-                                            color: AppColors.statusOrange,
-                                          ),
-                                          label: const Text(
-                                            'Restart System',
-                                            style: TextStyle(
-                                              fontWeight: FontWeight.w800,
-                                              color: AppColors.statusOrange,
-                                            ),
-                                          ),
-                                          style: OutlinedButton.styleFrom(
-                                            side: const BorderSide(
-                                              color: AppColors.statusOrange,
-                                              width: 1.5,
-                                            ),
-                                            shape: RoundedRectangleBorder(
-                                              borderRadius:
-                                                  BorderRadius.circular(12),
-                                            ),
-                                          ),
-                                        ),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: AppColors.statusRed,
+                                      foregroundColor: Colors.white,
+                                      elevation: 2,
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius:
+                                            BorderRadius.circular(14),
                                       ),
                                     ),
-                                    const SizedBox(width: 12),
-                                    Expanded(
-                                      child: SizedBox(
-                                        height: 48,
-                                        child: ElevatedButton.icon(
-                                          onPressed: () {
-                                            ref
-                                                .read(
-                                                  systemRestartProvider
-                                                      .notifier,
-                                                )
-                                                .startCountdown(
-                                                  action: SystemPowerAction
-                                                      .shutdown,
-                                                );
-                                            ScaffoldMessenger.of(
-                                              context,
-                                            ).showSnackBar(
-                                              const SnackBar(
-                                                content: Text(
-                                                  'Shutdown countdown active. See 15-second banner at top of screen.',
-                                                ),
-                                                backgroundColor:
-                                                    AppColors.statusRed,
-                                                duration: Duration(seconds: 4),
-                                              ),
-                                            );
-                                          },
-                                          icon: const Icon(
-                                            Icons.power_settings_new_rounded,
-                                            size: 20,
-                                          ),
-                                          label: const Text(
-                                            'Shut Down',
-                                            style: TextStyle(
-                                              fontWeight: FontWeight.w800,
-                                            ),
-                                          ),
-                                          style: ElevatedButton.styleFrom(
-                                            backgroundColor:
-                                                AppColors.statusRed,
-                                            foregroundColor: Colors.white,
-                                            shape: RoundedRectangleBorder(
-                                              borderRadius:
-                                                  BorderRadius.circular(12),
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  ],
+                                  ),
                                 ),
                               ],
                             ),
@@ -978,24 +832,35 @@ class SettingsScreen extends ConsumerWidget {
                                   height: 52,
                                   child: ElevatedButton.icon(
                                     onPressed: () async {
-                                      ScaffoldMessenger.of(context)
-                                          .showSnackBar(
-                                            const SnackBar(
-                                              content: Text(
-                                                'Restoring 60 Otto Scents fragrances (30 scents x 2 sizes)...',
-                                              ),
-                                              backgroundColor:
-                                                  AppColors.brandAccent,
-                                            ),
-                                          );
+                                      final messenger = ScaffoldMessenger.of(context);
+                                      final branch = ref.read(currentBranchProvider).valueOrNull ??
+                                          await SqliteService.instance.getBranchName();
+                                      messenger.showSnackBar(
+                                        const SnackBar(
+                                          content: Text(
+                                            'Restoring 60 Otto Scents fragrances (30 scents x 2 sizes)...',
+                                          ),
+                                          backgroundColor:
+                                              AppColors.brandAccent,
+                                        ),
+                                      );
                                       try {
                                         final client = Supabase.instance.client;
                                         await CatalogSeedData.seedToSupabase(
                                           client,
-                                          branch: 'San Pablo',
+                                          branch: branch,
                                         );
                                         await SqliteService.instance
-                                            .seedCatalog(branch: 'San Pablo');
+                                            .seedCatalog(branch: branch);
+                                        ref.invalidate(masterProductsProvider);
+                                        ref.invalidate(liveInventoryProvider(branch));
+                                        ref.invalidate(liveInventoryProvider);
+                                        ref.invalidate(dashboardStatsProvider(branch));
+                                        ref.invalidate(dashboardStatsProvider);
+                                        ref.invalidate(liveAlertsProvider(branch));
+                                        ref.invalidate(liveAlertsProvider);
+                                        ref.invalidate(systemActivityLogsProvider(branch));
+                                        ref.invalidate(systemActivityLogsProvider);
                                         if (context.mounted) {
                                           ScaffoldMessenger.of(context)
                                               .showSnackBar(
@@ -1010,7 +875,16 @@ class SettingsScreen extends ConsumerWidget {
                                         }
                                       } catch (e) {
                                         await SqliteService.instance
-                                            .seedCatalog(branch: 'San Pablo');
+                                            .seedCatalog(branch: branch);
+                                        ref.invalidate(masterProductsProvider);
+                                        ref.invalidate(liveInventoryProvider(branch));
+                                        ref.invalidate(liveInventoryProvider);
+                                        ref.invalidate(dashboardStatsProvider(branch));
+                                        ref.invalidate(dashboardStatsProvider);
+                                        ref.invalidate(liveAlertsProvider(branch));
+                                        ref.invalidate(liveAlertsProvider);
+                                        ref.invalidate(systemActivityLogsProvider(branch));
+                                        ref.invalidate(systemActivityLogsProvider);
                                         if (context.mounted) {
                                           ScaffoldMessenger.of(
                                             context,

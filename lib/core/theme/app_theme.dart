@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import 'app_colors.dart';
-import '../constants/app_constants.dart';
 
 class AppTheme {
   static ThemeData get darkKioskTheme {
@@ -43,7 +42,7 @@ class AppTheme {
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
-          minimumSize: const Size(AppConstants.minTouchTargetSize, 52),
+          minimumSize: const Size(64, 64),
           backgroundColor: AppColors.brandAccent,
           foregroundColor: Colors.white,
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
@@ -52,21 +51,21 @@ class AppTheme {
           ),
           textStyle: const TextStyle(
             fontSize: 17,
-            fontWeight: FontWeight.w700,
+            fontWeight: FontWeight.w800,
             letterSpacing: 0.5,
           ),
         ),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
-          minimumSize: const Size(AppConstants.minTouchTargetSize, 52),
+          minimumSize: const Size(64, 64),
           foregroundColor: AppColors.darkTextPrimary,
           side: const BorderSide(color: AppColors.darkBorder, width: 1.5),
           padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 15),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(14),
           ),
-          textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+          textStyle: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
         ),
       ),
       inputDecorationTheme: InputDecorationTheme(
@@ -121,8 +120,8 @@ class AppTheme {
         ),
         titleTextStyle: const TextStyle(
           color: AppColors.darkTextPrimary,
-          fontSize: 24,
-          fontWeight: FontWeight.w800,
+          fontSize: 28,
+          fontWeight: FontWeight.w900,
         ),
       ),
       snackBarTheme: SnackBarThemeData(
@@ -153,51 +152,51 @@ class AppTheme {
         selectedColor: AppColors.brandAccent,
         labelStyle: const TextStyle(
           color: AppColors.darkTextPrimary,
-          fontSize: 14,
-          fontWeight: FontWeight.w600,
+          fontSize: 15,
+          fontWeight: FontWeight.w800,
         ),
         secondaryLabelStyle: const TextStyle(
           color: Colors.white,
-          fontSize: 14,
-          fontWeight: FontWeight.w700,
+          fontSize: 15,
+          fontWeight: FontWeight.w800,
         ),
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       ),
       textTheme: const TextTheme(
         displayLarge: TextStyle(
-          fontSize: 38,
+          fontSize: 42,
           fontWeight: FontWeight.w900,
           color: AppColors.darkTextPrimary,
           letterSpacing: -0.5,
         ),
         displayMedium: TextStyle(
-          fontSize: 30,
+          fontSize: 32,
           fontWeight: FontWeight.w800,
           color: AppColors.darkTextPrimary,
         ),
         titleLarge: TextStyle(
-          fontSize: 24,
-          fontWeight: FontWeight.w800,
+          fontSize: 28,
+          fontWeight: FontWeight.w900,
           color: AppColors.darkTextPrimary,
         ),
         titleMedium: TextStyle(
-          fontSize: 18,
-          fontWeight: FontWeight.w700,
+          fontSize: 20,
+          fontWeight: FontWeight.w800,
           color: AppColors.darkTextPrimary,
         ),
         bodyLarge: TextStyle(
-          fontSize: 17,
-          fontWeight: FontWeight.w500,
+          fontSize: 18,
+          fontWeight: FontWeight.w600,
           color: AppColors.darkTextPrimary,
         ),
         bodyMedium: TextStyle(
-          fontSize: 15,
-          fontWeight: FontWeight.w400,
+          fontSize: 16.5,
+          fontWeight: FontWeight.w500,
           color: AppColors.darkTextSecondary,
         ),
         labelLarge: TextStyle(
-          fontSize: 16,
-          fontWeight: FontWeight.w700,
+          fontSize: 17,
+          fontWeight: FontWeight.w800,
           color: AppColors.darkTextPrimary,
         ),
       ),
@@ -243,7 +242,7 @@ class AppTheme {
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
-          minimumSize: const Size(AppConstants.minTouchTargetSize, 52),
+          minimumSize: const Size(64, 64),
           backgroundColor: AppColors.brandAccent,
           foregroundColor: Colors.white,
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
@@ -252,21 +251,21 @@ class AppTheme {
           ),
           textStyle: const TextStyle(
             fontSize: 17,
-            fontWeight: FontWeight.w700,
+            fontWeight: FontWeight.w800,
             letterSpacing: 0.5,
           ),
         ),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
-          minimumSize: const Size(AppConstants.minTouchTargetSize, 52),
+          minimumSize: const Size(64, 64),
           foregroundColor: AppColors.lightTextPrimary,
           side: const BorderSide(color: AppColors.lightBorder, width: 1.5),
           padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 15),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(14),
           ),
-          textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+          textStyle: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
         ),
       ),
       inputDecorationTheme: InputDecorationTheme(
@@ -327,8 +326,8 @@ class AppTheme {
         ),
         titleTextStyle: const TextStyle(
           color: AppColors.lightTextPrimary,
-          fontSize: 24,
-          fontWeight: FontWeight.w800,
+          fontSize: 28,
+          fontWeight: FontWeight.w900,
         ),
       ),
       snackBarTheme: SnackBarThemeData(
@@ -359,51 +358,51 @@ class AppTheme {
         selectedColor: AppColors.brandAccent,
         labelStyle: const TextStyle(
           color: AppColors.lightTextPrimary,
-          fontSize: 14,
-          fontWeight: FontWeight.w600,
+          fontSize: 15,
+          fontWeight: FontWeight.w800,
         ),
         secondaryLabelStyle: const TextStyle(
           color: Colors.white,
-          fontSize: 14,
-          fontWeight: FontWeight.w700,
+          fontSize: 15,
+          fontWeight: FontWeight.w800,
         ),
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       ),
       textTheme: const TextTheme(
         displayLarge: TextStyle(
-          fontSize: 38,
+          fontSize: 42,
           fontWeight: FontWeight.w900,
           color: AppColors.lightTextPrimary,
           letterSpacing: -0.5,
         ),
         displayMedium: TextStyle(
-          fontSize: 30,
+          fontSize: 32,
           fontWeight: FontWeight.w800,
           color: AppColors.lightTextPrimary,
         ),
         titleLarge: TextStyle(
-          fontSize: 24,
-          fontWeight: FontWeight.w800,
+          fontSize: 28,
+          fontWeight: FontWeight.w900,
           color: AppColors.lightTextPrimary,
         ),
         titleMedium: TextStyle(
-          fontSize: 18,
-          fontWeight: FontWeight.w700,
+          fontSize: 20,
+          fontWeight: FontWeight.w800,
           color: AppColors.lightTextPrimary,
         ),
         bodyLarge: TextStyle(
-          fontSize: 17,
-          fontWeight: FontWeight.w500,
+          fontSize: 18,
+          fontWeight: FontWeight.w600,
           color: AppColors.lightTextPrimary,
         ),
         bodyMedium: TextStyle(
-          fontSize: 15,
-          fontWeight: FontWeight.w400,
+          fontSize: 16.5,
+          fontWeight: FontWeight.w500,
           color: AppColors.lightTextSecondary,
         ),
         labelLarge: TextStyle(
-          fontSize: 16,
-          fontWeight: FontWeight.w700,
+          fontSize: 17,
+          fontWeight: FontWeight.w800,
           color: AppColors.lightTextPrimary,
         ),
       ),

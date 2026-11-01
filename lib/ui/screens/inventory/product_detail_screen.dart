@@ -16,6 +16,7 @@ class ProductDetailScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final branch = ref.watch(currentBranchProvider).valueOrNull ?? 'San Pablo';
     final productsAsync = ref.watch(masterProductsProvider);
 
     return productsAsync.when(
@@ -336,10 +337,12 @@ class ProductDetailScreen extends ConsumerWidget {
                                 .toggleProductStatus(
                                   productId: p.id,
                                   newStatus: newStatus,
+                                  branch: branch,
                                 );
                             ref.invalidate(masterProductsProvider);
-                            ref.invalidate(liveInventoryProvider('San Pablo'));
-                            ref.invalidate(dashboardStatsProvider('San Pablo'));
+                            ref.invalidate(liveInventoryProvider(branch));
+                            ref.invalidate(dashboardStatsProvider(branch));
+                            ref.invalidate(liveAlertsProvider(branch));
                           },
                         ),
                       ],
@@ -370,7 +373,7 @@ class ProductDetailScreen extends ConsumerWidget {
                                 ),
                               ),
                               Divider(height: 24, color: context.borderColor),
-                              _buildDetailRow(context, 'Cap OCR Code', capCode),
+                              _buildDetailRow(context, 'Bottle Cap Sticker Code', capCode),
                               _buildDetailRow(
                                 context,
                                 'Bottle Size',
@@ -399,7 +402,7 @@ class ProductDetailScreen extends ConsumerWidget {
                     ),
                     const SizedBox(width: 20),
 
-                    // Right Column: Cap OCR & Detection Confidence
+                    // Right Column: Cap Sticker & Detection Verification
                     Expanded(
                       child: Card(
                         color: context.surfaceColor,
@@ -409,7 +412,7 @@ class ProductDetailScreen extends ConsumerWidget {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                'PaddleOCR & AI Vision Telemetry',
+                                'Detection & Verification Status',
                                 style: TextStyle(
                                   fontSize: 18,
                                   fontWeight: FontWeight.w700,
@@ -419,13 +422,13 @@ class ProductDetailScreen extends ConsumerWidget {
                               Divider(height: 24, color: context.borderColor),
                               _buildDetailRow(
                                 context,
-                                'OCR Recognition Confidence',
+                                'Detection Accuracy',
                                 '99.2% Confirmed',
                               ),
                               _buildDetailRow(
                                 context,
-                                'Bounding Box ROI Target',
-                                'ROI Sector [Slot ${p.slotPosition}]',
+                                'Shelf Slot Area',
+                                'Slot Area [Slot ${p.slotPosition}]',
                               ),
                               _buildDetailRow(
                                 context,

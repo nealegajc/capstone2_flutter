@@ -13,7 +13,6 @@ import '../../../data/services/sqlite_service.dart';
 import '../../../providers/kiosk_providers.dart';
 import '../../../providers/roi_provider.dart';
 import '../../components/roi_editor_overlay.dart';
-import '../../components/scan_workflow_dialog.dart';
 import '../settings/camera_assignment_dialog.dart';
 
 class CameraMonitorScreen extends ConsumerStatefulWidget {
@@ -26,7 +25,6 @@ class CameraMonitorScreen extends ConsumerStatefulWidget {
 
 class _CameraMonitorScreenState extends ConsumerState<CameraMonitorScreen> {
   int _selectedCamera = 1; // 1 to 6
-  bool _isScanning = false;
   bool _isRoiEditing = false;
   Timer? _fpsUpdateTimer;
 
@@ -165,19 +163,20 @@ class _CameraMonitorScreenState extends ConsumerState<CameraMonitorScreen> {
   Future<void> _toggleLiveStream() async {
     final hwService = ref.read(cameraHardwareServiceProvider);
     final activeCam = _cameraInfo[_selectedCamera] ?? _cameraInfo[1]!;
+    final branch = ref.read(currentBranchProvider).valueOrNull ?? 'San Pablo';
     if (hwService.isStreaming) {
       await hwService.stopLiveStream();
       await SqliteService.instance.logActivity(
         type: 'CAMERA_STREAM',
         description: 'Live video monitoring stopped for ${activeCam['name']}.',
-        branch: 'San Pablo',
+        branch: branch,
       );
     } else {
       await _startLiveStreamForSelectedCamera();
       await SqliteService.instance.logActivity(
         type: 'CAMERA_STREAM',
         description: 'Live video monitoring started for ${activeCam['name']}.',
-        branch: 'San Pablo',
+        branch: branch,
       );
     }
     if (mounted) setState(() {});
@@ -197,36 +196,19 @@ class _CameraMonitorScreenState extends ConsumerState<CameraMonitorScreen> {
     }
   }
 
-  void _triggerScan() async {
-    final hasActiveMisplacement = ref.read(hasActiveMisplacementProvider);
-    if (hasActiveMisplacement) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('⚠️ Please resolve active shelf misplacements before running an inventory scan.'),
-          backgroundColor: AppColors.statusRed,
-        ),
-      );
-      return;
-    }
-    setState(() => _isScanning = true);
-    try {
-      await ScanWorkflowDialog.show(context, initialCameraId: _selectedCamera);
-    } finally {
-      if (mounted) setState(() => _isScanning = false);
-    }
-  }
 
   Future<void> _saveRoi() async {
     final activeCam = _cameraInfo[_selectedCamera] ?? _cameraInfo[1]!;
     final slotCodes = List<String>.from(activeCam['slotCodes'] as List);
     final roiNotifier = ref.read(cameraRoiProvider(_selectedCamera).notifier);
-    await roiNotifier.save('San Pablo', slotCodes: slotCodes);
+    final branch = ref.read(currentBranchProvider).valueOrNull ?? 'San Pablo';
+    await roiNotifier.save(branch, slotCodes: slotCodes);
 
     await SqliteService.instance.logActivity(
-      type: 'ROI_CALIBRATION',
+      type: 'TRAY_ALIGNMENT',
       description:
-          'Detached tray ROI boundaries saved for ${activeCam['name']} (${slotCodes.join(", ")}).',
-      branch: 'San Pablo',
+          'Tray alignment positions saved for ${activeCam['name']} (${slotCodes.join(", ")}).',
+      branch: branch,
     );
 
     setState(() => _isRoiEditing = false);
@@ -235,7 +217,7 @@ class _CameraMonitorScreenState extends ConsumerState<CameraMonitorScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Detached Tray ROIs saved for Camera #$_selectedCamera.',
+            'Tray positions saved for Camera #$_selectedCamera.',
           ),
           backgroundColor: AppColors.statusGreen,
         ),
@@ -429,7 +411,7 @@ class _CameraMonitorScreenState extends ConsumerState<CameraMonitorScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final hasActiveMisplacement = ref.watch(hasActiveMisplacementProvider);
+    final branch = ref.watch(currentBranchProvider).valueOrNull ?? 'San Pablo';
     final activeCam = _cameraInfo[_selectedCamera] ?? _cameraInfo[1]!;
     final activeSlotCodes = List<String>.from(activeCam['slotCodes'] as List);
     final hardwareService = ref.watch(cameraHardwareServiceProvider);
@@ -444,23 +426,26 @@ class _CameraMonitorScreenState extends ConsumerState<CameraMonitorScreen> {
     final roiNotifier = ref.read(cameraRoiProvider(_selectedCamera).notifier);
 
     // Watch live inventory to compute actual detected bottles dynamically
-    final inventoryAsync = ref.watch(liveInventoryProvider('San Pablo'));
+    final inventoryAsync = ref.watch(liveInventoryProvider(branch));
     final allInvRecords = inventoryAsync.valueOrNull ?? [];
     final activeCamDetected = allInvRecords
         .where(
           (inv) =>
+              !inv.isSeasonalOff &&
               activeSlotCodes.any((slot) => inv.perfumeCode.startsWith(slot)),
         )
         .fold<int>(0, (sum, inv) => sum + inv.detected);
 
-    // Watch products to identify seasonal turned-off variants
+    // Watch products and inventory to identify seasonal turned-off variants
     final productsAsync = ref.watch(masterProductsProvider);
-    final disabledCapCodes =
-        productsAsync.valueOrNull
-            ?.where((p) => p.isSeasonalOff)
-            .map((p) => p.perfumeCode)
-            .toSet() ??
-        const <String>{};
+    final disabledCapCodes = <String>{
+      ...?productsAsync.valueOrNull
+          ?.where((p) => p.isSeasonalOff)
+          .map((p) => p.perfumeCode),
+      ...allInvRecords
+          .where((i) => i.isSeasonalOff)
+          .map((i) => i.perfumeCode),
+    };
 
     final fpsText = isStreaming
         ? (hardwareService.currentFps > 0
@@ -472,174 +457,126 @@ class _CameraMonitorScreenState extends ConsumerState<CameraMonitorScreen> {
       appBar: AppBar(
         title: const Text('Live Shelf Cameras'),
         actions: [
-          // 1. Prominent START / STOP Live Stream Button
-          ElevatedButton.icon(
-            onPressed: _toggleLiveStream,
-            icon: Icon(
-              isStreaming
-                  ? Icons.stop_circle_rounded
-                  : Icons.play_circle_filled_rounded,
-              size: 20,
-              color: Colors.white,
-            ),
-            label: Text(
-              isStreaming ? 'Stop Live View' : 'Start Live View',
-              style: const TextStyle(
-                fontWeight: FontWeight.w900,
-                color: Colors.white,
-              ),
-            ),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: isStreaming
-                  ? AppColors.statusRed
-                  : AppColors.statusGreen,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            ),
-          ),
-          const SizedBox(width: 10),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final screenWidth = MediaQuery.of(context).size.width;
+              final maxActionsWidth = screenWidth <= 1024
+                  ? (screenWidth - 380).clamp(250.0, screenWidth)
+                  : double.infinity;
+              return ConstrainedBox(
+                constraints: BoxConstraints(maxWidth: maxActionsWidth),
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // 1. Prominent START / STOP Live Stream Button
+                      ElevatedButton.icon(
+                        onPressed: _toggleLiveStream,
+                        icon: Icon(
+                          isStreaming
+                              ? Icons.stop_circle_rounded
+                              : Icons.play_circle_filled_rounded,
+                          size: 20,
+                          color: Colors.white,
+                        ),
+                        label: Text(
+                          isStreaming ? 'Stop Live View' : 'Start Live View',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w900,
+                            color: Colors.white,
+                          ),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: isStreaming
+                              ? AppColors.statusRed
+                              : AppColors.statusGreen,
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
 
-          // 2. Interactive Detection Box Switch Button
-          ElevatedButton.icon(
-            onPressed: () {
-              if (_isRoiEditing) {
-                _saveRoi();
-              } else {
-                setState(() => _isRoiEditing = true);
-              }
-            },
-            icon: Icon(
-              _isRoiEditing
-                  ? Icons.check_circle_rounded
-                  : Icons.crop_free_rounded,
-              size: 20,
-              color: Colors.white,
-            ),
-            label: Text(
-              _isRoiEditing ? 'Save Slot Positions' : 'Adjust Slot Positions',
-              style: const TextStyle(
-                fontWeight: FontWeight.w800,
-                color: Colors.white,
-              ),
-            ),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: _isRoiEditing
-                  ? AppColors.statusGreen
-                  : AppColors.brandAccent,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            ),
-          ),
-          if (_isRoiEditing) ...[
-            const SizedBox(width: 8),
-            OutlinedButton.icon(
-              onPressed: () => roiNotifier.reset(activeSlotCodes),
-              icon: const Icon(Icons.restart_alt_rounded, size: 18),
-              label: const Text('Reset Slot Grid'),
-            ),
-          ],
-          const SizedBox(width: 10),
+                      // 2. Interactive Detection Box Switch Button
+                      ElevatedButton.icon(
+                        onPressed: () {
+                          if (_isRoiEditing) {
+                            _saveRoi();
+                          } else {
+                            setState(() => _isRoiEditing = true);
+                          }
+                        },
+                        icon: Icon(
+                          _isRoiEditing
+                              ? Icons.check_circle_rounded
+                              : Icons.crop_free_rounded,
+                          size: 20,
+                          color: Colors.white,
+                        ),
+                        label: Text(
+                          _isRoiEditing ? 'Save Tray Positions' : 'Align Shelf Trays',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w800,
+                            color: Colors.white,
+                          ),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: _isRoiEditing
+                              ? AppColors.statusGreen
+                              : AppColors.brandAccent,
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        ),
+                      ),
+                      if (_isRoiEditing) ...[
+                        const SizedBox(width: 8),
+                        OutlinedButton.icon(
+                          onPressed: () => roiNotifier.reset(activeSlotCodes),
+                          icon: const Icon(Icons.restart_alt_rounded, size: 18),
+                          label: const Text('Reset Tray Positions'),
+                        ),
+                      ],
+                      const SizedBox(width: 10),
 
-          // 3. Turn Scanner Zone ON / OFF (Seasonal Rotation)
-          OutlinedButton.icon(
-            onPressed: () async {
-              final messenger = ScaffoldMessenger.of(context);
-              final activeCam = _cameraInfo[_selectedCamera] ?? _cameraInfo[1]!;
-              roiNotifier.toggleEnabled();
-              await roiNotifier.save('San Pablo');
-              await SqliteService.instance.logActivity(
-                type: 'SCANNER_STATUS',
-                description:
-                    '${activeCam['name']} scanner zone ${roi.isEnabled ? "paused" : "resumed"} (seasonal rotation).',
-                branch: 'San Pablo',
-              );
-              if (mounted) {
-                messenger.showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      roi.isEnabled
-                          ? '${activeCam['name']} scanner is PAUSED for seasonal rotation.'
-                          : '${activeCam['name']} scanner is ACTIVE and monitoring stock.',
-                    ),
-                    backgroundColor: roi.isEnabled
-                        ? AppColors.statusOrange
-                        : AppColors.statusGreen,
-                    duration: const Duration(seconds: 2),
+                      // 3. Hardware Assignment Settings Dialog
+                      OutlinedButton.icon(
+                        onPressed: () => CameraAssignmentDialog.show(context),
+                        icon: const Icon(Icons.tune_rounded, size: 18),
+                        label: const Text('Camera Settings'),
+                      ),
+                      const SizedBox(width: 10),
+
+                      // 4. 2K QHD Resolution Badge
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: AppColors.brandAccent.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                            color: AppColors.brandAccent.withValues(alpha: 0.4),
+                          ),
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.hd_rounded, color: AppColors.brandAccent, size: 18),
+                            SizedBox(width: 6),
+                            Text(
+                              '2K QHD (2560x1440)',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                                color: AppColors.brandAccent,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                    ],
                   ),
-                );
-              }
+                ),
+              );
             },
-            icon: Icon(
-              roi.isEnabled
-                  ? Icons.wb_sunny_outlined
-                  : Icons.check_circle_outline_rounded,
-              size: 18,
-              color: roi.isEnabled
-                  ? AppColors.statusOrange
-                  : AppColors.statusGreen,
-            ),
-            label: Text(
-              roi.isEnabled ? 'Pause Shelf Zone' : 'Resume Shelf Zone',
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                color: roi.isEnabled
-                    ? AppColors.statusOrange
-                    : AppColors.statusGreen,
-              ),
-            ),
-            style: OutlinedButton.styleFrom(
-              side: BorderSide(
-                color:
-                    (roi.isEnabled
-                            ? AppColors.statusOrange
-                            : AppColors.statusGreen)
-                        .withValues(alpha: 0.6),
-              ),
-            ),
           ),
-          const SizedBox(width: 10),
-
-          // 4. Hardware Assignment Settings Dialog
-          OutlinedButton.icon(
-            onPressed: () => CameraAssignmentDialog.show(context),
-            icon: const Icon(Icons.tune_rounded, size: 18),
-            label: const Text('Camera Settings'),
-          ),
-          const SizedBox(width: 10),
-
-          // 5. Resolution / Quality Mode Selector
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
-            decoration: BoxDecoration(
-              color: context.surfaceElevatedColor,
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: context.borderColor),
-            ),
-            child: DropdownButtonHideUnderline(
-              child: DropdownButton<CameraQualityMode>(
-                value: hardwareService.currentQualityMode,
-                dropdownColor: context.surfaceElevatedColor,
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
-                  color: context.textPrimaryColor,
-                ),
-                icon: const Icon(
-                  Icons.hd_rounded,
-                  color: AppColors.brandAccent,
-                  size: 18,
-                ),
-                items: CameraQualityMode.values.map((mode) {
-                  return DropdownMenuItem(value: mode, child: Text(mode.label));
-                }).toList(),
-                onChanged: (newMode) async {
-                  if (newMode != null) {
-                    await hardwareService.setQualityMode(newMode);
-                    if (mounted) setState(() {});
-                  }
-                },
-              ),
-            ),
-          ),
-          const SizedBox(width: 16),
         ],
       ),
       body: Padding(
@@ -701,7 +638,7 @@ class _CameraMonitorScreenState extends ConsumerState<CameraMonitorScreen> {
                 children: [
                   // Left Side: Live Camera Viewport (Clean 16:9 AspectRatio with Controls Outside)
                   Expanded(
-                    flex: 7,
+                    flex: 8,
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
@@ -965,7 +902,7 @@ class _CameraMonitorScreenState extends ConsumerState<CameraMonitorScreen> {
                                   onReset: () =>
                                       roiNotifier.reset(activeSlotCodes),
                                   onInteractionEnd: () => roiNotifier.save(
-                                    'San Pablo',
+                                    branch,
                                     slotCodes: activeSlotCodes,
                                   ),
                                 ),
@@ -1025,204 +962,235 @@ class _CameraMonitorScreenState extends ConsumerState<CameraMonitorScreen> {
                   ],
                 ),
               ),
-                  const SizedBox(width: 20),
+                  const SizedBox(width: 16),
 
-                  // Right Side: Camera Hardware Telemetry & ROI Calibration Panel
+                  // Right Side: Camera Hardware Telemetry & Shelf Details Panel
                   Expanded(
-                    flex: 4,
-                    child: Column(
-                      children: [
-                        // Card 1: Quick Actions
-                        Card(
-                          color: context.surfaceColor,
-                          child: Padding(
-                            padding: const EdgeInsets.all(16),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                    flex: 3,
+                    child: Card(
+                      color: context.surfaceColor,
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: ListView(
+                          children: [
+                            Row(
                               children: [
-                                Tooltip(
-                                  message: hasActiveMisplacement
-                                      ? '⚠️ Resolve shelf misplacements before running a scan.'
-                                      : 'Run scan workflow for camera',
-                                  child: ElevatedButton.icon(
-                                    onPressed: (_isScanning || hasActiveMisplacement) ? null : _triggerScan,
-                                    icon: Icon(
-                                      hasActiveMisplacement
-                                          ? Icons.lock_clock_rounded
-                                          : Icons.radar_rounded,
-                                      size: 22,
-                                    ),
-                                    label: Text(
-                                      hasActiveMisplacement
-                                          ? 'SCAN LOCKED (FIX MISPLACED)'
-                                          : 'SCAN ${activeCam['name'].toString().toUpperCase()}',
-                                    ),
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: hasActiveMisplacement
-                                          ? Colors.grey.shade600
-                                          : null,
-                                      foregroundColor: Colors.white,
-                                      disabledBackgroundColor: hasActiveMisplacement
-                                          ? Colors.grey.shade600
-                                          : null,
-                                      disabledForegroundColor: hasActiveMisplacement
-                                          ? Colors.white70
-                                          : null,
-                                      padding: const EdgeInsets.symmetric(
-                                        vertical: 14,
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        '${activeCam['name']} - Shelf & Stock Info',
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w800,
+                                          color: context.textPrimaryColor,
+                                        ),
                                       ),
-                                      textStyle: const TextStyle(
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.w900,
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        activeCam['layer'] as String,
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w600,
+                                          color: context.textSecondaryColor,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 4,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.brandAccent.withValues(
+                                      alpha: 0.15,
+                                    ),
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(
+                                      color: AppColors.brandAccent.withValues(
+                                        alpha: 0.4,
                                       ),
                                     ),
                                   ),
-                                ),
-                                const SizedBox(height: 10),
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: OutlinedButton.icon(
-                                        onPressed: () {
-                                          if (_isRoiEditing) {
-                                            _saveRoi();
-                                          } else {
-                                            setState(
-                                              () => _isRoiEditing = true,
-                                            );
-                                          }
-                                        },
-                                        icon: Icon(
-                                          _isRoiEditing
-                                              ? Icons.check_circle_rounded
-                                              : Icons.crop_free_rounded,
-                                          size: 16,
-                                        ),
-                                        label: Text(
-                                          _isRoiEditing
-                                              ? 'Done'
-                                              : 'Adjust Grid',
-                                          style: const TextStyle(fontSize: 12),
-                                        ),
-                                        style: OutlinedButton.styleFrom(
-                                          padding: const EdgeInsets.symmetric(
-                                            vertical: 10,
-                                          ),
+                                  child: const Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                        Icons.hd_rounded,
+                                        color: AppColors.brandAccent,
+                                        size: 14,
+                                      ),
+                                      SizedBox(width: 4),
+                                      Text(
+                                        '2K QHD',
+                                        style: TextStyle(
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.w800,
+                                          color: AppColors.brandAccent,
                                         ),
                                       ),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Expanded(
-                                      child: OutlinedButton.icon(
-                                        onPressed: () =>
-                                            CameraAssignmentDialog.show(
-                                              context,
-                                            ),
-                                        icon: const Icon(
-                                          Icons.videocam_rounded,
-                                          size: 16,
-                                        ),
-                                        label: const Text(
-                                          'Cameras',
-                                          style: TextStyle(fontSize: 12),
-                                        ),
-                                        style: OutlinedButton.styleFrom(
-                                          padding: const EdgeInsets.symmetric(
-                                            vertical: 10,
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  ],
+                                    ],
+                                  ),
                                 ),
                               ],
                             ),
-                          ),
-                        ),
-                        const SizedBox(height: 14),
-
-                        // Card 2: Shelf Slot Details & Fragrances
-                        Expanded(
-                          child: Card(
-                            color: context.surfaceColor,
-                            child: Padding(
-                              padding: const EdgeInsets.all(16),
-                              child: ListView(
-                                children: [
-                                  Text(
-                                    '${activeCam['name']} - Shelf & Stock Info',
-                                    style: TextStyle(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w800,
-                                      color: context.textPrimaryColor,
-                                    ),
-                                  ),
-                                  Divider(
-                                    height: 14,
-                                    color: context.borderColor,
-                                  ),
-                                  _buildTelemetryRow(
-                                    context,
-                                    'Shelf Level',
-                                    activeCam['layer'] as String,
-                                  ),
-                                  _buildTelemetryRow(
-                                    context,
-                                    'Assigned Fragrances',
-                                    activeCam['codes'] as String,
-                                  ),
-                                  _buildTelemetryRow(
-                                    context,
-                                    'Tray Capacity',
-                                    activeCam['capacity'] as String,
-                                  ),
-                                  _buildTelemetryRow(
-                                    context,
-                                    'Bottles Counted',
-                                    '$activeCamDetected In Place',
-                                  ),
-                                  Divider(
-                                    height: 14,
-                                    color: context.borderColor,
-                                  ),
-
-                                  _buildTelemetryRow(
-                                    context,
-                                    'Bottle Tray Slots',
-                                    '${activeSlotCodes.length} Tray Slots (Drag to fit bottles)',
-                                  ),
-                                  _buildTelemetryRow(
-                                    context,
-                                    'Slot Layout',
-                                    'Front 100ML | Back 50ML',
-                                  ),
-                                  Divider(
-                                    height: 14,
-                                    color: context.borderColor,
-                                  ),
-                                  Text(
-                                    'Fragrances on this Shelf:',
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.bold,
-                                      color: context.textSecondaryColor,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    activeCam['assignedVariants'] as String,
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      color: context.textPrimaryColor,
-                                      height: 1.3,
-                                    ),
-                                  ),
-                                ],
+                            Divider(
+                              height: 14,
+                              color: context.borderColor,
+                            ),
+                            _buildTelemetryRow(
+                              context,
+                              'Stream Quality',
+                              '${hardwareService.currentQualityMode.resolution} (2K Max)',
+                            ),
+                            _buildTelemetryRow(
+                              context,
+                              'Stream FPS',
+                              '${hardwareService.currentFps.toStringAsFixed(1)} FPS • Zero-Lag MJPEG',
+                            ),
+                            _buildTelemetryRow(
+                              context,
+                              'Camera Port',
+                              hardwareService.cameraUsbPortMap[_selectedCamera] != null
+                                  ? 'Port ${hardwareService.cameraUsbPortMap[_selectedCamera]}'
+                                  : (hardwareService.activeDeviceNode ?? 'Connected'),
+                            ),
+                            Divider(
+                              height: 14,
+                              color: context.borderColor,
+                            ),
+                            _buildTelemetryRow(
+                              context,
+                              'Shelf Level',
+                              activeCam['layer'] as String,
+                            ),
+                            _buildTelemetryRow(
+                              context,
+                              'Assigned Fragrances',
+                              activeCam['codes'] as String,
+                            ),
+                            _buildTelemetryRow(
+                              context,
+                              'Tray Capacity',
+                              activeCam['capacity'] as String,
+                            ),
+                            _buildTelemetryRow(
+                              context,
+                              'Bottles Counted',
+                              '$activeCamDetected In Place',
+                            ),
+                            Divider(
+                              height: 14,
+                              color: context.borderColor,
+                            ),
+                            _buildTelemetryRow(
+                              context,
+                              'Bottle Tray Slots',
+                              '${activeSlotCodes.length} Tray Slots (Drag to fit bottles)',
+                            ),
+                            _buildTelemetryRow(
+                              context,
+                              'Slot Layout',
+                              'Front 100ML | Back 50ML',
+                            ),
+                            Divider(
+                              height: 14,
+                              color: context.borderColor,
+                            ),
+                            Text(
+                              'Fragrances on this Shelf:',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                color: context.textSecondaryColor,
                               ),
                             ),
-                          ),
+                            const SizedBox(height: 6),
+                            Builder(
+                              builder: (context) {
+                                final variantLines = (activeCam['assignedVariants'] as String).split('\n');
+                                return Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    for (int idx = 0; idx < activeSlotCodes.length; idx++) ...[
+                                      Builder(
+                                        builder: (context) {
+                                          final trayCode = activeSlotCodes[idx];
+                                          final lineText = idx < variantLines.length
+                                              ? variantLines[idx]
+                                              : 'Tray $trayCode';
+                                          final isSlotOff = disabledCapCodes.any(
+                                            (c) =>
+                                                c.toUpperCase() == trayCode.toUpperCase() ||
+                                                c.toUpperCase().startsWith(trayCode.toUpperCase()),
+                                          );
+                                          return Padding(
+                                            padding: const EdgeInsets.symmetric(vertical: 2.5),
+                                            child: Row(
+                                              crossAxisAlignment: CrossAxisAlignment.center,
+                                              children: [
+                                                Expanded(
+                                                  child: Text(
+                                                    lineText,
+                                                    maxLines: 1,
+                                                    overflow: TextOverflow.ellipsis,
+                                                    style: TextStyle(
+                                                      fontSize: 11,
+                                                      color: isSlotOff
+                                                          ? context.textSecondaryColor
+                                                          : context.textPrimaryColor,
+                                                      decoration: isSlotOff
+                                                          ? TextDecoration.lineThrough
+                                                          : null,
+                                                      height: 1.2,
+                                                    ),
+                                                  ),
+                                                ),
+                                                if (isSlotOff) ...[
+                                                  const SizedBox(width: 6),
+                                                  Flexible(
+                                                    child: Container(
+                                                      padding: const EdgeInsets.symmetric(
+                                                        horizontal: 6,
+                                                        vertical: 2,
+                                                      ),
+                                                      decoration: BoxDecoration(
+                                                        color: const Color(0xFFF59E0B).withValues(alpha: 0.18),
+                                                        borderRadius: BorderRadius.circular(6),
+                                                        border: Border.all(
+                                                          color: const Color(0xFFF59E0B),
+                                                          width: 1.0,
+                                                        ),
+                                                      ),
+                                                      child: const Text(
+                                                        'SEASONAL / OFF (SKIPPED)',
+                                                        maxLines: 1,
+                                                        overflow: TextOverflow.ellipsis,
+                                                        style: TextStyle(
+                                                          fontSize: 9,
+                                                          fontWeight: FontWeight.w900,
+                                                          color: Color(0xFFF59E0B),
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ],
+                                              ],
+                                            ),
+                                          );
+                                        },
+                                      ),
+                                    ],
+                                  ],
+                                );
+                              },
+                            ),
+                          ],
                         ),
-                      ],
+                      ),
                     ),
                   ),
                 ],

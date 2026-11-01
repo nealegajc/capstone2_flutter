@@ -143,49 +143,55 @@ class _WifiConnectionDialogState extends ConsumerState<WifiConnectionDialog> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: netStatus.isOnline
-                            ? AppColors.statusGreen.withValues(alpha: 0.15)
-                            : AppColors.statusRed.withValues(alpha: 0.15),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Icon(
-                        headerIcon,
-                        color: netStatus.isOnline
-                            ? AppColors.statusGreen
-                            : AppColors.statusRed,
-                        size: 26,
-                      ),
-                    ),
-                    const SizedBox(width: 14),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Network & Connectivity Settings',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w800,
-                            color: context.textPrimaryColor,
-                          ),
+                Expanded(
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: netStatus.isOnline
+                              ? AppColors.statusGreen.withValues(alpha: 0.15)
+                              : AppColors.statusRed.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(12),
                         ),
-                        Text(
-                          headerSubtitle,
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: netStatus.isOnline
-                                ? AppColors.statusGreen
-                                : AppColors.statusRed,
-                            fontWeight: FontWeight.w600,
-                          ),
+                        child: Icon(
+                          headerIcon,
+                          color: netStatus.isOnline
+                              ? AppColors.statusGreen
+                              : AppColors.statusRed,
+                          size: 26,
                         ),
-                      ],
-                    ),
-                  ],
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Network & Connectivity Settings',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w800,
+                                color: context.textPrimaryColor,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            Text(
+                              headerSubtitle,
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: netStatus.isOnline
+                                    ? AppColors.statusGreen
+                                    : AppColors.statusRed,
+                                fontWeight: FontWeight.w600,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
                 Row(
                   children: [

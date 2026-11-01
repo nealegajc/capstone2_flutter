@@ -57,3 +57,8 @@ camera_assignments.json
 # Python (vision_backend)
 venv/
 __pycache__/
+
+# Agent Workspaces & Local Artifacts
+.agents/
+*.png
+vision_backend/dataset/

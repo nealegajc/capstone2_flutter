@@ -34,12 +34,12 @@ class CameraHardwareService extends ChangeNotifier {
 
   // Camera node mapping (cameraId 1..6 -> deviceNode)
   final Map<int, String> _cameraNodeMap = {
-    1: '/dev/video8',
-    2: '/dev/video2',
-    3: '/dev/video10',
-    4: '/dev/video4',
-    5: '/dev/video12',
-    6: '/dev/video6',
+    1: '/dev/cam1a',
+    2: '/dev/cam1b',
+    3: '/dev/cam2a',
+    4: '/dev/cam2b',
+    5: '/dev/cam3a',
+    6: '/dev/cam3b',
   };
 
   // Physical USB Hub Port mapping (cameraId 1..6 -> physical usbPort e.g. '1-1.1')
@@ -137,9 +137,30 @@ class CameraHardwareService extends ChangeNotifier {
   double _currentFps = 0.0;
   int _frameCount = 0;
   DateTime? _fpsStartTime;
-  CameraQualityMode _currentQualityMode = CameraQualityMode.hd720p;
+  CameraQualityMode _currentQualityMode = CameraQualityMode.qhd1440p;
   String? _activeDeviceNode;
   int _activeCameraId = 1;
+
+  /// Automatic fallback ladder: 2K QHD -> 1080p FHD -> 720p HD -> 480p SD
+  static const List<CameraQualityMode> fallbackLadder = [
+    CameraQualityMode.qhd1440p,
+    CameraQualityMode.fhd1080p,
+    CameraQualityMode.hd720p,
+    CameraQualityMode.vga480p,
+  ];
+
+  /// Sensor node resolution cache so resolved sensor resolutions are reused without startup lag
+  final Map<String, CameraQualityMode> _deviceResolvedQuality = {};
+  Map<String, CameraQualityMode> get deviceResolvedQuality =>
+      Map.unmodifiable(_deviceResolvedQuality);
+
+  void setResolvedQuality(String deviceNode, CameraQualityMode mode) {
+    _deviceResolvedQuality[deviceNode] = mode;
+  }
+
+  void clearResolvedQualityCache() {
+    _deviceResolvedQuality.clear();
+  }
 
   List<HardwareCameraDevice> get devices => _devices;
   HardwareCameraDevice? get rapooCamera =>
@@ -222,9 +243,10 @@ class CameraHardwareService extends ChangeNotifier {
     notifyListeners();
     if (_isStreaming || _activeDeviceNode != null) {
       final node = _activeDeviceNode ?? getAssignedDeviceNode(_activeCameraId);
+      _deviceResolvedQuality[node] = mode;
       await stopLiveStream();
       await Future.delayed(const Duration(milliseconds: 200));
-      await startLiveStream(deviceNode: node);
+      await startLiveStream(deviceNode: node, qualityMode: mode);
     }
   }
 
@@ -240,7 +262,12 @@ class CameraHardwareService extends ChangeNotifier {
   }
 
   /// Starts real-time hardware video stream via universal low-latency FFmpeg pipeline
-  Future<void> startLiveStream({String? deviceNode}) async {
+  /// Defaults permanently to 2K QHD (2560x1440) and automatically traverses the fallback ladder
+  /// (qhd1440p -> fhd1080p -> hd720p -> vga480p) while caching resolved resolutions.
+  Future<void> startLiveStream({
+    String? deviceNode,
+    CameraQualityMode? qualityMode,
+  }) async {
     final targetDevice =
         deviceNode ??
         _activeDeviceNode ??
@@ -252,6 +279,12 @@ class CameraHardwareService extends ChangeNotifier {
     }
 
     _activeDeviceNode = targetDevice;
+
+    // Use cached resolved quality if available, or requested qualityMode, or default to 2K QHD
+    final modeToUse = qualityMode ??
+        _deviceResolvedQuality[targetDevice] ??
+        CameraQualityMode.qhd1440p;
+    final ladderIndex = fallbackLadder.indexOf(modeToUse);
 
     // Check if target device is a SunplusIT/Rapoo/Jieli camera or has hardware MJPEG
     final matchedDevice = _devices
@@ -287,9 +320,9 @@ class CameraHardwareService extends ChangeNotifier {
         '-input_format',
         'mjpeg',
         '-video_size',
-        _currentQualityMode.resolution,
+        modeToUse.resolution,
         '-framerate',
-        '${_currentQualityMode.framerate}',
+        '${modeToUse.framerate}',
         '-i',
         targetDevice,
         '-an',
@@ -320,9 +353,9 @@ class CameraHardwareService extends ChangeNotifier {
         '-f',
         'v4l2',
         '-video_size',
-        _currentQualityMode.resolution,
+        modeToUse.resolution,
         '-framerate',
-        '${_currentQualityMode.framerate}',
+        '${modeToUse.framerate}',
         '-i',
         targetDevice,
         '-an',
@@ -347,6 +380,7 @@ class CameraHardwareService extends ChangeNotifier {
       _fpsStartTime = DateTime.now();
       notifyListeners();
 
+      bool frameReceived = false;
       final builder = BytesBuilder(copy: false);
 
       // Actively consume and discard stderr in non-blocking fashion
@@ -397,6 +431,12 @@ class CameraHardwareService extends ChangeNotifier {
           }
 
           if (lastSoi != -1 && lastEoi != -1 && (lastEoi - lastSoi) > 1000) {
+            // First valid complete JPEG frame received: resolution is verified and resolved!
+            if (!frameReceived) {
+              frameReceived = true;
+              _deviceResolvedQuality[targetDevice] = modeToUse;
+            }
+
             // Extract ONLY the freshest, most recent complete frame
             // Any older frames in the buffer are discarded instantly (zero lag accumulation!)
             final frameBytes = bytes.sublist(lastSoi, lastEoi);
@@ -432,12 +472,44 @@ class CameraHardwareService extends ChangeNotifier {
         onError: (err) {
           if (_streamProcess == currentProc) {
             debugPrint('[CameraHardwareService] Live stream error: $err');
+            if (!frameReceived &&
+                ladderIndex >= 0 &&
+                ladderIndex < fallbackLadder.length - 1 &&
+                _activeDeviceNode == targetDevice) {
+              final nextMode = fallbackLadder[ladderIndex + 1];
+              debugPrint(
+                '[CameraHardwareService] Falling back from ${modeToUse.resolution} to ${nextMode.resolution} for $targetDevice',
+              );
+              _streamProcess = null;
+              _isStreaming = false;
+              startLiveStream(
+                deviceNode: targetDevice,
+                qualityMode: nextMode,
+              );
+              return;
+            }
             _isStreaming = false;
             notifyListeners();
           }
         },
         onDone: () {
           if (_streamProcess == currentProc) {
+            if (!frameReceived &&
+                ladderIndex >= 0 &&
+                ladderIndex < fallbackLadder.length - 1 &&
+                _activeDeviceNode == targetDevice) {
+              final nextMode = fallbackLadder[ladderIndex + 1];
+              debugPrint(
+                '[CameraHardwareService] Normal termination before frame on ${modeToUse.resolution}. Falling back to ${nextMode.resolution} for $targetDevice',
+              );
+              _streamProcess = null;
+              _isStreaming = false;
+              startLiveStream(
+                deviceNode: targetDevice,
+                qualityMode: nextMode,
+              );
+              return;
+            }
             _isStreaming = false;
             notifyListeners();
           }
@@ -446,6 +518,21 @@ class CameraHardwareService extends ChangeNotifier {
       );
     } catch (e) {
       debugPrint('[CameraHardwareService] Failed to start live stream: $e');
+      if (ladderIndex >= 0 &&
+          ladderIndex < fallbackLadder.length - 1 &&
+          _activeDeviceNode == targetDevice) {
+        final nextMode = fallbackLadder[ladderIndex + 1];
+        debugPrint(
+          '[CameraHardwareService] Exception starting ${modeToUse.resolution}. Falling back to ${nextMode.resolution} for $targetDevice',
+        );
+        _streamProcess = null;
+        _isStreaming = false;
+        await startLiveStream(
+          deviceNode: targetDevice,
+          qualityMode: nextMode,
+        );
+        return;
+      }
       _isStreaming = false;
       notifyListeners();
     }
@@ -461,12 +548,12 @@ class CameraHardwareService extends ChangeNotifier {
       try {
         proc.kill(ProcessSignal.sigkill);
         await proc.exitCode.timeout(
-          const Duration(milliseconds: 300),
+          const Duration(milliseconds: 500),
           onTimeout: () => -1,
         );
       } catch (_) {}
     }
-    await Future.delayed(const Duration(milliseconds: 200));
+    await Future.delayed(const Duration(milliseconds: 300));
     notifyListeners();
   }
 
@@ -840,7 +927,9 @@ class CameraHardwareService extends ChangeNotifier {
         matchedDevice?.name.toLowerCase().contains('composite') == true;
 
     List<String> captureArgs;
-    final quality = mode ?? _currentQualityMode;
+    final quality = mode ??
+        _deviceResolvedQuality[targetDevice] ??
+        CameraQualityMode.qhd1440p;
     if (isHardwareMjpeg) {
       captureArgs = [
         '-y',
@@ -857,6 +946,8 @@ class CameraHardwareService extends ChangeNotifier {
         '-i',
         targetDevice,
         '-an',
+        '-vf',
+        'select=gte(n\\,8)',
         '-vframes',
         '1',
         '-q:v',

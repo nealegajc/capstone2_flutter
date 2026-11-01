@@ -27,11 +27,11 @@ class InventoryRecordModel {
     this.price = 250.0,
   }) : lastUpdated = lastUpdated ?? DateTime.now();
 
-  bool get isLowStock => status == 'low' || detected <= 2;
-  bool get isOutOfStock => status == 'out_of_stock' || detected == 0;
-  bool get isMisplaced => status == 'misplaced';
-  bool get isNeedsReview => status == 'needs_review';
   bool get isSeasonalOff => status == 'seasonal_off' || status == 'inactive';
+  bool get isLowStock => !isSeasonalOff && (status == 'low' || detected <= 2);
+  bool get isOutOfStock => !isSeasonalOff && (status == 'out_of_stock' || detected == 0);
+  bool get isMisplaced => !isSeasonalOff && status == 'misplaced';
+  bool get isNeedsReview => !isSeasonalOff && status == 'needs_review';
   bool get isActive => !isSeasonalOff && status != 'deleted';
 
   factory InventoryRecordModel.fromMap(Map<String, dynamic> map, [String? id]) {

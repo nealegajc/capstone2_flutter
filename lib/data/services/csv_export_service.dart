@@ -9,6 +9,7 @@ import '../models/inventory_event_model.dart';
 import '../models/sale_record_model.dart';
 import '../models/sync_queue_model.dart';
 import '../models/system_log_model.dart';
+import '../models/image_quality_log_model.dart';
 
 class CsvExportService {
   static final CsvExportService instance = CsvExportService._();
@@ -217,6 +218,38 @@ class CsvExportService {
 
     return await _writeCsvFile(
       'OttoScents_Activity_Logs_${branch.replaceAll(' ', '_')}',
+      buffer.toString(),
+    );
+  }
+
+  /// Exports vision quality evaluation logs to CSV
+  Future<File> exportVisionQualityCsv(
+    List<ImageQualityLogModel> logs, {
+    String branch = 'San Pablo',
+  }) async {
+    final buffer = StringBuffer();
+    buffer.writeln(
+      'Log ID,Brightness,Contrast,Sharpness,Is Acceptable,Preprocessing Applied,Retry Count,Status,Branch,Timestamp',
+    );
+
+    for (final l in logs) {
+      final row = [
+        l.id,
+        l.brightness,
+        l.contrast,
+        l.sharpness,
+        l.isAcceptable,
+        l.preprocessingApplied.join('; '),
+        l.retryCount,
+        l.status,
+        l.branch,
+        DateFormat('yyyy-MM-dd HH:mm:ss').format(l.timestamp),
+      ];
+      buffer.writeln(row.map(_escapeCsv).join(','));
+    }
+
+    return await _writeCsvFile(
+      'OttoScents_Vision_Quality_${branch.replaceAll(' ', '_')}',
       buffer.toString(),
     );
   }

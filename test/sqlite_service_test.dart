@@ -6,7 +6,6 @@ import 'package:smart_shelf_linux/data/models/inventory_record_model.dart';
 import 'package:smart_shelf_linux/data/models/sale_record_model.dart';
 import 'package:smart_shelf_linux/data/models/inventory_event_model.dart';
 import 'package:smart_shelf_linux/data/models/alert_model.dart';
-import 'package:smart_shelf_linux/core/constants/app_constants.dart';
 
 void main() {
   setUpAll(() {
@@ -136,50 +135,58 @@ void main() {
     test(
       'Offline User Authentication and Password Verification in SQLite',
       () async {
-        // 1. Initial seeded users exist
+        // 1. Initial seeded users exist with initial setup flow
+        await sqliteService.setInitialOwnerPin('852963');
         final adminCreds = await sqliteService.getUserWithCredentials(
           'admin@ottoscents.com',
         );
         expect(adminCreds, isNotNull);
         expect(adminCreds!['user'].role, equals('admin'));
+        final saltBytes = await sqliteService.getKioskSaltBytes();
         expect(
           adminCreds['passwordHash'],
-          equals(SqliteService.hashPassword(AppConstants.defaultOwnerPin)),
+          equals(Pbkdf2Auth.hashPin('852963', saltBytes)),
         );
 
         // 2. Wrong password verification fails
-        final wrongPasswordHash = SqliteService.hashPassword('wrongpassword');
+        final wrongPasswordHash = Pbkdf2Auth.hashPin('wrongpassword', saltBytes);
         expect(adminCreds['passwordHash'] == wrongPasswordHash, isFalse);
 
         // 3. Correct password verification succeeds
-        final correctPasswordHash = SqliteService.hashPassword(
-          AppConstants.defaultOwnerPin,
+        final correctPasswordHash = Pbkdf2Auth.hashPin(
+          '852963',
+          saltBytes,
         );
         expect(adminCreds['passwordHash'] == correctPasswordHash, isTrue);
       },
     );
 
     test('Store Owner PIN update strictly invalidates old PIN', () async {
-      // 1. Initial default PIN is valid
-      final initialValid = await sqliteService.verifyOwnerPin('123456');
+      // 1. Initial setup of PIN
+      await sqliteService.setInitialOwnerPin('654321');
+      final initialValid = await sqliteService.verifyOwnerPin('654321');
       expect(initialValid, isTrue);
 
-      // 2. Update PIN to new 6-digit code
+      // 2. Fallback PIN '123456' is strictly rejected
+      final fallbackValid = await sqliteService.verifyOwnerPin('123456');
+      expect(fallbackValid, isFalse);
+
+      // 3. Update PIN to new 6-digit code
       final updated = await sqliteService.updateOwnerPin(
-        oldPin: '123456',
+        oldPin: '654321',
         newPin: '852963',
       );
       expect(updated, isTrue);
 
-      // 3. New PIN works
+      // 4. New PIN works
       final newPinValid = await sqliteService.verifyOwnerPin('852963');
       expect(newPinValid, isTrue);
 
-      // 4. Old PIN is strictly rejected
-      final oldPinValid = await sqliteService.verifyOwnerPin('123456');
+      // 5. Old PIN is strictly rejected
+      final oldPinValid = await sqliteService.verifyOwnerPin('654321');
       expect(oldPinValid, isFalse);
 
-      // 5. Arbitrary PIN is rejected
+      // 6. Arbitrary PIN is rejected
       final wrongPinValid = await sqliteService.verifyOwnerPin('000000');
       expect(wrongPinValid, isFalse);
     });

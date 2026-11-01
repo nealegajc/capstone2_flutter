@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/theme_helper.dart';
+import '../../../data/models/alert_model.dart';
 import '../../../data/services/sqlite_service.dart';
 import '../../../providers/kiosk_providers.dart';
 import '../../components/status_badge.dart';
@@ -22,6 +23,7 @@ class AlertsScreen extends ConsumerStatefulWidget {
 
 class _AlertsScreenState extends ConsumerState<AlertsScreen> {
   late String _selectedFilter;
+  bool _showHistory = false;
 
   @override
   void initState() {
@@ -37,298 +39,445 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
     }
   }
 
+  bool _isOos(AlertModel a) =>
+      a.type == 'out_of_stock' ||
+      a.type == 'outOfStock' ||
+      a.title.toLowerCase().contains('out of stock');
+
+  bool _isLow(AlertModel a) =>
+      (a.type == 'low_stock' || a.type == 'lowStock') && !_isOos(a);
+
+  bool _isSystem(AlertModel a) => !_isOos(a) && !_isLow(a);
+
   @override
   Widget build(BuildContext context) {
-    const branch = 'San Pablo';
-    final alertsAsync = ref.watch(liveAlertsProvider(branch));
+    final branch = ref.watch(currentBranchProvider).valueOrNull ?? 'San Pablo';
+    final activeAlertsAsync = ref.watch(liveAlertsProvider(branch));
+    final historyAlertsAsync = ref.watch(resolvedAlertsHistoryProvider(branch));
+    final inventoryAsync = ref.watch(liveInventoryProvider(branch));
+
+    final bool isLoading = _showHistory
+        ? (historyAlertsAsync.isLoading && historyAlertsAsync.valueOrNull == null)
+        : (activeAlertsAsync.isLoading && activeAlertsAsync.valueOrNull == null);
+
+    if (isLoading) {
+      return const Scaffold(
+        backgroundColor: Colors.transparent,
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    final activeAlerts = activeAlertsAsync.valueOrNull ?? [];
+    final historyAlerts = historyAlertsAsync.valueOrNull ?? [];
+    final inventoryList = inventoryAsync.valueOrNull ?? [];
+    final invMap = {for (final item in inventoryList) item.perfumeCode: item};
+
+    final currentAlerts = _showHistory ? historyAlerts : activeAlerts;
+
+    // Deduplicate if a slot has both out_of_stock and low_stock (out_of_stock takes precedence)
+    final oosCodes = currentAlerts.where(_isOos).map((a) => a.perfumeCode).toSet();
+    final deduplicatedAlerts = currentAlerts.where((a) {
+      if (_isLow(a) && a.perfumeCode.isNotEmpty && oosCodes.contains(a.perfumeCode)) {
+        return false;
+      }
+      return true;
+    }).toList();
+
+    final oosCount = deduplicatedAlerts.where(_isOos).length;
+    final lowStockCount = deduplicatedAlerts.where(_isLow).length;
+    final systemCount = deduplicatedAlerts.where(_isSystem).length;
+
+    final filtered = deduplicatedAlerts.where((a) {
+      if (_selectedFilter == 'out_of_stock') {
+        return _isOos(a);
+      } else if (_selectedFilter == 'low_stock') {
+        return _isLow(a);
+      } else if (_selectedFilter == 'system') {
+        return _isSystem(a);
+      }
+      return true;
+    }).toList();
 
     return Scaffold(
       backgroundColor: Colors.transparent,
-      body: alertsAsync.when(
-        data: (alerts) {
-          final lowStockCount = alerts
-              .where((a) => a.type == 'low_stock' || a.type == 'lowStock')
-              .length;
-          final misplacedCount = alerts
-              .where((a) => a.type == 'misplaced')
-              .length;
-          final qualityCount = alerts.where((a) => a.type == 'quality').length;
-
-          final filtered = alerts.where((a) {
-            if (_selectedFilter == 'low_stock') {
-              return a.type == 'low_stock' || a.type == 'lowStock';
-            } else if (_selectedFilter == 'misplaced') {
-              return a.type == 'misplaced';
-            } else if (_selectedFilter == 'quality') {
-              return a.type == 'quality';
-            }
-            return true;
-          }).toList();
-
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // In-page command ribbon
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 24,
-                  vertical: 16,
-                ),
-                decoration: BoxDecoration(
-                  color: context.surfaceColor,
-                  border: Border(
-                    bottom: BorderSide(color: context.borderColor),
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // In-page command ribbon
+          Container(
+            padding: const EdgeInsets.symmetric(
+              horizontal: 24,
+              vertical: 16,
+            ),
+            decoration: BoxDecoration(
+              color: context.surfaceColor,
+              border: Border(
+                bottom: BorderSide(color: context.borderColor),
+              ),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: (_showHistory ? AppColors.statusGreen : AppColors.statusRed)
+                        .withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(
+                    _showHistory ? Icons.history_rounded : Icons.warning_amber_rounded,
+                    color: _showHistory ? AppColors.statusGreen : AppColors.statusRed,
+                    size: 24,
                   ),
                 ),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 44,
-                      height: 44,
-                      decoration: BoxDecoration(
-                        color: AppColors.statusRed.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: const Icon(
-                        Icons.warning_amber_rounded,
-                        color: AppColors.statusRed,
-                        size: 24,
-                      ),
-                    ),
-                    const SizedBox(width: 14),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
                         children: [
-                          Row(
-                            children: [
-                              Text(
-                                'Shelf Alerts & Incidents Center',
-                                style: TextStyle(
-                                  fontSize: 20,
-                                  fontWeight: FontWeight.w800,
-                                  color: context.textPrimaryColor,
-                                  letterSpacing: -0.3,
-                                ),
-                              ),
-                              if (alerts.isNotEmpty) ...[
-                                const SizedBox(width: 10),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 10,
-                                    vertical: 3,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: AppColors.statusRed.withValues(
-                                      alpha: 0.15,
-                                    ),
-                                    borderRadius: BorderRadius.circular(20),
-                                    border: Border.all(
-                                      color: AppColors.statusRed.withValues(
-                                        alpha: 0.4,
-                                      ),
-                                    ),
-                                  ),
-                                  child: Text(
-                                    '${alerts.length} ACTIVE',
-                                    style: const TextStyle(
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w900,
-                                      color: AppColors.statusRed,
-                                      letterSpacing: 0.5,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ],
-                          ),
-                          const SizedBox(height: 2),
                           Text(
-                            'Real-time anomaly detection across camera tiers and fragrance stock levels.',
+                            _showHistory
+                                ? 'Resolved Alerts & Audit History'
+                                : 'Shelf Alerts & Incidents Center',
                             style: TextStyle(
-                              fontSize: 12,
-                              color: context.textSecondaryColor,
+                              fontSize: 20,
+                              fontWeight: FontWeight.w800,
+                              color: context.textPrimaryColor,
+                              letterSpacing: -0.3,
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 3,
+                            ),
+                            decoration: BoxDecoration(
+                              color: (_showHistory ? AppColors.statusGreen : AppColors.statusRed)
+                                  .withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(
+                                color: (_showHistory ? AppColors.statusGreen : AppColors.statusRed)
+                                    .withValues(alpha: 0.4),
+                              ),
+                            ),
+                            child: Text(
+                              _showHistory
+                                  ? '${historyAlerts.length} RESOLVED'
+                                  : '${deduplicatedAlerts.length} ACTIVE',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w900,
+                                color: _showHistory
+                                    ? AppColors.statusGreen
+                                    : AppColors.statusRed,
+                                letterSpacing: 0.5,
+                              ),
                             ),
                           ),
                         ],
                       ),
-                    ),
-                    const SizedBox(width: 16),
-                    OutlinedButton.icon(
-                      onPressed: alerts.isEmpty
-                          ? null
-                          : () async {
-                              await SqliteService.instance.markAllAlertsRead(
-                                null,
-                                branch,
-                              );
-                              ref.invalidate(liveAlertsProvider(branch));
-                              ref.invalidate(dashboardStatsProvider(branch));
-                              if (context.mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text(
-                                      'All active alerts marked as acknowledged.',
-                                    ),
-                                    backgroundColor: AppColors.statusGreen,
-                                  ),
-                                );
-                              }
-                            },
-                      icon: const Icon(Icons.done_all_rounded, size: 18),
-                      label: const Text('Acknowledge All'),
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 12,
+                      const SizedBox(height: 2),
+                      Text(
+                        _showHistory
+                            ? 'Historical audit log of acknowledged incidents, verified restocks, and cleared anomalies.'
+                            : 'Real-time anomaly detection across camera tiers and fragrance stock levels.',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: context.textSecondaryColor,
                         ),
-                        side: BorderSide(color: context.borderColor),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-              // Filter Chips Bar
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 24,
-                  vertical: 10,
-                ),
-                decoration: BoxDecoration(
-                  color: context.surfaceElevatedColor.withValues(alpha: 0.5),
-                  border: Border(
-                    bottom: BorderSide(color: context.borderColor),
-                  ),
-                ),
-                child: SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children: [
-                      _buildFilterChip(
-                        'all',
-                        'All Alerts',
-                        alerts.length,
-                        AppColors.brandAccent,
-                      ),
-                      const SizedBox(width: 8),
-                      _buildFilterChip(
-                        'low_stock',
-                        'Low Stock',
-                        lowStockCount,
-                        AppColors.statusRed,
-                      ),
-                      const SizedBox(width: 8),
-                      _buildFilterChip(
-                        'misplaced',
-                        'Misplaced',
-                        misplacedCount,
-                        AppColors.statusOrange,
-                      ),
-                      const SizedBox(width: 8),
-                      _buildFilterChip(
-                        'quality',
-                        'Needs Verification',
-                        qualityCount,
-                        AppColors.brandGold,
                       ),
                     ],
                   ),
                 ),
-              ),
-
-              // Alerts List
-              Expanded(
-                child: filtered.isEmpty
-                    ? _buildAllClearDashboard(context, branch)
-                    : ListView.builder(
-                        padding: const EdgeInsets.all(20),
-                        itemCount: filtered.length,
-                        itemBuilder: (context, index) {
-                          final a = filtered[index];
-                          final isLow =
-                              a.type == 'low_stock' || a.type == 'lowStock';
-                          final isMisplaced = a.type == 'misplaced';
-
-                          final statusType = isLow
-                              ? StatusBadgeType.lowStock
-                              : (isMisplaced
-                                    ? StatusBadgeType.misplaced
-                                    : StatusBadgeType.good);
-                          final statusLabel = isLow
-                              ? 'Low Stock'
-                              : (isMisplaced ? 'Misplaced' : 'Notice');
-
-                          return Padding(
-                            padding: const EdgeInsets.only(bottom: 12),
-                            child: _buildAlertCard(
-                              context: context,
-                              title: a.title,
-                              description: a.desc,
-                              timestamp: a.formattedTime,
-                              statusLabel: statusLabel,
-                              statusType: statusType,
-                              hasPerfumeCode: a.perfumeCode.isNotEmpty,
-                              onRecordSale: () async {
-                                final sqlite = ref.read(sqliteServiceProvider);
-                                final product = await sqlite.getProductByCode(
-                                  a.perfumeCode,
-                                );
-                                if (context.mounted) {
-                                  final recorded = await RecordSaleDialog.show(
-                                    context,
-                                    initialProduct: product,
-                                    branch: branch,
-                                  );
-                                  if (recorded == true) {
-                                    await sqlite.markAlertRead(a.id);
-                                    ref.invalidate(liveAlertsProvider(branch));
-                                    ref.invalidate(
-                                      dashboardStatsProvider(branch),
-                                    );
-                                  }
-                                }
-                              },
-                              actionLabel: isLow
-                                  ? 'Restock This Scent'
-                                  : (isMisplaced
-                                      ? 'Done Fixing, Verify Now'
-                                      : 'Inspect Camera View'),
-                              onAction: () {
-                                if (isLow) {
-                                  context.push(AppRoutePaths.createRestock);
-                                } else if (isMisplaced) {
-                                  ScanWorkflowDialog.show(
-                                    context,
-                                    isTargetedVerification: true,
-                                    targetAlert: a,
-                                  );
-                                } else {
-                                  context.push(AppRoutePaths.cameraMonitor);
-                                }
-                              },
-                              onDismiss: isMisplaced
-                                  ? null
-                                  : () async {
-                                      await SqliteService.instance.markAlertRead(
-                                        a.id,
-                                      );
-                                      ref.invalidate(liveAlertsProvider(branch));
-                                      ref.invalidate(dashboardStatsProvider(branch));
-                                    },
-                            ),
-                          );
-                        },
+                const SizedBox(width: 16),
+                // Segmented Toggle for Active Alerts vs Resolved History
+                Container(
+                  padding: const EdgeInsets.all(4),
+                  decoration: BoxDecoration(
+                    color: context.surfaceElevatedColor,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: context.borderColor),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _buildToggleTab(
+                        label: 'Active Alerts',
+                        count: deduplicatedAlerts.length,
+                        icon: Icons.warning_amber_rounded,
+                        isSelected: !_showHistory,
+                        activeColor: AppColors.statusRed,
+                        onTap: () => setState(() => _showHistory = false),
                       ),
+                      const SizedBox(width: 4),
+                      _buildToggleTab(
+                        label: 'Resolved History',
+                        count: historyAlerts.length,
+                        icon: Icons.history_rounded,
+                        isSelected: _showHistory,
+                        activeColor: AppColors.statusGreen,
+                        onTap: () => setState(() => _showHistory = true),
+                      ),
+                    ],
+                  ),
+                ),
+                if (!_showHistory) ...[
+                  const SizedBox(width: 12),
+                  OutlinedButton.icon(
+                    onPressed: activeAlerts.isEmpty
+                        ? null
+                        : () async {
+                            await SqliteService.instance.markAllAlertsRead(
+                              null,
+                              branch,
+                            );
+                            ref.invalidate(liveAlertsProvider(branch));
+                            ref.invalidate(resolvedAlertsHistoryProvider(branch));
+                            ref.invalidate(dashboardStatsProvider(branch));
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text(
+                                    'All active alerts marked as acknowledged.',
+                                  ),
+                                  backgroundColor: AppColors.statusGreen,
+                                ),
+                              );
+                            }
+                          },
+                    icon: const Icon(Icons.done_all_rounded, size: 18),
+                    label: const Text('Acknowledge All'),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 12,
+                      ),
+                      side: BorderSide(color: context.borderColor),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+
+          // Filter Chips Bar
+          Container(
+            padding: const EdgeInsets.symmetric(
+              horizontal: 24,
+              vertical: 10,
+            ),
+            decoration: BoxDecoration(
+              color: context.surfaceElevatedColor.withValues(alpha: 0.5),
+              border: Border(
+                bottom: BorderSide(color: context.borderColor),
               ),
-            ],
-          );
-        },
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (err, _) => Center(child: Text('Error loading alerts: $err')),
+            ),
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  _buildFilterChip(
+                    'all',
+                    'All Alerts',
+                    deduplicatedAlerts.length,
+                    AppColors.brandAccent,
+                  ),
+                  const SizedBox(width: 8),
+                  _buildFilterChip(
+                    'out_of_stock',
+                    'Out of Stock',
+                    oosCount,
+                    AppColors.statusRed,
+                  ),
+                  const SizedBox(width: 8),
+                  _buildFilterChip(
+                    'low_stock',
+                    'Low Stock',
+                    lowStockCount,
+                    AppColors.statusOrange,
+                  ),
+                  const SizedBox(width: 8),
+                  _buildFilterChip(
+                    'system',
+                    'System / Camera',
+                    systemCount,
+                    AppColors.statusBlue,
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          // Alerts List
+          Expanded(
+            child: filtered.isEmpty
+                ? _buildAllClearDashboard(context, branch)
+                : ListView.builder(
+                    padding: const EdgeInsets.all(20),
+                    itemCount: filtered.length,
+                    itemBuilder: (context, index) {
+                      final a = filtered[index];
+                      final isOutOfStock = _isOos(a);
+                      final isLowStock = _isLow(a);
+
+                      final invItem = a.perfumeCode.isNotEmpty ? invMap[a.perfumeCode] : null;
+                      final stockCount = invItem?.detected ?? (isOutOfStock ? 0 : null);
+
+                      final statusType = _showHistory
+                          ? StatusBadgeType.synced
+                          : (isOutOfStock
+                              ? StatusBadgeType.lowStock
+                              : (isLowStock
+                                  ? StatusBadgeType.lowStock
+                                  : StatusBadgeType.good));
+                      final statusLabel = _showHistory
+                          ? 'Resolved'
+                          : (isOutOfStock
+                              ? 'Out of Stock'
+                              : (isLowStock ? 'Low Stock' : 'System Alert'));
+
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: _buildAlertCard(
+                          context: context,
+                          title: a.title,
+                          description: a.desc,
+                          timestamp: a.formattedTime,
+                          statusLabel: statusLabel,
+                          statusType: statusType,
+                          hasPerfumeCode: a.perfumeCode.isNotEmpty,
+                          perfumeCode: a.perfumeCode,
+                          stockCount: stockCount,
+                          isHistory: _showHistory,
+                          onRecordSale: () async {
+                            final sqlite = ref.read(sqliteServiceProvider);
+                            final product = await sqlite.getProductByCode(
+                              a.perfumeCode,
+                            );
+                            if (context.mounted) {
+                              final recorded = await RecordSaleDialog.show(
+                                context,
+                                initialProduct: product,
+                                branch: branch,
+                              );
+                              if (recorded == true) {
+                                await sqlite.markAlertRead(a.id);
+                                ref.invalidate(liveAlertsProvider(branch));
+                                ref.invalidate(resolvedAlertsHistoryProvider(branch));
+                                ref.invalidate(dashboardStatsProvider(branch));
+                              }
+                            }
+                          },
+                          actionLabel: isOutOfStock || isLowStock
+                              ? 'Verify Restock'
+                              : 'Inspect Camera View',
+                          onAction: () async {
+                            if (isOutOfStock || isLowStock) {
+                              await ScanWorkflowDialog.show(
+                                context,
+                                isTargetedVerification: true,
+                                targetAlert: a,
+                              );
+                              ref.invalidate(liveAlertsProvider(branch));
+                              ref.invalidate(resolvedAlertsHistoryProvider(branch));
+                              ref.invalidate(dashboardStatsProvider(branch));
+                              ref.invalidate(liveInventoryProvider(branch));
+                            } else {
+                              context.push(AppRoutePaths.cameraMonitor);
+                            }
+                          },
+                          secondaryActionLabel:
+                              (isOutOfStock || isLowStock) ? 'Restock Order' : null,
+                          onSecondaryAction: (isOutOfStock || isLowStock)
+                              ? () => context.push(AppRoutePaths.createRestock)
+                              : null,
+                          onDismiss: _showHistory
+                              ? null
+                              : () async {
+                                  await SqliteService.instance.markAlertRead(
+                                    a.id,
+                                  );
+                                  ref.invalidate(liveAlertsProvider(branch));
+                                  ref.invalidate(resolvedAlertsHistoryProvider(branch));
+                                  ref.invalidate(dashboardStatsProvider(branch));
+                                },
+                        ),
+                      );
+                    },
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildToggleTab({
+    required String label,
+    required int count,
+    required IconData icon,
+    required bool isSelected,
+    required Color activeColor,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? activeColor.withValues(alpha: 0.15)
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: isSelected
+                ? activeColor.withValues(alpha: 0.4)
+                : Colors.transparent,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              size: 16,
+              color: isSelected ? activeColor : context.textSecondaryColor,
+            ),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                color: isSelected ? activeColor : context.textSecondaryColor,
+              ),
+            ),
+            const SizedBox(width: 6),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: isSelected ? activeColor : context.surfaceColor,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Text(
+                '$count',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  color: isSelected ? Colors.white : context.textMutedColor,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -397,23 +546,39 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
     required String statusLabel,
     required StatusBadgeType statusType,
     required bool hasPerfumeCode,
+    String perfumeCode = '',
+    int? stockCount,
+    bool isHistory = false,
     required VoidCallback onRecordSale,
     required String actionLabel,
     required VoidCallback onAction,
+    String? secondaryActionLabel,
+    VoidCallback? onSecondaryAction,
     VoidCallback? onDismiss,
   }) {
+    final branch = ref.watch(currentBranchProvider).valueOrNull ?? 'San Pablo';
     Color accentColor;
-    switch (statusType) {
-      case StatusBadgeType.lowStock:
-        accentColor = AppColors.statusRed;
-        break;
-      case StatusBadgeType.misplaced:
-        accentColor = AppColors.statusOrange;
-        break;
-      default:
-        accentColor = AppColors.brandGold;
-        break;
+    if (isHistory) {
+      accentColor = AppColors.statusGreen;
+    } else {
+      switch (statusType) {
+        case StatusBadgeType.lowStock:
+          accentColor = statusLabel.contains('Out of Stock')
+              ? AppColors.statusRed
+              : AppColors.statusOrange;
+          break;
+        case StatusBadgeType.misplaced:
+          accentColor = AppColors.statusOrange;
+          break;
+        default:
+          accentColor = AppColors.statusBlue;
+          break;
+      }
     }
+
+    final String perfumeFullName = (hasPerfumeCode && perfumeCode.isNotEmpty)
+        ? SqliteService.getPerfumeFullName(perfumeCode)
+        : '';
 
     return Container(
       decoration: BoxDecoration(
@@ -460,6 +625,89 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                                 color: context.textPrimaryColor,
                               ),
                             ),
+                            if (perfumeFullName.isNotEmpty && !title.contains(perfumeFullName)) ...[
+                              const SizedBox(height: 4),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                decoration: BoxDecoration(
+                                  color: accentColor.withValues(alpha: 0.10),
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(Icons.sanitizer_rounded, size: 14, color: accentColor),
+                                    const SizedBox(width: 6),
+                                    Text(
+                                      perfumeFullName,
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w700,
+                                        color: accentColor,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                            // Live Stock Capacity Badge
+                            if (stockCount != null) ...[
+                              const SizedBox(height: 6),
+                              Row(
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 8,
+                                      vertical: 3,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: (stockCount == 0
+                                              ? AppColors.statusRed
+                                              : (stockCount <= 2
+                                                  ? AppColors.statusOrange
+                                                  : AppColors.statusGreen))
+                                          .withValues(alpha: 0.12),
+                                      borderRadius: BorderRadius.circular(6),
+                                      border: Border.all(
+                                        color: (stockCount == 0
+                                                ? AppColors.statusRed
+                                                : (stockCount <= 2
+                                                    ? AppColors.statusOrange
+                                                    : AppColors.statusGreen))
+                                            .withValues(alpha: 0.35),
+                                      ),
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(
+                                          Icons.inventory_2_rounded,
+                                          size: 13,
+                                          color: stockCount == 0
+                                              ? AppColors.statusRed
+                                              : (stockCount <= 2
+                                                  ? AppColors.statusOrange
+                                                  : AppColors.statusGreen),
+                                        ),
+                                        const SizedBox(width: 5),
+                                        Text(
+                                          'Stock: $stockCount / 5 Bottles',
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w800,
+                                            color: stockCount == 0
+                                                ? AppColors.statusRed
+                                                : (stockCount <= 2
+                                                    ? AppColors.statusOrange
+                                                    : AppColors.statusGreen),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
                             const SizedBox(height: 4),
                             Text(
                               description,
@@ -479,7 +727,7 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                                 ),
                                 const SizedBox(width: 5),
                                 Text(
-                                  '$timestamp • San Pablo Shelf Station',
+                                  '$timestamp • $branch Shelf Station',
                                   style: TextStyle(
                                     fontSize: 12,
                                     color: context.textMutedColor,
@@ -493,7 +741,7 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                       ),
                       const SizedBox(width: 16),
                       // Action buttons with touch target (min 44-48dp)
-                      if (hasPerfumeCode) ...[
+                      if (hasPerfumeCode && !isHistory) ...[
                         SizedBox(
                           height: 44,
                           child: ElevatedButton.icon(
@@ -521,7 +769,31 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                         ),
                         const SizedBox(width: 10),
                       ],
-                      if (onDismiss != null) ...[
+                      if (secondaryActionLabel != null && onSecondaryAction != null && !isHistory) ...[
+                        SizedBox(
+                          height: 44,
+                          child: OutlinedButton(
+                            onPressed: onSecondaryAction,
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(horizontal: 14),
+                              side: BorderSide(color: context.borderColor),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                            ),
+                            child: Text(
+                              secondaryActionLabel,
+                              style: TextStyle(
+                                color: context.textSecondaryColor,
+                                fontSize: 13,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                      ],
+                      if (onDismiss != null && !isHistory) ...[
                         Tooltip(
                           message: 'Mark as Resolved',
                           child: SizedBox(
@@ -544,29 +816,31 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                             ),
                           ),
                         ),
+                        const SizedBox(width: 10),
                       ],
-                      const SizedBox(width: 10),
-                      SizedBox(
-                        height: 44,
-                        child: OutlinedButton(
-                          onPressed: onAction,
-                          style: OutlinedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(horizontal: 16),
-                            textStyle: const TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.bold,
+                      if (!isHistory) ...[
+                        SizedBox(
+                          height: 44,
+                          child: ElevatedButton(
+                            onPressed: onAction,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: (statusType == StatusBadgeType.misplaced)
+                                  ? AppColors.statusOrange
+                                  : AppColors.brandAccent,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(horizontal: 16),
+                              textStyle: const TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.bold,
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10),
+                              ),
                             ),
-                            side: BorderSide(color: context.borderColor),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                          ),
-                          child: Text(
-                            actionLabel,
-                            style: TextStyle(color: context.textPrimaryColor),
+                            child: Text(actionLabel),
                           ),
                         ),
-                      ),
+                      ],
                     ],
                   ),
                 ),
@@ -579,6 +853,42 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
   }
 
   Widget _buildAllClearDashboard(BuildContext context, String branch) {
+    if (_showHistory) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.history_rounded,
+                size: 64,
+                color: context.textMutedColor,
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'No Resolved History',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w800,
+                  color: context.textPrimaryColor,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'When active alerts are verified or acknowledged, they will appear here in the resolved history log.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 13,
+                  color: context.textSecondaryColor,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24),
       child: Column(
@@ -707,22 +1017,22 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                 _buildDiagnosticItem(
                   context,
                   Icons.radar_rounded,
-                  'Vision AI Active',
-                  'YOLOv8 + Cap OCR active',
+                  'Bottle Detection Active',
+                  'Smart bottle counter ready',
                   AppColors.brandAccent,
                 ),
                 _buildDiagnosticItem(
                   context,
                   Icons.storage_rounded,
-                  'SQLite Cache Sync',
-                  'Local database verified',
+                  'Local Database',
+                  'Store database verified',
                   AppColors.maleBlue,
                 ),
                 _buildDiagnosticItem(
                   context,
                   Icons.cloud_done_rounded,
-                  'Cloud Telemetry',
-                  'Automatic push ready',
+                  'Cloud Backup',
+                  'Automatic backup ready',
                   AppColors.statusGreen,
                 ),
               ],

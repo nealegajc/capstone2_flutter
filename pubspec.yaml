@@ -27,6 +27,8 @@ dependencies:
   supabase_flutter: ^2.9.1
   flutter_dotenv: ^5.2.1
   connectivity_plus: ^6.1.4
+  qr_flutter: ^4.1.0
+  pdf: ^3.11.1
 
 dev_dependencies:
   flutter_test:

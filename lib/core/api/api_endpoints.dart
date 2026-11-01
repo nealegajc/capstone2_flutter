@@ -1,8 +1,4 @@
 class ApiEndpoints {
-  // Auth
-  static const String verifyPin = '/api/auth/verify-pin';
-  static const String changePin = '/api/auth/change-pin';
-
   // Inventory & Detection
   static const String inventorySummary = '/api/inventory/summary';
   static const String inventoryItems = '/api/inventory/items';

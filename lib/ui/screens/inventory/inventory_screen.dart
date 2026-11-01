@@ -6,6 +6,7 @@ import '../../../core/router/route_names.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/theme_helper.dart';
 import '../../../data/models/product_model.dart';
+import '../../../data/services/sqlite_service.dart';
 import '../../../providers/kiosk_providers.dart';
 import '../../components/status_badge.dart';
 
@@ -29,7 +30,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
     super.dispose();
   }
 
-  void _showShelfFullModal(BuildContext context, int variantCount) {
+  void _showShelfFullModal(BuildContext context, int occupiedSlots, int variantCount) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -44,7 +45,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
             ),
             const SizedBox(width: 12),
             Text(
-              'Shelf Full ($variantCount/30 Slots)',
+              'Shelf Full (60/60 Slots • 30 Trays)',
               style: TextStyle(
                 fontWeight: FontWeight.w800,
                 color: context.textPrimaryColor,
@@ -58,26 +59,26 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'No more slots available on the physical shelf. All 30 fragrance variant partitions across the 3 layers are currently occupied:',
+              'No more slots available on the physical shelf. All 30 fragrance trays (60 product slots, 300 bottles max capacity) across the 3 layers are currently occupied:',
               style: TextStyle(color: context.textSecondaryColor, fontSize: 14),
             ),
             const SizedBox(height: 14),
             _buildCapacityInfoRow(
               context,
               'Layer A (Top)',
-              '10 Men Slots (Slots A to K)',
+              '10 Trays • 20 Slots (Trays AA to AK)',
               AppColors.maleBlue,
             ),
             _buildCapacityInfoRow(
               context,
               'Layer B (Middle)',
-              '5 Men + 5 Women Slots',
+              '10 Trays • 20 Slots (Trays BA to BK)',
               AppColors.brandAccent,
             ),
             _buildCapacityInfoRow(
               context,
               'Layer C (Bottom)',
-              '10 Women Slots (Slots A to K)',
+              '10 Trays • 20 Slots (Trays CA to CK)',
               AppColors.femalePink,
             ),
             const SizedBox(height: 14),
@@ -157,7 +158,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
 
   @override
   Widget build(BuildContext context) {
-    const branch = 'San Pablo';
+    final branch = ref.watch(currentBranchProvider).valueOrNull ?? 'San Pablo';
     final productsAsync = ref.watch(masterProductsProvider);
     final inventoryAsync = ref.watch(liveInventoryProvider(branch));
 
@@ -165,6 +166,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
       backgroundColor: Colors.transparent,
       body: productsAsync.when(
         data: (allItems) {
+          final occupiedSlots = allItems.length;
           final uniqueVariants = allItems
               .map(
                 (p) => p.perfumeCode.length >= 2
@@ -173,7 +175,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
               )
               .toSet();
           final variantCount = uniqueVariants.length;
-          final isShelfFull = variantCount >= 30;
+          final isShelfFull = occupiedSlots >= 60;
 
           final filtered = allItems.where((p) {
             final isFemale =
@@ -250,65 +252,71 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Text(
-                              'Inventory Catalog',
-                              style: TextStyle(
-                                fontSize: 26,
-                                fontWeight: FontWeight.w900,
-                                color: context.textPrimaryColor,
-                                letterSpacing: -0.3,
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 10,
-                                vertical: 4,
-                              ),
-                              decoration: BoxDecoration(
-                                color: AppColors.brandAccent.withValues(
-                                  alpha: 0.15,
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Text(
+                                'Inventory Catalog',
+                                style: TextStyle(
+                                  fontSize: 26,
+                                  fontWeight: FontWeight.w900,
+                                  color: context.textPrimaryColor,
+                                  letterSpacing: -0.3,
                                 ),
-                                borderRadius: BorderRadius.circular(8),
-                                border: Border.all(
+                              ),
+                              const SizedBox(width: 12),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 4,
+                                ),
+                                decoration: BoxDecoration(
                                   color: AppColors.brandAccent.withValues(
-                                    alpha: 0.35,
+                                    alpha: 0.15,
+                                  ),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(
+                                    color: AppColors.brandAccent.withValues(
+                                      alpha: 0.35,
+                                    ),
+                                  ),
+                                ),
+                                child: Text(
+                                  '${allItems.length} SKUs',
+                                  style: const TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w900,
+                                    color: AppColors.brandAccent,
+                                    letterSpacing: 0.5,
                                   ),
                                 ),
                               ),
-                              child: Text(
-                                '${allItems.length} SKUs',
-                                style: const TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w900,
-                                  color: AppColors.brandAccent,
-                                  letterSpacing: 0.5,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 3),
-                        Text(
-                          'Automated computer vision detection & physical bottle partitions (3 Layers • 30 Slots)',
-                          style: TextStyle(
-                            fontSize: 14.5,
-                            color: context.textSecondaryColor,
-                            fontWeight: FontWeight.w500,
+                            ],
                           ),
-                        ),
-                      ],
+                          const SizedBox(height: 3),
+                          Text(
+                            'Automated computer vision detection & physical bottle partitions (30 Trays • 60 Slots • 300 Bottles Capacity)',
+                            style: TextStyle(
+                              fontSize: 14.5,
+                              color: context.textSecondaryColor,
+                              fontWeight: FontWeight.w500,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                            maxLines: 1,
+                          ),
+                        ],
+                      ),
                     ),
+                    const SizedBox(width: 16),
                     Row(
+                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        // View Mode Toggle (Grid vs List) - Enlarged Touch Control (48px)
+                        // View Mode Toggle (Grid vs List) - Enlarged Touch Control (56px)
                         Container(
-                          height: 48,
+                          height: 56,
                           padding: const EdgeInsets.all(4),
                           decoration: BoxDecoration(
                             color: context.surfaceElevatedColor,
@@ -326,8 +334,8 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                                 borderRadius: BorderRadius.circular(10),
                                 child: Container(
                                   padding: const EdgeInsets.symmetric(
-                                    horizontal: 14,
-                                    vertical: 8,
+                                    horizontal: 16,
+                                    vertical: 10,
                                   ),
                                   decoration: BoxDecoration(
                                     color: _isGridView
@@ -339,7 +347,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                                     children: [
                                       Icon(
                                         Icons.grid_view_rounded,
-                                        size: 20,
+                                        size: 24,
                                         color: _isGridView
                                             ? Colors.white
                                             : context.textSecondaryColor,
@@ -348,7 +356,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                                       Text(
                                         'Grid',
                                         style: TextStyle(
-                                          fontSize: 15,
+                                          fontSize: 16,
                                           fontWeight: FontWeight.w800,
                                           color: _isGridView
                                               ? Colors.white
@@ -366,8 +374,8 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                                 borderRadius: BorderRadius.circular(10),
                                 child: Container(
                                   padding: const EdgeInsets.symmetric(
-                                    horizontal: 14,
-                                    vertical: 8,
+                                    horizontal: 16,
+                                    vertical: 10,
                                   ),
                                   decoration: BoxDecoration(
                                     color: !_isGridView
@@ -379,7 +387,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                                     children: [
                                       Icon(
                                         Icons.view_list_rounded,
-                                        size: 22,
+                                        size: 24,
                                         color: !_isGridView
                                             ? Colors.white
                                             : context.textSecondaryColor,
@@ -388,7 +396,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                                       Text(
                                         'List',
                                         style: TextStyle(
-                                          fontSize: 15,
+                                          fontSize: 16,
                                           fontWeight: FontWeight.w800,
                                           color: !_isGridView
                                               ? Colors.white
@@ -404,17 +412,17 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                         ),
                         const SizedBox(width: 14),
 
-                        // Refresh Button (48x48)
+                        // Refresh Button (56x56)
                         Container(
-                          width: 48,
-                          height: 48,
+                          width: 56,
+                          height: 56,
                           decoration: BoxDecoration(
                             color: context.surfaceElevatedColor,
                             borderRadius: BorderRadius.circular(12),
                             border: Border.all(color: context.borderColor),
                           ),
                           child: IconButton(
-                            icon: const Icon(Icons.refresh_rounded, size: 24),
+                            icon: const Icon(Icons.refresh_rounded, size: 26),
                             tooltip: 'Refresh Inventory',
                             onPressed: () {
                               ref.invalidate(masterProductsProvider);
@@ -427,22 +435,22 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                         // Add / Shelf Full Capacity Action
                         if (isShelfFull)
                           Tooltip(
-                            message: 'Shelf is at full capacity (30/30 slots occupied).',
+                            message: 'Shelf is at full capacity (60/60 slots occupied • 30 trays).',
                             child: SizedBox(
-                              height: 48,
+                              height: 56,
                               child: OutlinedButton.icon(
                                 onPressed: () =>
-                                    _showShelfFullModal(context, variantCount),
+                                    _showShelfFullModal(context, occupiedSlots, variantCount),
                                 icon: const Icon(
                                   Icons.lock_outline_rounded,
-                                  size: 20,
+                                  size: 24,
                                   color: AppColors.statusOrange,
                                 ),
                                 label: Text(
-                                  'Shelf Full ($variantCount/30)',
+                                  'Shelf Full (60/60)',
                                   style: TextStyle(
                                     fontWeight: FontWeight.w800,
-                                    fontSize: 15,
+                                    fontSize: 16,
                                     color: context.textPrimaryColor,
                                   ),
                                 ),
@@ -454,8 +462,8 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                                     width: 1.5,
                                   ),
                                   padding: const EdgeInsets.symmetric(
-                                    horizontal: 18,
-                                    vertical: 12,
+                                    horizontal: 20,
+                                    vertical: 14,
                                   ),
                                 ),
                               ),
@@ -463,22 +471,22 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                           )
                         else
                           SizedBox(
-                            height: 48,
+                            height: 56,
                             child: ElevatedButton.icon(
                               onPressed: () =>
                                   context.push(AppRoutePaths.productForm),
-                              icon: const Icon(Icons.add_rounded, size: 22),
+                              icon: const Icon(Icons.add_rounded, size: 24),
                               label: Text(
-                                'Add Fragrance (${30 - variantCount} Slots Left)',
+                                'Add Fragrance (${60 - occupiedSlots} Slots Left)',
                                 style: const TextStyle(
-                                  fontSize: 15,
+                                  fontSize: 16,
                                   fontWeight: FontWeight.w800,
                                 ),
                               ),
                               style: ElevatedButton.styleFrom(
                                 padding: const EdgeInsets.symmetric(
-                                  horizontal: 20,
-                                  vertical: 12,
+                                  horizontal: 22,
+                                  vertical: 14,
                                 ),
                               ),
                             ),
@@ -508,32 +516,32 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                       children: [
                         Expanded(
                           child: SizedBox(
-                            height: 54,
+                            height: 62,
                             child: TextField(
                               controller: _searchController,
                               onChanged: (val) =>
                                   setState(() => _searchQuery = val.trim()),
                               style: TextStyle(
                                 color: context.textPrimaryColor,
-                                fontSize: 16,
+                                fontSize: 17,
                                 fontWeight: FontWeight.w600,
                               ),
                               decoration: InputDecoration(
-                                hintText: 'Search perfume name, cap OCR code (e.g. AA1, BK2), or brand...',
+                                hintText: 'Search perfume name, bottle cap code (e.g. AA1, BK2), or brand...',
                                 hintStyle: TextStyle(
                                   color: context.textMutedColor,
-                                  fontSize: 16,
+                                  fontSize: 17,
                                 ),
                                 prefixIcon: const Icon(
                                   Icons.search_rounded,
                                   color: AppColors.brandAccent,
-                                  size: 24,
+                                  size: 26,
                                 ),
                                 suffixIcon: _searchQuery.isNotEmpty
                                     ? IconButton(
                                         icon: const Icon(
                                           Icons.clear_rounded,
-                                          size: 22,
+                                          size: 24,
                                         ),
                                         onPressed: () {
                                           _searchController.clear();
@@ -561,10 +569,10 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
 
                         // Capacity Status Pill
                         Container(
-                          height: 54,
+                          height: 62,
                           padding: const EdgeInsets.symmetric(
-                            horizontal: 18,
-                            vertical: 12,
+                            horizontal: 20,
+                            vertical: 14,
                           ),
                           decoration: BoxDecoration(
                             color: isShelfFull
@@ -584,7 +592,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                                 isShelfFull
                                     ? Icons.inventory_2_rounded
                                     : Icons.shelves,
-                                size: 22,
+                                size: 24,
                                 color: isShelfFull
                                     ? AppColors.statusGreen
                                     : AppColors.brandAccent,
@@ -592,11 +600,11 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                               const SizedBox(width: 10),
                               Text(
                                 isShelfFull
-                                    ? 'Shelf Full (30/30 Slots • ${allItems.length} SKUs)'
-                                    : '$variantCount / 30 Slots Occupied',
+                                    ? 'Shelf Full (60/60 Slots • 30 Trays)'
+                                    : '$occupiedSlots / 60 Slots Occupied ($variantCount / 30 Trays)',
                                 style: TextStyle(
                                   fontWeight: FontWeight.w800,
-                                  fontSize: 15,
+                                  fontSize: 16,
                                   color: isShelfFull
                                       ? AppColors.statusGreen
                                       : context.textPrimaryColor,
@@ -814,11 +822,11 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
       onSelected: (_) => setState(() => _selectedFilter = value),
       selectedColor: AppColors.brandAccent,
       backgroundColor: context.surfaceElevatedColor,
-      labelPadding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+      labelPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       labelStyle: TextStyle(
         color: isSelected ? Colors.white : context.textPrimaryColor,
-        fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
-        fontSize: 14,
+        fontWeight: FontWeight.w800,
+        fontSize: 15.5,
       ),
       side: BorderSide(
         color: isSelected ? AppColors.brandAccent : context.borderColor,
@@ -836,11 +844,11 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
       onSelected: (_) => setState(() => _selectedFilter = value),
       selectedColor: genderColor,
       backgroundColor: context.surfaceElevatedColor,
-      labelPadding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+      labelPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       labelStyle: TextStyle(
         color: isSelected ? Colors.white : genderColor,
-        fontWeight: isSelected ? FontWeight.w800 : FontWeight.w700,
-        fontSize: 14,
+        fontWeight: FontWeight.w800,
+        fontSize: 15.5,
       ),
       side: BorderSide(
         color: isSelected ? genderColor : genderColor.withValues(alpha: 0.45),
@@ -858,11 +866,11 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
       onSelected: (_) => setState(() => _selectedFilter = value),
       selectedColor: AppColors.statusOrange,
       backgroundColor: context.surfaceElevatedColor,
-      labelPadding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+      labelPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       labelStyle: TextStyle(
         color: isSelected ? Colors.white : AppColors.statusOrange,
-        fontWeight: isSelected ? FontWeight.w800 : FontWeight.w700,
-        fontSize: 14,
+        fontWeight: FontWeight.w800,
+        fontSize: 15.5,
       ),
       side: BorderSide(
         color: isSelected
@@ -876,12 +884,14 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
 
   Future<void> _toggleVariant(ProductModel product, bool isActive) async {
     final newStatus = isActive ? 'active' : 'seasonal_off';
+    final branch = ref.read(currentBranchProvider).valueOrNull ?? await SqliteService.instance.getBranchName();
     await ref
         .read(sqliteServiceProvider)
-        .toggleProductStatus(productId: product.id, newStatus: newStatus);
+        .toggleProductStatus(productId: product.id, newStatus: newStatus, branch: branch);
     ref.invalidate(masterProductsProvider);
-    ref.invalidate(liveInventoryProvider('San Pablo'));
-    ref.invalidate(dashboardStatsProvider('San Pablo'));
+    ref.invalidate(liveInventoryProvider(branch));
+    ref.invalidate(dashboardStatsProvider(branch));
+    ref.invalidate(liveAlertsProvider(branch));
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -908,11 +918,11 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
       onSelected: (_) => setState(() => _selectedSize = value),
       selectedColor: AppColors.brandAccent,
       backgroundColor: context.surfaceElevatedColor,
-      labelPadding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+      labelPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       labelStyle: TextStyle(
         color: isSelected ? Colors.white : context.textPrimaryColor,
-        fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
-        fontSize: 14,
+        fontWeight: FontWeight.w800,
+        fontSize: 15.5,
       ),
       side: BorderSide(
         color: isSelected ? AppColors.brandAccent : context.borderColor,
@@ -1021,7 +1031,10 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Row(
+                        Wrap(
+                          spacing: 6,
+                          runSpacing: 4,
+                          crossAxisAlignment: WrapCrossAlignment.center,
                           children: [
                             Container(
                               padding: const EdgeInsets.symmetric(
@@ -1059,7 +1072,6 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                                 ],
                               ),
                             ),
-                            const SizedBox(width: 6),
                             Container(
                               padding: const EdgeInsets.symmetric(
                                 horizontal: 8,
@@ -1079,6 +1091,43 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                                 ),
                               ),
                             ),
+                            if (isOff)
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 3,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: AppColors.statusOrange.withValues(
+                                    alpha: 0.15,
+                                  ),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(
+                                    color: AppColors.statusOrange.withValues(
+                                      alpha: 0.5,
+                                    ),
+                                  ),
+                                ),
+                                child: const Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      Icons.wb_sunny_outlined,
+                                      size: 13,
+                                      color: AppColors.statusOrange,
+                                    ),
+                                    SizedBox(width: 3),
+                                    Text(
+                                      'Seasonal / Off',
+                                      style: TextStyle(
+                                        fontSize: 11.5,
+                                        fontWeight: FontWeight.w800,
+                                        color: AppColors.statusOrange,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
                           ],
                         ),
                         const SizedBox(height: 5),
@@ -1156,31 +1205,47 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Row(
-                      children: [
-                        Icon(
-                          isLow
-                              ? Icons.warning_amber_rounded
-                              : Icons.check_circle_outline_rounded,
-                          size: 18,
-                          color: isLow
-                              ? AppColors.statusRed
-                              : AppColors.statusGreen,
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          '$currentQty / 5 in Stock',
-                          style: TextStyle(
-                            fontSize: 13.5,
-                            fontWeight: FontWeight.w800,
-                            color: isLow
-                                ? AppColors.statusRed
-                                : AppColors.statusGreen,
+                    Expanded(
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            isOff
+                                ? Icons.pause_circle_outline_rounded
+                                : (isLow
+                                    ? Icons.warning_amber_rounded
+                                    : Icons.check_circle_outline_rounded),
+                            size: 16,
+                            color: isOff
+                                ? AppColors.statusOrange
+                                : (isLow
+                                    ? AppColors.statusRed
+                                    : AppColors.statusGreen),
                           ),
-                        ),
-                      ],
+                          const SizedBox(width: 6),
+                          Flexible(
+                            child: Text(
+                              isOff
+                                  ? 'Seasonal / Off'
+                                  : '$currentQty / 5 in Stock',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w800,
+                                color: isOff
+                                    ? AppColors.statusOrange
+                                    : (isLow
+                                        ? AppColors.statusRed
+                                        : AppColors.statusGreen),
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
+                    const SizedBox(width: 6),
                     Row(
+                      mainAxisSize: MainAxisSize.min,
                       children: [
                         Text(
                           isOff ? 'Off' : 'Active',
@@ -1256,15 +1321,15 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
         onTap: onTap,
         borderRadius: BorderRadius.circular(18),
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
           child: Row(
             children: [
               // Alphanumeric Cap OCR Badge (Blue for Male, Pink for Female, Dimmed if Off)
               Opacity(
                 opacity: isOff ? 0.6 : 1.0,
                 child: Container(
-                  width: 62,
-                  height: 62,
+                  width: 68,
+                  height: 68,
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
                       colors: isOff
@@ -1291,7 +1356,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                       style: const TextStyle(
                         color: Colors.white,
                         fontWeight: FontWeight.w900,
-                        fontSize: 20,
+                        fontSize: 22,
                         letterSpacing: 0.5,
                       ),
                     ),
@@ -1311,8 +1376,8 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                           child: Text(
                             name,
                             style: TextStyle(
-                              fontSize: 19,
-                              fontWeight: FontWeight.w800,
+                              fontSize: 21,
+                              fontWeight: FontWeight.w900,
                               color: isOff
                                   ? context.textSecondaryColor
                                   : context.textPrimaryColor,
@@ -1352,7 +1417,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                               Text(
                                 isFemale ? 'Women' : 'Men',
                                 style: TextStyle(
-                                  fontSize: 12,
+                                  fontSize: 13.5,
                                   fontWeight: FontWeight.w800,
                                   color: themeGenderColor,
                                 ),
@@ -1376,7 +1441,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                           child: Text(
                             size,
                             style: TextStyle(
-                              fontSize: 12,
+                              fontSize: 13.5,
                               fontWeight: FontWeight.w800,
                               color: context.textSecondaryColor,
                             ),
@@ -1412,9 +1477,9 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                                 ),
                                 SizedBox(width: 4),
                                 Text(
-                                  'Seasonal Off',
+                                  'Seasonal / Off',
                                   style: TextStyle(
-                                    fontSize: 12,
+                                    fontSize: 13.5,
                                     fontWeight: FontWeight.w800,
                                     color: AppColors.statusOrange,
                                   ),

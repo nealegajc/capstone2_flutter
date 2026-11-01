@@ -49,22 +49,51 @@ class PythonApiRepository {
     };
   }
 
-  Future<Map<String, dynamic>> triggerManualScan(String branch) async {
+  Future<Map<String, dynamic>> triggerManualScan(
+    String branch, {
+    int? cameraId,
+    String? cameraDevice,
+    bool enableOcr = false,
+    String? targetTray,
+  }) async {
     try {
+      final payload = <String, dynamic>{
+        'branch': branch,
+      };
+      if (cameraId != null) {
+        payload['camera_id'] = cameraId;
+        payload['cameraId'] = cameraId;
+      }
+      if (cameraDevice != null) payload['camera_device'] = cameraDevice;
+      if (targetTray != null) payload['target_tray'] = targetTray;
+
+      // Primary scan endpoint per R1: /api/camera/scan
+      final endpoint = '$baseUrl/api/camera/scan';
       final response = await http
           .post(
-            Uri.parse('$baseUrl/scan/trigger'),
+            Uri.parse(endpoint),
             headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({'branch': branch}),
+            body: jsonEncode(payload),
           )
-          .timeout(const Duration(seconds: 60));
+          .timeout(const Duration(seconds: 30));
+
       if (response.statusCode == 200) {
-        return jsonDecode(response.body) as Map<String, dynamic>;
+        final data = jsonDecode(response.body) as Map<String, dynamic>;
+        // Ensure success field is set
+        if (!data.containsKey('success')) {
+          data['success'] = true;
+        }
+        if (!data.containsKey('bottlesDetected') && data.containsKey('totalBottles')) {
+          data['bottlesDetected'] = data['totalBottles'];
+        }
+        return data;
       } else {
         return {
           'success': false,
           'message': 'Vision scan failed: HTTP ${response.statusCode} - ${response.body}',
           'bottlesDetected': 0,
+          'totalBottles': 0,
+          'trayCounts': <String, int>{},
           'detections': [],
         };
       }
@@ -73,6 +102,8 @@ class PythonApiRepository {
         'success': false,
         'message': 'Vision scan failed: Unable to connect to edge backend ($e)',
         'bottlesDetected': 0,
+        'totalBottles': 0,
+        'trayCounts': <String, int>{},
         'detections': [],
       };
     }

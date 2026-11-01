@@ -17,14 +17,10 @@ class AppRoutePaths {
 
   // Fig 3.19: Shelf Camera Monitor Screen
   static const String cameraMonitor = '/camera-monitor';
-  // Fig 3.20: Shelf Area (ROI) Detail Screen
-  static const String roiDetail = '/camera-monitor/roi-detail';
   // Fig 3.21: Shelf Check Schedule Screen
   static const String schedule = '/camera-monitor/schedule';
   // Fig 3.22: Shelf Check History Screen
   static const String shelfHistory = '/camera-monitor/history';
-  // Fig 3.23: Image Quality & Scanning Status Screen
-  static const String imageQuality = '/camera-monitor/image-quality';
 
   // Fig 3.25: Restock Management Screen
   static const String restock = '/restock';
@@ -64,10 +60,8 @@ class AppRouteNames {
   static const String productManagement = 'productForm';
   static const String stockMovements = 'stockMovements';
   static const String cameraMonitor = 'cameraMonitor';
-  static const String roiDetail = 'roiDetail';
   static const String schedule = 'schedule';
   static const String shelfHistory = 'shelfHistory';
-  static const String imageQuality = 'imageQuality';
   static const String restock = 'restock';
   static const String createRestock = 'createRestock';
   static const String receivingVerification = 'receivingVerification';

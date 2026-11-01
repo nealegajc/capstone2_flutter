@@ -23,16 +23,11 @@ class SalesAnalyticsScreen extends ConsumerStatefulWidget {
 }
 
 class _SalesAnalyticsScreenState extends ConsumerState<SalesAnalyticsScreen> {
-  String _selectedBranch = 'All Branches';
   String _selectedTimeFilter = 'All Time'; // 'Today', 'This Week', 'All Time'
 
   @override
   Widget build(BuildContext context) {
-    final effectiveBranch = _selectedBranch == 'All Branches'
-        ? null
-        : _selectedBranch;
-
-    final salesAsync = ref.watch(salesRecordsProvider(effectiveBranch));
+    final salesAsync = ref.watch(salesRecordsProvider(null));
 
     return salesAsync.when(
       data: (allSales) {
@@ -123,7 +118,6 @@ class _SalesAnalyticsScreenState extends ConsumerState<SalesAnalyticsScreen> {
                     ElevatedButton.icon(
                       onPressed: () => RecordSaleDialog.show(
                         context,
-                        branch: effectiveBranch,
                       ),
                       icon: const Icon(
                         Icons.add_shopping_cart_rounded,
@@ -260,51 +254,6 @@ class _SalesAnalyticsScreenState extends ConsumerState<SalesAnalyticsScreen> {
                 ],
                 onChanged: (val) {
                   if (val != null) setState(() => _selectedTimeFilter = val);
-                },
-              ),
-            ),
-          ),
-          const SizedBox(width: 14),
-
-          // Branch Filter
-          Text(
-            'Branch: ',
-            style: TextStyle(
-              color: context.textSecondaryColor,
-              fontSize: 13,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(width: 8),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
-            decoration: BoxDecoration(
-              color: context.surfaceElevatedColor,
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: context.borderColor),
-            ),
-            child: DropdownButtonHideUnderline(
-              child: DropdownButton<String>(
-                value: _selectedBranch,
-                dropdownColor: context.surfaceColor,
-                style: TextStyle(
-                  color: context.textPrimaryColor,
-                  fontSize: 13,
-                  fontWeight: FontWeight.bold,
-                ),
-                items: const [
-                  DropdownMenuItem(
-                    value: 'All Branches',
-                    child: Text('All Branches'),
-                  ),
-                  DropdownMenuItem(
-                    value: 'San Pablo',
-                    child: Text('San Pablo Kiosk'),
-                  ),
-                  DropdownMenuItem(value: 'Lipa', child: Text('Lipa Branch')),
-                ],
-                onChanged: (val) {
-                  if (val != null) setState(() => _selectedBranch = val);
                 },
               ),
             ),
@@ -858,12 +807,7 @@ class _SalesAnalyticsScreenState extends ConsumerState<SalesAnalyticsScreen> {
                     : () async {
                         try {
                           final file = await CsvExportService.instance
-                              .exportSalesRecordsCsv(
-                                sales,
-                                branch: _selectedBranch == 'All Branches'
-                                    ? 'All'
-                                    : _selectedBranch,
-                              );
+                              .exportSalesRecordsCsv(sales);
                           if (context.mounted) {
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(

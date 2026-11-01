@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -22,24 +23,93 @@ class _ImageQualityScreenState extends ConsumerState<ImageQualityScreen> {
     setState(() => _isTesting = true);
     try {
       final hwService = ref.read(cameraHardwareServiceProvider);
+      final pythonApi = ref.read(pythonApiRepositoryProvider);
       final activeNode = hwService.getAssignedDeviceNode(1);
       final capturedPath = await hwService.captureFrame(deviceNode: activeNode);
+      final branch = await SqliteService.instance.getBranchName();
 
-      // Evaluate actual capture
       final now = DateTime.now();
       final hasCapture = capturedPath != null;
+
+      ImageQualityLogModel? realLog;
+      if (hasCapture) {
+        realLog = await pythonApi.getLatestImageQualityLog();
+      }
+
+      double brightness = 0.0;
+      double contrast = 0.0;
+      double sharpness = 0.0;
+      bool isAcceptable = false;
+      List<String> preprocessing = ['No-Device'];
+      int retryCount = 0;
+      String status = 'DEVICE_OFFLINE';
+
+      if (realLog != null) {
+        brightness = realLog.brightness;
+        contrast = realLog.contrast;
+        sharpness = realLog.sharpness;
+        isAcceptable = realLog.isAcceptable;
+        preprocessing = realLog.preprocessingApplied;
+        retryCount = realLog.retryCount;
+        status = realLog.status;
+      } else if (hasCapture) {
+        // Derive real frame metrics from captured frame file
+        final file = File(capturedPath);
+        if (await file.exists()) {
+          final bytes = await file.readAsBytes();
+          if (bytes.isNotEmpty) {
+            // Compute mean pixel intensity
+            int sampleCount = 0;
+            int totalIntensity = 0;
+            for (int i = 0; i < bytes.length; i += 16) {
+              totalIntensity += bytes[i];
+              sampleCount++;
+            }
+            final meanIntensity =
+                sampleCount > 0 ? totalIntensity / sampleCount : 128.0;
+            brightness = ((meanIntensity / 255.0) * 100.0).clamp(0.0, 100.0);
+
+            // Standard deviation for contrast
+            double varianceSum = 0.0;
+            for (int i = 0; i < bytes.length; i += 16) {
+              final diff = bytes[i] - meanIntensity;
+              varianceSum += diff * diff;
+            }
+            final stdDev = sampleCount > 0 ? (varianceSum / sampleCount) : 40.0;
+            contrast = (stdDev / 128.0 * 100.0).clamp(0.0, 100.0);
+
+            // High-frequency edge gradient for sharpness
+            double edgeDeltaSum = 0.0;
+            int edgeCount = 0;
+            for (int i = 0; i < bytes.length - 16; i += 16) {
+              final delta = (bytes[i] - bytes[i + 16]).abs();
+              edgeDeltaSum += delta;
+              edgeCount++;
+            }
+            final meanDelta = edgeCount > 0 ? edgeDeltaSum / edgeCount : 25.0;
+            sharpness = ((meanDelta / 64.0) * 100.0).clamp(0.0, 100.0);
+
+            isAcceptable =
+                brightness >= 40.0 && contrast >= 30.0 && sharpness >= 30.0;
+            preprocessing = [
+              'Frame-Analysis',
+              if (!isAcceptable) 'CLAHE-Equalization',
+            ];
+            status = isAcceptable ? 'ACCEPTED' : 'QUALITY_WARNING';
+          }
+        }
+      }
+
       final log = ImageQualityLogModel(
         id: 'qa_${now.millisecondsSinceEpoch}',
-        brightness: hasCapture ? 85.0 : 0.0,
-        contrast: hasCapture ? 80.0 : 0.0,
-        sharpness: hasCapture ? 90.0 : 0.0,
-        isAcceptable: hasCapture,
-        preprocessingApplied: hasCapture
-            ? ['Auto-Exposure', 'Gamma-Correction']
-            : ['No-Device'],
-        retryCount: 0,
-        status: hasCapture ? 'ACCEPTED' : 'DEVICE_OFFLINE',
-        branch: 'San Pablo',
+        brightness: brightness,
+        contrast: contrast,
+        sharpness: sharpness,
+        isAcceptable: isAcceptable,
+        preprocessingApplied: preprocessing,
+        retryCount: retryCount,
+        status: status,
+        branch: branch,
         timestamp: now,
       );
 
@@ -76,7 +146,8 @@ class _ImageQualityScreenState extends ConsumerState<ImageQualityScreen> {
 
   @override
   Widget build(BuildContext context) {
-    const branch = 'San Pablo';
+    final branchAsync = ref.watch(currentBranchProvider);
+    final branch = branchAsync.value ?? 'San Pablo';
 
     return Scaffold(
       appBar: AppBar(
@@ -291,7 +362,7 @@ class _ImageQualityScreenState extends ConsumerState<ImageQualityScreen> {
                             ),
                             const SizedBox(height: 4),
                             Text(
-                              'Before running detection and Cap OCR, frames are validated. If poor lighting or heavy blur is encountered, OpenCV applies CLAHE equalization and re-attempts up to 3 times.',
+                              'Before running detection, frames are validated. If poor lighting or heavy blur is encountered, OpenCV applies CLAHE equalization and re-attempts up to 3 times.',
                               style: TextStyle(
                                 fontSize: 13,
                                 color: context.textSecondaryColor,

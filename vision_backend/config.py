@@ -14,8 +14,8 @@ ALT_MODEL_PATH = BASE_DIR / "best.pt"
 
 # Camera device configuration
 DEFAULT_CAMERA_NODE = os.getenv("CAMERA_DEVICE", "/dev/video0")
-CAMERA_WIDTH = int(os.getenv("CAMERA_WIDTH", "1280"))
-CAMERA_HEIGHT = int(os.getenv("CAMERA_HEIGHT", "720"))
+CAMERA_WIDTH = int(os.getenv("CAMERA_WIDTH", "2560"))
+CAMERA_HEIGHT = int(os.getenv("CAMERA_HEIGHT", "1440"))
 
 # Calibration and ROI boundaries (normalized coordinates: 0.0 to 1.0)
 DEFAULT_ROI_BOUNDARIES = [0.0, 0.2, 0.4, 0.6, 0.8, 1.0]
@@ -32,4 +32,4 @@ MAX_IMAGE_RETRIES = 3
 # Inference settings
 YOLO_CONF_THRESHOLD = float(os.getenv("YOLO_CONF_THRESHOLD", "0.40"))
 YOLO_IOU_THRESHOLD = float(os.getenv("YOLO_IOU_THRESHOLD", "0.45"))
-OCR_CONF_THRESHOLD = float(os.getenv("OCR_CONF_THRESHOLD", "0.50"))
+

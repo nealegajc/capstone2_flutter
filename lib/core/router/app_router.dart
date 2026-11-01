@@ -9,9 +9,7 @@ import '../../ui/screens/activity_logs/activity_logs_screen.dart';
 import '../../ui/screens/alerts/alerts_screen.dart';
 import '../../ui/screens/auth/pin_login_screen.dart';
 import '../../ui/screens/camera_monitor/camera_monitor_screen.dart';
-import '../../ui/screens/camera_monitor/image_quality_screen.dart';
 import '../../ui/screens/camera_monitor/schedule_screen.dart';
-import '../../ui/screens/camera_monitor/shelf_area_detail_screen.dart';
 import '../../ui/screens/camera_monitor/shelf_check_history_screen.dart';
 import '../../ui/screens/dashboard/dashboard_screen.dart';
 import '../../ui/screens/help_guide/help_guide_screen.dart';
@@ -29,17 +27,20 @@ import '../../ui/screens/sync_status/sync_queue_screen.dart';
 import '../../ui/screens/sync_status/sync_status_screen.dart';
 import 'route_names.dart';
 
+final rootNavigatorKey = GlobalKey<NavigatorState>(debugLabel: 'rootNavigator');
+
 final appRouterProvider = Provider<GoRouter>((ref) {
-  final authState = ref.watch(authNotifierProvider);
+  final isAuthenticated = ref.watch(authNotifierProvider.select((s) => s.isAuthenticated));
 
   return GoRouter(
+    navigatorKey: rootNavigatorKey,
     initialLocation: AppRoutePaths.login,
     debugLogDiagnostics: false,
     redirect: (BuildContext context, GoRouterState state) {
       final isLoggingIn = state.matchedLocation == AppRoutePaths.login;
 
       // If not authenticated, ensure user stays on login screen
-      if (!authState.isAuthenticated) {
+      if (!isAuthenticated) {
         return isLoggingIn ? null : AppRoutePaths.login;
       }
 
@@ -114,14 +115,6 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                 const NoTransitionPage(child: CameraMonitorScreen()),
           ),
 
-          // Fig 3.20: Shelf Area (ROI) Detail Screen
-          GoRoute(
-            path: AppRoutePaths.roiDetail,
-            name: AppRouteNames.roiDetail,
-            pageBuilder: (context, state) =>
-                const NoTransitionPage(child: ShelfAreaDetailScreen()),
-          ),
-
           // Fig 3.21: Shelf Check Schedule Screen
           GoRoute(
             path: AppRoutePaths.schedule,
@@ -136,14 +129,6 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             name: AppRouteNames.shelfHistory,
             pageBuilder: (context, state) =>
                 const NoTransitionPage(child: ShelfCheckHistoryScreen()),
-          ),
-
-          // Fig 3.23: Image Quality & Scanning Status Screen
-          GoRoute(
-            path: AppRoutePaths.imageQuality,
-            name: AppRouteNames.imageQuality,
-            pageBuilder: (context, state) =>
-                const NoTransitionPage(child: ImageQualityScreen()),
           ),
 
           // Fig 3.25: Restock Management Screen

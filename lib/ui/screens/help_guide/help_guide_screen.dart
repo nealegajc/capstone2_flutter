@@ -24,7 +24,7 @@ class _HelpGuideScreenState extends State<HelpGuideScreen> {
     },
     {
       'id': 'shelf_layout',
-      'label': '2. Shelf Layout & Cap Codes',
+      'label': '2. Shelf Layout & Cap Stickers',
       'icon': Icons.shelves,
     },
     {
@@ -34,7 +34,7 @@ class _HelpGuideScreenState extends State<HelpGuideScreen> {
     },
     {
       'id': 'roi_calibration',
-      'label': '4. Adjusting Slot Grid',
+      'label': '4. Aligning Slot Positions',
       'icon': Icons.grid_view_rounded,
     },
     {
@@ -48,13 +48,18 @@ class _HelpGuideScreenState extends State<HelpGuideScreen> {
       'icon': Icons.move_to_inbox_rounded,
     },
     {
+      'id': 'sales_reports',
+      'label': '7. Sales & Sharing Reports',
+      'icon': Icons.point_of_sale_rounded,
+    },
+    {
       'id': 'alerts_troubleshoot',
-      'label': '7. Alerts & Problem Solving',
+      'label': '8. Alerts & Daily Best Practices',
       'icon': Icons.notifications_active_rounded,
     },
     {
       'id': 'security_autolock',
-      'label': '8. Security & Lock Screen',
+      'label': '9. Security PIN & Auto-Lock',
       'icon': Icons.lock_outline_rounded,
     },
   ];
@@ -69,7 +74,7 @@ class _HelpGuideScreenState extends State<HelpGuideScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Smart Shelf Master Training & Operations Guide'),
+        title: const Text('Otto Scents Smart Shelf - User Guide & Operations Manual'),
         actions: [
           Container(
             margin: const EdgeInsets.only(right: 16),
@@ -84,13 +89,13 @@ class _HelpGuideScreenState extends State<HelpGuideScreen> {
             child: const Row(
               children: [
                 Icon(
-                  Icons.school_rounded,
+                  Icons.menu_book_rounded,
                   color: AppColors.brandAccent,
                   size: 18,
                 ),
                 SizedBox(width: 8),
                 Text(
-                  'Staff Onboarding Handbook',
+                  'User Guide',
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w800,
@@ -123,7 +128,7 @@ class _HelpGuideScreenState extends State<HelpGuideScreen> {
                     fontSize: 14,
                   ),
                   decoration: InputDecoration(
-                    hintText: 'Search guides, instructions, cap codes, camera calibration, or troubleshooting...',
+                    hintText: 'Search guides, bottle cap codes, camera views, restocking, sales, or troubleshooting...',
                     prefixIcon: const Icon(
                       Icons.search_rounded,
                       color: AppColors.brandAccent,
@@ -207,318 +212,411 @@ class _HelpGuideScreenState extends State<HelpGuideScreen> {
             child: ListView(
               padding: const EdgeInsets.all(24),
               children: [
-                // 1. Welcome & Head-to-Toe Overview
+                // 1. Welcome & System Overview
                 if (_matchesCategory('overview')) ...[
                   _buildSectionHeader(
-                    title: '1. System Overview: Head-to-Toe Architecture',
-                    subtitle: 'Welcome to Otto Scents Smart Shelf! Here is how your automated retail system works.',
+                    title: '1. Welcome & How the Smart Shelf Works',
+                    subtitle: 'A complete overview of your automated perfume display shelf.',
                     icon: Icons.rocket_launch_rounded,
                     accentColor: AppColors.brandAccent,
                   ),
                   _buildGuideCard(
-                    title: 'Welcome to Your Smart Shelf Terminal',
-                    badge: 'Core Concept',
+                    title: 'Welcome to Otto Scents Smart Shelf',
+                    badge: 'Overview',
                     badgeColor: AppColors.brandAccent,
                     content: [
                       _p(
-                        'The Otto Scents Smart Shelf is an AI-powered retail inventory terminal designed to give you real-time visibility into your perfume inventory without manual barcode scanning.',
+                        'The Otto Scents Smart Shelf is an automated retail display that keeps track of your perfume inventory in real time using overhead cameras. Instead of manually scanning barcodes with a handheld scanner, overhead cameras automatically count bottles on the shelf whenever you trigger a scan.',
                       ),
                       _p(
-                        'The physical display shelf consists of 3 horizontal layers monitored by 6 synchronized overhead cameras (2 cameras per layer).',
+                        'The physical display shelf has 3 horizontal tiers monitored by 6 overhead cameras (2 cameras per tier):',
                       ),
                       _bullet([
-                        'Layer A (Top Shelf): Holds 10 Men\'s Fragrance variants (Slots A to K).',
-                        'Layer B (Middle Shelf): Holds 5 Men\'s (Slots A to E) & 5 Women\'s (Slots F to K) variants.',
-                        'Layer C (Bottom Shelf): Holds 10 Women\'s Fragrance variants (Slots A to K).',
+                        'Top Shelf (Tier A): Holds 10 Men\'s Fragrance positions (Trays A to K).',
+                        'Middle Shelf (Tier B): Holds 5 Men\'s (Trays A to E) and 5 Women\'s (Trays F to K) positions.',
+                        'Bottom Shelf (Tier C): Holds 10 Women\'s Fragrance positions (Trays A to K).',
                       ]),
                       _tip(
-                        'Total Capacity: 30 Fragrance Variants × 2 Sizes (100ml & 50ml) = 60 SKUs total. Each slot holds up to 5 bottles, for a maximum shelf capacity of 300 bottles.',
+                        'Total Capacity: 30 Fragrance Variants × 2 Bottle Sizes (100ml & 50ml) = 60 Products total. Each slot holds up to 5 bottles, giving a maximum capacity of 300 bottles across the entire display.',
                       ),
                     ],
                   ),
                   const SizedBox(height: 16),
                 ],
 
-                // 2. Shelf Layout & Cap OCR Codes
+                // 2. Shelf Layout & Bottle Cap Stickers
                 if (_matchesCategory('shelf_layout')) ...[
                   _buildSectionHeader(
-                    title: '2. Physical Shelf Layout & Cap OCR Codes',
-                    subtitle: 'How bottles are positioned in trays and how our vision system identifies each scent.',
+                    title: '2. Shelf Layout & Bottle Cap Stickers',
+                    subtitle: 'How perfume bottles are arranged in trays and identified by the cameras.',
                     icon: Icons.shelves,
                     accentColor: AppColors.statusGreen,
                   ),
                   _buildGuideCard(
-                    title: 'Perfume Tray Partition (Each Tray: 100ML Left • 50ML Right)',
-                    badge: 'Physical Layout',
+                    title: 'Tray Compartments: 100ML (Left) & 50ML (Right)',
+                    badge: 'Shelf Layout',
                     badgeColor: AppColors.statusGreen,
                     content: [
                       _p(
-                        '5 acrylic perfume trays are lined up in a single horizontal row across each camera view. Each individual tray is divided into 2 compartments:',
+                        'Each tier has 10 individual acrylic trays (5 trays under the left camera, 5 under the right camera). Every tray is split into two sections:',
                       ),
                       _bullet([
-                        'Left Half of Each Tray (100ML): Rendered in Emerald Cyan (#10B981) on the vision monitor.',
-                        'Right Half of Each Tray (50ML): Rendered in Rose Pink (#EC4899) on the vision monitor.',
-                        'Each tray holds up to 5 bottles of 100ml on the left and 5 bottles of 50ml on the right (10 bottles per tray).',
+                        'Left Side (100ML): Holds up to 5 large (100ml) perfume bottles.',
+                        'Right Side (50ML): Holds up to 5 compact (50ml) perfume bottles.',
+                        'Each tray holds a maximum of 10 bottles total (5 of 100ml + 5 of 50ml).',
                       ]),
+                      _p(
+                        'On the live camera screen, the 100ML slots are outlined in green/teal, and the 50ML slots are outlined in pink/purple for easy visual reference.',
+                      ),
                     ],
                   ),
                   const SizedBox(height: 12),
                   _buildGuideCard(
-                    title: 'Understanding the 3-Character Cap Code Structure',
-                    badge: 'OCR Standard',
+                    title: 'Understanding the 3-Character Bottle Cap Sticker Codes',
+                    badge: 'Cap Sticker Codes',
                     badgeColor: AppColors.statusBlue,
                     content: [
                       _p(
-                        'Every perfume cap features a high-contrast circular sticker with a unique 3-character code. The camera AI reads this code to identify the exact scent, slot, and size:',
+                        'Each perfume bottle has a circular sticker on top of its cap with a 3-character code (such as AA1 or BK2). This code identifies exactly which shelf, tray, and bottle size it belongs to:',
                       ),
                       _bullet([
-                        '1st Character = Shelf Layer (A = Top, B = Middle, C = Bottom)',
-                        '2nd Character = Tray Slot Letter (A, B, C, D, E, F, G, H, J, K)',
-                        '3rd Character = Bottle Size (1 = 100ML, 2 = 50ML)',
+                        '1st Character = Shelf Tier: A (Top Shelf), B (Middle Shelf), C (Bottom Shelf)',
+                        '2nd Character = Tray Position: Letters A, B, C, D, E, F, G, H, J, or K',
+                        '3rd Character = Bottle Size: 1 = 100ML (Left), 2 = 50ML (Right)',
                       ]),
                       _tip(
-                        'Example: "AA1" = Layer A (Top), Slot A, 100ML (e.g. Bvlgari Extreme 100ml).\nExample: "CA2" = Layer C (Bottom), Slot A, 50ML (e.g. Light Blue 50ml).',
+                        'Examples:\n• "AA1" = Top Shelf (A), Tray A, 100ML bottle.\n• "BA2" = Middle Shelf (B), Tray A, 50ML bottle.\n• "CK1" = Bottom Shelf (C), Tray K, 100ML bottle.',
                       ),
                     ],
                   ),
                   const SizedBox(height: 16),
                 ],
 
-                // 3. Camera Vision & Live Feeds
+                // 3. Live Shelf Cameras
                 if (_matchesCategory('camera_vision')) ...[
                   _buildSectionHeader(
-                    title: '3. 6-Camera Vision & Live Monitor',
-                    subtitle: 'Monitoring camera feeds, switching devices, and verifying live streams.',
+                    title: '3. Live Shelf Cameras & Video Feeds',
+                    subtitle: 'Viewing real-time camera feeds and checking camera connections.',
                     icon: Icons.videocam_rounded,
                     accentColor: AppColors.maleBlue,
                   ),
                   _buildGuideCard(
-                    title: 'Viewing Live Camera Feeds & Switching Cameras',
-                    badge: 'Vision Feeds',
+                    title: 'Checking Live Camera Feeds',
+                    badge: 'Camera Feeds',
                     badgeColor: AppColors.maleBlue,
                     content: [
                       _p(
-                        'Navigate to "Shelf Camera" in the left sidebar to open the 6-Camera Monitor.',
+                        'Tap "Shelf Camera" in the left sidebar navigation to view the live overhead camera feeds.',
                       ),
                       _p(
-                        'The top camera selector bar organizes the 6 mounted cameras into 3 shelf layers:',
+                        'The camera selector at the top organizes the 6 cameras by shelf tier:',
                       ),
                       _bullet([
-                        'Top Layer A (Male): Cam 1A (Left: Slots A–E) & Cam 1B (Right: Slots F–K)',
-                        'Middle Layer B (Mixed): Cam 2A (Left: Slots A–E) & Cam 2B (Right: Slots F–K)',
-                        'Bottom Layer C (Female): Cam 3A (Left: Slots A–E) & Cam 3B (Right: Slots F–K)',
+                        'Top Shelf: Camera 1A (Left: Trays A–E) & Camera 1B (Right: Trays F–K)',
+                        'Middle Shelf: Camera 2A (Left: Trays A–E) & Camera 2B (Right: Trays F–K)',
+                        'Bottom Shelf: Camera 3A (Left: Trays A–E) & Camera 3B (Right: Trays F–K)',
                       ]),
-                      _p('Connection Status Indicators:'),
+                      _p('Camera Status Dots:'),
                       _bullet([
-                        '🟢 Green Status Dot: Hardware camera is connected and recognized on that video node.',
-                        '⚪ Grey Status Dot: No camera is plugged into that USB/video port.',
+                        '🟢 Green Dot: Camera is plugged in, powered, and delivering live video.',
+                        '⚪ Grey Dot: Camera is disconnected or unplugged.',
                       ]),
                       _tip(
-                        'Tap on any camera card at the top to instantly view its live stream and calibrate its tray ROI.',
+                        'Tap any camera tab to view its live feed immediately. Live feeds show current shelf conditions and allow you to verify bottle placements in real time.',
                       ),
                     ],
                   ),
                   const SizedBox(height: 16),
                 ],
 
-                // 4. Touch ROI Calibration
+                // 4. Aligning Slot Positions
                 if (_matchesCategory('roi_calibration')) ...[
                   _buildSectionHeader(
-                    title: '4. Touch & Reshape ROI Calibration',
-                    subtitle: 'How to adjust and align the Region of Interest (ROI) to your physical shelf trays.',
+                    title: '4. Aligning Shelf Slot Positions',
+                    subtitle: 'How to adjust slot detection boxes if trays are moved or nudged.',
                     icon: Icons.crop_free_rounded,
                     accentColor: AppColors.brandGold,
                   ),
                   _buildGuideCard(
-                    title: 'Calibrating the Single-Row Tray ROI Box',
-                    badge: 'Step-by-Step',
+                    title: 'Adjusting Slot Positions (Slot Alignment)',
+                    badge: 'Easy Alignment',
                     badgeColor: AppColors.brandGold,
                     content: [
                       _p(
-                        'When cameras are first mounted or repositioned, calibrate the Region of Interest so the AI looks only at the perfume bottles:',
+                        'If a shelf tray is bumped or repositioned during cleaning or restocking, you can easily align the camera detection boxes to match the physical tray location:',
                       ),
                       _step(
                         1,
-                        'Open "Shelf Camera" from the sidebar and select the camera you wish to align.',
+                        'Open "Shelf Camera" from the sidebar and select the camera for the shelf tier you want to adjust.',
                       ),
                       _step(
                         2,
-                        'Tap the green "Touch & Reshape ROI" button in the top action bar to enter calibration mode.',
+                        'Tap the "Adjust Slot Positions" button on the screen.',
                       ),
                       _step(
                         3,
-                        'Drag the body of the ROI box to center it over the single row of physical trays.',
+                        'Drag the detection box to center it directly over the row of trays.',
                       ),
                       _step(
                         4,
-                        'Drag any of the 8 circular handles (4 corners + 4 edges) to resize the box until it tightly frames the 5 trays.',
+                        'Use the circular corner and edge handles to resize the box until it snugly frames the 5 trays.',
                       ),
                       _step(
                         5,
-                        'Verify that each tray\'s left compartment aligns with 100ML bottles (Emerald) and the right compartment aligns with 50ML bottles (Rose).',
+                        'Make sure the left green half covers the 100ML bottles and the right pink half covers the 50ML bottles.',
                       ),
                       _step(
                         6,
-                        'Tap "Save Tray ROI" to save the calibrated coordinates to local SQLite and cloud storage.',
+                        'Tap "Save Slot Positions" to save your new alignment.',
                       ),
                       _tip(
-                        'Double-tap inside the box or tap "Reset ROI" if you ever want to return to default calibration dimensions.',
+                        'You can tap "Reset Positions" anytime if you want to restore the default factory alignment.',
                       ),
                     ],
                   ),
                   const SizedBox(height: 16),
                 ],
 
-                // 5. Inventory Management & Capacity Lock
+                // 5. Managing Perfumes & Stock Catalog
                 if (_matchesCategory('inventory_catalog')) ...[
                   _buildSectionHeader(
-                    title: '5. Inventory Catalog & Capacity Lock',
-                    subtitle: 'Registering products, updating prices, and managing the 30-variant shelf capacity.',
+                    title: '5. Managing Perfumes & Shelf Capacity',
+                    subtitle: 'Checking stock, updating retail prices, seasonal perfumes, and the 30-variant limit.',
                     icon: Icons.inventory_2_rounded,
                     accentColor: AppColors.femalePink,
                   ),
                   _buildGuideCard(
-                    title: 'Adding, Editing & Managing Products',
-                    badge: 'Catalog Control',
+                    title: 'Viewing & Editing Perfumes in Your Store',
+                    badge: 'Store Catalog',
                     badgeColor: AppColors.femalePink,
                     content: [
                       _p(
-                        'Go to "Inventory" in the sidebar to view all perfume variants currently in your store catalog.',
+                        'Tap "Inventory" in the sidebar to browse all fragrances in your store.',
                       ),
                       _p(
-                        'Search by scent name, brand, or filter by Layer (A, B, C), Size (100ml, 50ml), or Gender (Men, Women).',
+                        'You can quickly search by fragrance name, brand, or filter by Shelf Tier (A, B, C), Size (100ml, 50ml), or Gender (Men, Women).',
                       ),
                       _step(
                         1,
-                        'To edit an existing scent: Tap the Edit (pencil) icon on its card.',
+                        'Editing a Perfume: Tap the Edit (pencil) button on any perfume card to update its name, description, retail price, or stock levels.',
                       ),
                       _step(
                         2,
-                        'To auto-generate cap codes: Select Layer, Gender, and Size, then tap "Auto-Generate Cap Code" to produce the standard 3-character code (e.g. AA1).',
+                        'Seasonal / Paused Fragrances: If a fragrance is out of season or temporarily unavailable, switch its status to "Seasonal / Off". The system will pause camera scanning for that slot and skip low-stock warnings.',
                       ),
                       _step(
                         3,
-                        'To delete a discontinued fragrance: Tap "Delete Product" in the edit screen. This immediately frees up a tray slot for a new fragrance.',
+                        'Deleting a Fragrance: To replace a discontinued fragrance with a new one, tap "Delete Product" in the edit screen. This frees up the slot for a new fragrance.',
                       ),
                     ],
                   ),
                   const SizedBox(height: 12),
                   _buildGuideCard(
-                    title: 'Understanding the 30-Variant Physical Shelf Capacity Lock',
-                    badge: 'Safety Rule',
+                    title: 'Understanding the 30-Variant Shelf Capacity',
+                    badge: 'Capacity Rule',
                     badgeColor: AppColors.statusOrange,
                     content: [
                       _p(
-                        'The physical shelf has exactly 30 tray slots (10 per layer × 3 layers).',
+                        'The physical shelf has exactly 30 tray positions (10 on each of the 3 tiers).',
                       ),
                       _warning(
-                        'When all 30 slots are occupied, the "Add New Product" button locks and switches to "Shelf Full (30/30)". You cannot add a 31st scent because there are no physical slots remaining.',
+                        'When all 30 positions are assigned to fragrances, the "Add New Product" button shows "Shelf Full (30/30)". You cannot add more products until an existing fragrance is removed or edited.',
                       ),
                       _tip(
-                        'To introduce a new fragrance, edit an existing variant to replace it or delete an obsolete scent to free up a slot.',
+                        'To introduce a new scent, simply edit an existing discontinued scent to update its name and bottle cap sticker code.',
                       ),
                     ],
                   ),
                   const SizedBox(height: 16),
                 ],
 
-                // 6. Restocking & Receiving Verification
+                // 6. Restocking & Receiving Deliveries
                 if (_matchesCategory('restock_flow')) ...[
                   _buildSectionHeader(
-                    title: '6. Restocking & Receiving Verification',
-                    subtitle: 'Logging incoming supplier deliveries and checking them against vision scans.',
+                    title: '6. Restocking & Receiving Deliveries',
+                    subtitle: 'Quickly logging new bottle shipments and verifying shelf counts.',
                     icon: Icons.move_to_inbox_rounded,
                     accentColor: AppColors.statusGreen,
                   ),
                   _buildGuideCard(
-                    title: 'How to Log an Incoming Restock Delivery',
+                    title: 'Fast 2-Step Restocking Flow',
                     badge: 'Restock Flow',
                     badgeColor: AppColors.statusGreen,
                     content: [
+                      _p(
+                        'When new perfume stock arrives from the supplier, logging it into the system takes just seconds:',
+                      ),
                       _step(
                         1,
-                        'Go to "Restock Records" in the sidebar and tap "Log New Restock".',
+                        'Go to "Restock & Deliveries" in the sidebar and tap "Log Restock".',
                       ),
                       _step(
                         2,
-                        'Select the perfume product being delivered and specify the quantity of bottles (e.g. 5 bottles).',
+                        'Select the fragrance being restocked from the visual cards.',
                       ),
                       _step(
                         3,
-                        'Tap "Submit Restock Delivery". The batch is logged in SQLite and inventory is updated.',
+                        'Use the quick quantity buttons: tap "+1", "+5", or "Fill Tray (5)".',
                       ),
                       _step(
                         4,
-                        'Place the bottles into their designated shelf tray slot.',
+                        'Tap "Confirm Restock" to record the delivery.',
                       ),
                       _step(
                         5,
-                        'Navigate to the Dashboard and tap "SCAN SHELF NOW" to verify that the camera detects the newly restocked bottles.',
+                        'Place the new bottles into their assigned shelf tray with cap stickers facing upward.',
+                      ),
+                      _step(
+                        6,
+                        'On the Dashboard, tap "CHECK SHELF NOW" to run a scan and verify the updated bottle count.',
                       ),
                     ],
                   ),
                   const SizedBox(height: 16),
                 ],
 
-                // 7. Alerts & Troubleshooting
+                // 7. Sales & Sharing Reports
+                if (_matchesCategory('sales_reports')) ...[
+                  _buildSectionHeader(
+                    title: '7. Recording Sales & Sharing Reports',
+                    subtitle: 'Logging customer purchases and downloading reports directly to your phone via QR code.',
+                    icon: Icons.point_of_sale_rounded,
+                    accentColor: AppColors.statusBlue,
+                  ),
+                  _buildGuideCard(
+                    title: 'Recording a Retail Sale',
+                    badge: 'Sales',
+                    badgeColor: AppColors.statusBlue,
+                    content: [
+                      _p(
+                        'When a customer purchases a bottle:',
+                      ),
+                      _step(
+                        1,
+                        'Go to "Sales / Reports" in the sidebar.',
+                      ),
+                      _step(
+                        2,
+                        'Tap "Record New Sale" at the top right.',
+                      ),
+                      _step(
+                        3,
+                        'Select the fragrance sold, enter quantity, and tap "Complete Sale".',
+                      ),
+                      _p(
+                        'The system records the revenue, updates remaining stock, and logs the sale in today\'s sales summary.',
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  _buildGuideCard(
+                    title: 'Direct Wi-Fi Phone Transfer via QR Code',
+                    badge: 'Share Reports',
+                    badgeColor: AppColors.brandAccent,
+                    content: [
+                      _p(
+                        'You do not need a USB drive or flash drive to export your sales and inventory reports. You can download them directly to your smartphone (iPhone or Android):',
+                      ),
+                      _step(
+                        1,
+                        'Under "Sales / Reports", tap "View & Share Reports".',
+                      ),
+                      _step(
+                        2,
+                        'The screen will display a formatted report summary and a large QR Code.',
+                      ),
+                      _step(
+                        3,
+                        'Make sure your smartphone is connected to the same store Wi-Fi network as the kiosk.',
+                      ),
+                      _step(
+                        4,
+                        'Open your phone\'s camera app and scan the QR code.',
+                      ),
+                      _step(
+                        5,
+                        'Tap the link that appears on your phone screen to instantly download the branded PDF summary or clean CSV spreadsheet directly to your phone.',
+                      ),
+                      _tip(
+                        'No special app or account is required on your phone! Any phone camera can scan the QR code and download the files instantly.',
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                ],
+
+                // 8. Alerts & Daily Best Practices
                 if (_matchesCategory('alerts_troubleshoot')) ...[
                   _buildSectionHeader(
-                    title: '7. Alerts, Safeguards & Offline Sync',
-                    subtitle: 'Resolving misplaced items, low stock warnings, and offline operation.',
+                    title: '8. Alerts, Problem Solving & Daily Best Practices',
+                    subtitle: 'Keeping your shelf running smoothly and resolving common alerts.',
                     icon: Icons.notifications_active_rounded,
                     accentColor: AppColors.statusRed,
                   ),
                   _buildGuideCard(
-                    title: 'Common Alerts & How to Resolve Them',
-                    badge: 'Alerts Guide',
+                    title: 'Crucial Daily Best Practices',
+                    badge: 'Best Practices',
+                    badgeColor: AppColors.statusOrange,
+                    content: [
+                      _bullet([
+                        'Do Not Remove or Restock Bottles During a Scan: Keep hands away from the shelf while the cameras are scanning to avoid inaccurate counts.',
+                        'Do Not Cover Perfume Caps or Overhead Cameras: Ensure camera lenses are clear and nothing is resting on top of bottles or cameras.',
+                        'Upright Bottle Caps: Make sure bottle caps are closed and cap stickers are facing directly upward so the cameras can detect each bottle.',
+                      ]),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  _buildGuideCard(
+                    title: 'Common Alerts & How to Fix Them',
+                    badge: 'Alerts',
                     badgeColor: AppColors.statusRed,
                     content: [
                       _alertItem(
                         icon: Icons.warning_amber_rounded,
                         color: AppColors.statusRed,
-                        title: '🔴 Low Stock Alert',
-                        desc: 'Triggered when detected bottles drop to 2 or fewer. Log a restock delivery or replenish bottles from backroom inventory.',
+                        title: 'Low Stock Alert',
+                        desc: 'Appears when 2 or fewer bottles remain in a slot. Restock the slot with new bottles from your storage and tap "CHECK SHELF NOW".',
                       ),
                       const SizedBox(height: 10),
                       _alertItem(
                         icon: Icons.move_up_rounded,
                         color: AppColors.statusOrange,
-                        title: '🟠 Misplaced Product Alert',
-                        desc: 'A bottle was returned to the wrong tray or shelf layer. Locate the bottle and place it back into its assigned slot (e.g. move AA1 back to Layer A Top Left).',
+                        title: 'Misplaced Bottle Alert',
+                        desc: 'A bottle was placed into the wrong tray. Move the bottle back to its correct slot (check the cap sticker code, e.g. move AA1 back to Top Shelf, Tray A).',
                       ),
                       const SizedBox(height: 10),
                       _alertItem(
-                        icon: Icons.high_quality_rounded,
+                        icon: Icons.visibility_off_rounded,
                         color: AppColors.brandGold,
-                        title: '🟡 Image Quality / Glare Safeguard',
-                        desc: 'Camera was temporarily blocked or lighting was too dim. Ensure shelf LED lights are on and tap "SCAN SHELF NOW" to re-verify.',
+                        title: 'Camera View Obstructed Alert',
+                        desc: 'A camera lens may be covered or dirty. Clean the camera lens with a microfiber cloth and verify that no signs or foreign objects block the view.',
                       ),
                     ],
                   ),
                   const SizedBox(height: 12),
                   _buildGuideCard(
-                    title: '100% Offline Capability & Automatic Cloud Sync',
-                    badge: 'Sync Engine',
+                    title: '100% Offline Capability & Automatic Cloud Backup',
+                    badge: 'Offline-First',
                     badgeColor: AppColors.statusBlue,
                     content: [
                       _p(
-                        'Your terminal is fully offline-first! If your store internet drops:',
+                        'Your smart shelf terminal is built to work 100% offline. If your store\'s internet connection ever drops:',
                       ),
                       _bullet([
-                        'All scans, sales, inventory adjustments, and logs continue functioning without interruption.',
-                        'Transactions are stored locally in the high-speed SQLite database.',
-                        'When Wi-Fi reconnects, all pending events automatically synchronize to Supabase Cloud.',
+                        'All scans, sales, restocks, and inventory checks continue working normally without pause.',
+                        'All records are saved securely inside the kiosk\'s local storage.',
+                        'When your Wi-Fi reconnects, all pending records automatically back up to the cloud without needing any manual action.',
                       ]),
                     ],
                   ),
                   const SizedBox(height: 16),
                 ],
 
-                // 8. Security & Inactivity Auto-Lock
+                // 9. Security PIN & Auto-Lock
                 if (_matchesCategory('security_autolock')) ...[
                   _buildSectionHeader(
-                    title: '8. Security PIN & Inactivity Auto-Lock',
-                    subtitle: 'Protecting your terminal with PIN authentication and automatic idle locking.',
+                    title: '9. Security PIN & Inactivity Auto-Lock',
+                    subtitle: 'Protecting your terminal and managing lock screen settings.',
                     icon: Icons.lock_outline_rounded,
                     accentColor: AppColors.brandAccent,
                   ),
@@ -528,16 +626,17 @@ class _HelpGuideScreenState extends State<HelpGuideScreen> {
                     badgeColor: AppColors.brandAccent,
                     content: [
                       _p(
-                        'To protect store data from unauthorized changes, the terminal includes access security:',
+                        'To prevent unauthorized changes when the kiosk is unattended, the terminal includes PIN protection:',
                       ),
                       _bullet([
-                        '6-Digit Security PIN: Default is "123456". You can change this anytime under Settings > Security PIN.',
-                        'Inactivity Auto-Lock: Automatically locks the screen if no touch interaction is detected for 3 minutes (default).',
-                        'Unified Lock Button: Located in the top-right bar with live countdown badge (e.g. 🔒 Lock Kiosk [⏱️ 2:52]). Tap it anytime to lock instantly.',
-                        'Configuring Timeout: Go to Settings > Terminal Inactivity Auto-Lock to select 1m, 2m, 3m, 5m, 10m, or Disabled.',
+                        '6-Digit Security PIN: Used to unlock the kiosk. You can change your PIN anytime under Settings > Security PIN.',
+                        'Inactivity Auto-Lock: Automatically locks the screen if no one touches the display for 3 minutes (default).',
+                        'Instant Lock Button: Located in the top bar with a live countdown timer (e.g. 🔒 Lock Kiosk [⏱️ 2:50]). Tap it anytime to lock immediately.',
+                        'Change Auto-Lock Timer: Under Settings, select your preferred idle timeout: 1m, 2m, 3m, 5m, 10m, or Disabled.',
+                        'Forgot PIN Recovery: If you forget your PIN, tap "Forgot PIN?" on the lock screen and answer the 3 security questions to reset your 6-digit PIN.',
                       ]),
                       _tip(
-                        'Any touch, tap, or mouse movement on the screen instantly resets the idle timer back to your configured timeout.',
+                        'Any touch, tap, or interaction on the screen immediately resets the auto-lock timer back to full duration.',
                       ),
                     ],
                   ),

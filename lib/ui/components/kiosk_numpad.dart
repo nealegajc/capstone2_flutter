@@ -103,29 +103,27 @@ class _NumpadKey extends StatefulWidget {
 class _NumpadKeyState extends State<_NumpadKey> {
   bool _isPressed = false;
 
-  void _handleTapDown() {
+  void _handlePointerDown(PointerDownEvent event) {
     if (widget.onTap == null) return;
     if (mounted) {
       setState(() => _isPressed = true);
     }
     SystemSound.play(SystemSoundType.click);
     HapticFeedback.lightImpact();
-  }
-
-  void _handleTapUp() {
-    if (mounted) {
-      setState(() => _isPressed = false);
-    }
-  }
-
-  void _handleTapCancel() {
-    if (mounted) {
-      setState(() => _isPressed = false);
-    }
-  }
-
-  void _handleTap() {
+    Feedback.forTap(context);
     widget.onTap?.call();
+  }
+
+  void _handlePointerUp(PointerUpEvent event) {
+    if (mounted) {
+      setState(() => _isPressed = false);
+    }
+  }
+
+  void _handlePointerCancel(PointerCancelEvent event) {
+    if (mounted) {
+      setState(() => _isPressed = false);
+    }
   }
 
   @override
@@ -155,12 +153,11 @@ class _NumpadKeyState extends State<_NumpadKey> {
       enabled: isEnabled,
       label: 'Digit ${widget.label}',
       onTap: widget.onTap,
-      child: GestureDetector(
+      child: Listener(
         behavior: HitTestBehavior.opaque,
-        onTapDown: isEnabled ? (_) => _handleTapDown() : null,
-        onTapUp: isEnabled ? (_) => _handleTapUp() : null,
-        onTapCancel: isEnabled ? () => _handleTapCancel() : null,
-        onTap: isEnabled ? () => _handleTap() : null,
+        onPointerDown: isEnabled ? _handlePointerDown : null,
+        onPointerUp: isEnabled ? _handlePointerUp : null,
+        onPointerCancel: isEnabled ? _handlePointerCancel : null,
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
           child: AnimatedScale(
@@ -198,8 +195,8 @@ class _NumpadKeyState extends State<_NumpadKey> {
                   widget.label,
                   style: TextStyle(
                     color: textColor,
-                    fontSize: 36,
-                    fontWeight: FontWeight.w700,
+                    fontSize: 32,
+                    fontWeight: FontWeight.w800,
                     letterSpacing: 0.5,
                   ),
                 ),
@@ -233,29 +230,27 @@ class _NumpadActionKey extends StatefulWidget {
 class _NumpadActionKeyState extends State<_NumpadActionKey> {
   bool _isPressed = false;
 
-  void _handleTapDown() {
+  void _handlePointerDown(PointerDownEvent event) {
     if (widget.onTap == null) return;
     if (mounted) {
       setState(() => _isPressed = true);
     }
     SystemSound.play(SystemSoundType.click);
     HapticFeedback.lightImpact();
-  }
-
-  void _handleTapUp() {
-    if (mounted) {
-      setState(() => _isPressed = false);
-    }
-  }
-
-  void _handleTapCancel() {
-    if (mounted) {
-      setState(() => _isPressed = false);
-    }
-  }
-
-  void _handleTap() {
+    Feedback.forTap(context);
     widget.onTap?.call();
+  }
+
+  void _handlePointerUp(PointerUpEvent event) {
+    if (mounted) {
+      setState(() => _isPressed = false);
+    }
+  }
+
+  void _handlePointerCancel(PointerCancelEvent event) {
+    if (mounted) {
+      setState(() => _isPressed = false);
+    }
   }
 
   @override
@@ -275,12 +270,11 @@ class _NumpadActionKeyState extends State<_NumpadActionKey> {
       enabled: isEnabled,
       label: semanticLabel,
       onTap: widget.onTap,
-      child: GestureDetector(
+      child: Listener(
         behavior: HitTestBehavior.opaque,
-        onTapDown: isEnabled ? (_) => _handleTapDown() : null,
-        onTapUp: isEnabled ? (_) => _handleTapUp() : null,
-        onTapCancel: isEnabled ? () => _handleTapCancel() : null,
-        onTap: isEnabled ? () => _handleTap() : null,
+        onPointerDown: isEnabled ? _handlePointerDown : null,
+        onPointerUp: isEnabled ? _handlePointerUp : null,
+        onPointerCancel: isEnabled ? _handlePointerCancel : null,
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
           child: AnimatedScale(
@@ -321,14 +315,14 @@ class _NumpadActionKeyState extends State<_NumpadActionKey> {
                   Icon(
                     widget.icon,
                     color: isEnabled ? Colors.white : Colors.white54,
-                    size: 26,
+                    size: 28,
                   ),
                   const SizedBox(height: 3),
                   Text(
                     widget.label,
                     style: TextStyle(
                       color: isEnabled ? Colors.white : Colors.white54,
-                      fontSize: 12,
+                      fontSize: 16,
                       fontWeight: FontWeight.w800,
                       letterSpacing: 1.2,
                     ),
