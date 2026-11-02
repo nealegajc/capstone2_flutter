@@ -539,8 +539,8 @@ class _CameraMonitorScreenState extends ConsumerState<CameraMonitorScreen> {
                       // 3. Hardware Assignment Settings Dialog
                       OutlinedButton.icon(
                         onPressed: () => CameraAssignmentDialog.show(context),
-                        icon: const Icon(Icons.tune_rounded, size: 18),
-                        label: const Text('Camera Settings'),
+                        icon: const Icon(Icons.health_and_safety_rounded, size: 18),
+                        label: const Text('Hardware Diagnostics'),
                       ),
                       const SizedBox(width: 10),
 

@@ -771,8 +771,8 @@ class SettingsScreen extends ConsumerWidget {
                             OutlinedButton.icon(
                               onPressed: () =>
                                   CameraAssignmentDialog.show(context),
-                              icon: const Icon(Icons.tune_rounded, size: 16),
-                              label: const Text('Connect Webcams'),
+                              icon: const Icon(Icons.health_and_safety_outlined, size: 16),
+                              label: const Text('Camera Diagnostics'),
                               style: OutlinedButton.styleFrom(
                                 side: BorderSide(color: context.borderColor),
                                 shape: RoundedRectangleBorder(
