@@ -37,19 +37,19 @@ class _KioskShellState extends ConsumerState<KioskShell> {
       return 1;
     }
     if (location.startsWith(AppRoutePaths.dashboard)) return 0;
-    if (location.startsWith(AppRoutePaths.alerts)) return 3;
-    if (location.startsWith(AppRoutePaths.restock) ||
+    if (location.startsWith(AppRoutePaths.alerts) ||
+        location.startsWith(AppRoutePaths.restock) ||
         location.startsWith(AppRoutePaths.createRestock)) {
-      return 4;
+      return 3;
     }
     if (location.startsWith(AppRoutePaths.syncStatus) ||
         location.startsWith(AppRoutePaths.syncQueue)) {
-      return 5;
+      return 4;
     }
-    if (location.startsWith(AppRoutePaths.reports)) return 6;
-    if (location.startsWith(AppRoutePaths.activityLogs)) return 7;
-    if (location.startsWith(AppRoutePaths.settings)) return 8;
-    if (location.startsWith(AppRoutePaths.helpGuide)) return 9;
+    if (location.startsWith(AppRoutePaths.reports)) return 5;
+    if (location.startsWith(AppRoutePaths.activityLogs)) return 6;
+    if (location.startsWith(AppRoutePaths.settings)) return 7;
+    if (location.startsWith(AppRoutePaths.helpGuide)) return 8;
     return 0;
   }
 
@@ -68,21 +68,18 @@ class _KioskShellState extends ConsumerState<KioskShell> {
         context.go(AppRoutePaths.alerts);
         break;
       case 4:
-        context.go(AppRoutePaths.restock);
-        break;
-      case 5:
         context.go(AppRoutePaths.syncStatus);
         break;
-      case 6:
+      case 5:
         context.go(AppRoutePaths.reports);
         break;
-      case 7:
+      case 6:
         context.go(AppRoutePaths.activityLogs);
         break;
-      case 8:
+      case 7:
         context.go(AppRoutePaths.settings);
         break;
-      case 9:
+      case 8:
         context.go(AppRoutePaths.helpGuide);
         break;
     }
@@ -460,13 +457,6 @@ class _KioskShellState extends ConsumerState<KioskShell> {
                                 badgeCount: activeAlertCount,
                                 badgeColor: AppColors.statusRed,
                               ),
-                              _buildNavItem(
-                                4,
-                                'Restock & Deliveries',
-                                Icons.move_to_inbox_rounded,
-                                selectedIndex,
-                                isDark,
-                              ),
 
                               const SizedBox(height: 12),
                               _buildSectionHeader(
@@ -474,7 +464,7 @@ class _KioskShellState extends ConsumerState<KioskShell> {
                                 textSecondary,
                               ),
                               _buildNavItem(
-                                5,
+                                4,
                                 'Cloud Backup',
                                 Icons.cloud_done_rounded,
                                 selectedIndex,
@@ -483,28 +473,28 @@ class _KioskShellState extends ConsumerState<KioskShell> {
                                 badgeColor: AppColors.statusOrange,
                               ),
                               _buildNavItem(
-                                6,
+                                5,
                                 'Sales & Reports',
                                 Icons.insights_rounded,
                                 selectedIndex,
                                 isDark,
                               ),
                               _buildNavItem(
-                                7,
+                                6,
                                 'Activity History',
                                 Icons.history_rounded,
                                 selectedIndex,
                                 isDark,
                               ),
                               _buildNavItem(
-                                8,
+                                7,
                                 'Settings',
                                 Icons.settings_rounded,
                                 selectedIndex,
                                 isDark,
                               ),
                               _buildNavItem(
-                                9,
+                                8,
                                 'User Guide',
                                 Icons.menu_book_rounded,
                                 selectedIndex,
@@ -516,7 +506,6 @@ class _KioskShellState extends ConsumerState<KioskShell> {
                         _buildSidebarFooter(
                           isDark,
                           textPrimary,
-                          textSecondary,
                           headerBorder,
                         ),
                       ],
@@ -657,7 +646,6 @@ class _KioskShellState extends ConsumerState<KioskShell> {
   Widget _buildSidebarFooter(
     bool isDark,
     Color textPrimary,
-    Color textSecondary,
     Color headerBorder,
   ) {
     return Container(
@@ -668,76 +656,43 @@ class _KioskShellState extends ConsumerState<KioskShell> {
             : AppColors.lightSurfaceElevated.withValues(alpha: 0.8),
         border: Border(top: BorderSide(color: headerBorder, width: 1.5)),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
+      child: Row(
         children: [
-          Row(
-            children: [
-              Container(
-                width: 8,
-                height: 8,
-                decoration: const BoxDecoration(
-                  color: AppColors.statusGreen,
-                  shape: BoxShape.circle,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  'Otto Scents Kiosk',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w800,
-                    color: textPrimary,
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(
-                  color: AppColors.statusGreen.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: const Text(
-                  'ONLINE',
-                  style: TextStyle(
-                    fontSize: 9,
-                    fontWeight: FontWeight.w900,
-                    color: AppColors.statusGreen,
-                    letterSpacing: 0.5,
-                  ),
-                ),
-              ),
-            ],
+          Container(
+            width: 8,
+            height: 8,
+            decoration: const BoxDecoration(
+              color: AppColors.statusGreen,
+              shape: BoxShape.circle,
+            ),
           ),
-          const SizedBox(height: 6),
-          Wrap(
-            alignment: WrapAlignment.spaceBetween,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            spacing: 4,
-            runSpacing: 2,
-            children: [
-              Text(
-                'Kiosk Terminal #01',
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  color: textSecondary,
-                ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'Otto Scents Kiosk',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w800,
+                color: textPrimary,
               ),
-              Text(
-                'v2.4.0 • Linux',
-                style: TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w600,
-                  color: isDark
-                      ? AppColors.darkTextMuted
-                      : AppColors.lightTextMuted,
-                ),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+            decoration: BoxDecoration(
+              color: AppColors.statusGreen.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: const Text(
+              'ONLINE',
+              style: TextStyle(
+                fontSize: 9,
+                fontWeight: FontWeight.w900,
+                color: AppColors.statusGreen,
+                letterSpacing: 0.5,
               ),
-            ],
+            ),
           ),
         ],
       ),

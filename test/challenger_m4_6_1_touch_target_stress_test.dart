@@ -206,15 +206,19 @@ void main() {
       final navLabels = [
         'Store Overview',
         'Fragrance Stock',
-        'Live Shelf & Cameras',
+        'Live Shelf Cameras',
         'Alerts & Warnings',
-        'Restock & Deliveries',
         'Cloud Backup',
         'Sales & Reports',
         'Activity History',
         'Settings',
-        'Staff Handbook',
+        'User Guide',
       ];
+      expect(
+        find.text('Restock & Deliveries'),
+        findsNothing,
+        reason: 'Restock & Deliveries must be removed from sidebar per R3',
+      );
       for (final label in navLabels) {
         var navTextFinder = find.text(label);
         if (navTextFinder.evaluate().isEmpty) {

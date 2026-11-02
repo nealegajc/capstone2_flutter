@@ -73,26 +73,6 @@ class RestockScreen extends ConsumerWidget {
                               letterSpacing: -0.3,
                             ),
                           ),
-                          const SizedBox(width: 10),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 3,
-                            ),
-                            decoration: BoxDecoration(
-                              color: context.surfaceElevatedColor,
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(color: context.borderColor),
-                            ),
-                            child: Text(
-                              'Branch: $branch',
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w700,
-                                color: context.textSecondaryColor,
-                              ),
-                            ),
-                          ),
                         ],
                       ),
                       const SizedBox(height: 2),

@@ -112,8 +112,18 @@ class NetworkService extends ChangeNotifier {
     );
   }
 
+  bool _disposed = false;
+  bool get isDisposed => _disposed;
+
+  @override
+  void notifyListeners() {
+    if (_disposed) return;
+    super.notifyListeners();
+  }
+
   @override
   void dispose() {
+    _disposed = true;
     _monitorTimer?.cancel();
     _instance = null;
     super.dispose();

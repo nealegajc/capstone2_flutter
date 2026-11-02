@@ -306,7 +306,7 @@ void main() {
         }
         return false;
       });
-      expect(quickActionContainers, findsAtLeastNWidgets(3));
+      expect(quickActionContainers, findsNWidgets(3));
 
       // 3. Metric card height 160
       final summaryCardContainers = find.byWidgetPredicate((w) {

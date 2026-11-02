@@ -11,8 +11,7 @@ import '../../components/wifi_connection_dialog.dart';
 import '../../components/scan_workflow_dialog.dart';
 import '../../components/fragrance_pick_list_dialog.dart';
 import '../settings/camera_assignment_dialog.dart';
-import '../reports/record_sale_dialog.dart';
-import '../../../data/services/csv_export_service.dart';
+import '../reports/report_viewer_dialog.dart';
 
 class DashboardScreen extends ConsumerStatefulWidget {
   const DashboardScreen({super.key});
@@ -880,20 +879,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                               Expanded(
                                 child: _buildQuickActionButton(
                                   context: context,
-                                  title: 'Record Sale',
-                                  subtitle: 'In-store bottle purchase',
-                                  icon: Icons.point_of_sale_rounded,
-                                  color: AppColors.brandGold,
-                                  onTap: () => RecordSaleDialog.show(
-                                    context,
-                                    branch: branch,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: _buildQuickActionButton(
-                                  context: context,
                                   title: 'Log Restock',
                                   subtitle: 'Incoming bottle delivery',
                                   icon: Icons.move_to_inbox_rounded,
@@ -906,48 +891,14 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                               Expanded(
                                 child: _buildQuickActionButton(
                                   context: context,
-                                  title: 'Export Stock CSV',
-                                  subtitle: 'Download inventory log',
-                                  icon: Icons.download_rounded,
-                                  color: AppColors.maleBlue,
-                                  onTap: () async {
-                                    try {
-                                      final items = await ref
-                                          .read(sqliteServiceProvider)
-                                          .getInventoryRecords(branch);
-                                      final file = await CsvExportService
-                                          .instance
-                                          .exportInventorySummaryCsv(
-                                            items,
-                                            branch: branch,
-                                          );
-                                      if (context.mounted) {
-                                        ScaffoldMessenger.of(
-                                          context,
-                                        ).showSnackBar(
-                                          SnackBar(
-                                            content: Text(
-                                              '✓ Exported inventory to ${file.path}',
-                                            ),
-                                            backgroundColor:
-                                                AppColors.statusGreen,
-                                          ),
-                                        );
-                                      }
-                                    } catch (e) {
-                                      if (context.mounted) {
-                                        ScaffoldMessenger.of(
-                                          context,
-                                        ).showSnackBar(
-                                          SnackBar(
-                                            content: Text('Export failed: $e'),
-                                            backgroundColor:
-                                                AppColors.statusRed,
-                                          ),
-                                        );
-                                      }
-                                    }
-                                  },
+                                  title: 'View & Share Reports',
+                                  subtitle: 'Wi-Fi phone QR & stock tables',
+                                  icon: Icons.open_in_new_rounded,
+                                  color: AppColors.brandGold,
+                                  onTap: () => ReportViewerDialog.show(
+                                    context,
+                                    branch: branch,
+                                  ),
                                 ),
                               ),
                             ],

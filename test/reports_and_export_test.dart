@@ -306,9 +306,10 @@ void main() {
 
       await tester.pumpAndSettle();
 
-      // 1. Verify Header title and dynamic branch
+      // 1. Verify Header title and clean subtitle without branch jargon
       expect(find.text('Store Sales & Reports'), findsOneWidget);
-      expect(find.textContaining('Branch: San Pablo'), findsOneWidget);
+      expect(find.textContaining('Daily store performance, sales register, and wireless report sharing'), findsOneWidget);
+      expect(find.textContaining('Branch: San Pablo'), findsNothing);
 
       // 2. Verify Prominent Action Button: "Record New Sale"
       expect(find.text('Record New Sale'), findsOneWidget);

@@ -6,6 +6,8 @@ import '../../../core/router/route_names.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/theme_helper.dart';
 import '../../../data/models/alert_model.dart';
+import '../../../data/models/product_model.dart';
+import '../../../data/seeds/catalog_seed_data.dart';
 import '../../../data/services/sqlite_service.dart';
 import '../../../providers/kiosk_providers.dart';
 import '../../components/status_badge.dart';
@@ -263,6 +265,27 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                     ),
                   ),
                 ],
+                const SizedBox(width: 12),
+                ElevatedButton.icon(
+                  onPressed: () => context.push(AppRoutePaths.createRestock),
+                  icon: const Icon(Icons.move_to_inbox_rounded, size: 18),
+                  label: const Text('Log Restock'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.brandAccent,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 12,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    textStyle: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
               ],
             ),
           ),
@@ -352,26 +375,50 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                           timestamp: a.formattedTime,
                           statusLabel: statusLabel,
                           statusType: statusType,
-                          hasPerfumeCode: a.perfumeCode.isNotEmpty,
+                          hasPerfumeCode: a.perfumeCode.trim().isNotEmpty,
                           perfumeCode: a.perfumeCode,
                           stockCount: stockCount,
                           isHistory: _showHistory,
                           onRecordSale: () async {
+                            final code = a.perfumeCode.trim();
                             final sqlite = ref.read(sqliteServiceProvider);
-                            final product = await sqlite.getProductByCode(
-                              a.perfumeCode,
+                            var product = await sqlite.getProductByCode(
+                              code,
+                            );
+                            if (product == null) {
+                              final allProducts =
+                                  ref.read(masterProductsProvider).valueOrNull ??
+                                  [];
+                              product = allProducts
+                                  .where((p) => p.perfumeCode.trim() == code)
+                                  .firstOrNull;
+                            }
+                            product ??= CatalogSeedData.products
+                                .where((p) => p.perfumeCode.trim() == code)
+                                .firstOrNull;
+                            product ??= ProductModel(
+                              id: 'prod_$code',
+                              perfumeCode: code,
+                              name: SqliteService.getPerfumeFullName(
+                                code,
+                              ),
+                              bottleSize: code.endsWith('1')
+                                  ? '100ml'
+                                  : '50ml',
                             );
                             if (context.mounted) {
                               final recorded = await RecordSaleDialog.show(
                                 context,
                                 initialProduct: product,
                                 branch: branch,
+                                isLocked: true,
                               );
                               if (recorded == true) {
                                 await sqlite.markAlertRead(a.id);
                                 ref.invalidate(liveAlertsProvider(branch));
                                 ref.invalidate(resolvedAlertsHistoryProvider(branch));
                                 ref.invalidate(dashboardStatsProvider(branch));
+                                ref.invalidate(liveInventoryProvider(branch));
                               }
                             }
                           },
@@ -556,7 +603,6 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
     VoidCallback? onSecondaryAction,
     VoidCallback? onDismiss,
   }) {
-    final branch = ref.watch(currentBranchProvider).valueOrNull ?? 'San Pablo';
     Color accentColor;
     if (isHistory) {
       accentColor = AppColors.statusGreen;
@@ -576,8 +622,8 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
       }
     }
 
-    final String perfumeFullName = (hasPerfumeCode && perfumeCode.isNotEmpty)
-        ? SqliteService.getPerfumeFullName(perfumeCode)
+    final String perfumeFullName = (hasPerfumeCode && perfumeCode.trim().isNotEmpty)
+        ? SqliteService.getPerfumeFullName(perfumeCode.trim())
         : '';
 
     return Container(
@@ -727,7 +773,7 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                                 ),
                                 const SizedBox(width: 5),
                                 Text(
-                                  '$timestamp • $branch Shelf Station',
+                                  '$timestamp • Smart Shelf Display',
                                   style: TextStyle(
                                     fontSize: 12,
                                     color: context.textMutedColor,

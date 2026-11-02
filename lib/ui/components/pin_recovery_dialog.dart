@@ -304,7 +304,7 @@ class _PinRecoveryDialogState extends State<PinRecoveryDialog> {
                 _buildQuestionField(
                   fieldIndex: 0,
                   label: AppConstants.recoveryQuestion1,
-                  hint: 'Enter founding year (e.g., 2020)',
+                  hint: 'Enter founding year',
                   controller: _ans1Controller,
                   icon: Icons.calendar_today_rounded,
                 ),
@@ -314,7 +314,7 @@ class _PinRecoveryDialogState extends State<PinRecoveryDialog> {
                 _buildQuestionField(
                   fieldIndex: 1,
                   label: AppConstants.recoveryQuestion2,
-                  hint: 'Enter security answer (e.g., mj)',
+                  hint: 'Enter security answer',
                   controller: _ans2Controller,
                   icon: Icons.badge_outlined,
                 ),
@@ -324,7 +324,7 @@ class _PinRecoveryDialogState extends State<PinRecoveryDialog> {
                 _buildQuestionField(
                   fieldIndex: 2,
                   label: AppConstants.recoveryQuestion3,
-                  hint: 'Enter business name (e.g., ottoscents)',
+                  hint: 'Enter business name',
                   controller: _ans3Controller,
                   icon: Icons.storefront_outlined,
                 ),

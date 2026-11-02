@@ -14,19 +14,29 @@ import '../../../providers/sales_provider.dart';
 class RecordSaleDialog extends ConsumerStatefulWidget {
   final ProductModel? initialProduct;
   final String? branch;
+  final bool isLocked;
 
-  const RecordSaleDialog({super.key, this.initialProduct, this.branch});
+  const RecordSaleDialog({
+    super.key,
+    this.initialProduct,
+    this.branch,
+    this.isLocked = false,
+  });
 
   static Future<bool?> show(
     BuildContext context, {
     ProductModel? initialProduct,
     String? branch,
+    bool isLocked = false,
   }) {
     return showDialog<bool>(
       context: context,
       barrierDismissible: true,
-      builder: (context) =>
-          RecordSaleDialog(initialProduct: initialProduct, branch: branch),
+      builder: (context) => RecordSaleDialog(
+        initialProduct: initialProduct,
+        branch: branch,
+        isLocked: isLocked,
+      ),
     );
   }
 
@@ -46,13 +56,14 @@ class _RecordSaleDialogState extends ConsumerState<RecordSaleDialog> {
   }
 
   double get _unitPrice {
-    if (_selectedProduct == null) return AppConstants.price100ml;
+    if (_selectedProduct == null) return 0.0;
     return AppConstants.priceFor(_selectedProduct!.bottleSize);
   }
 
   double get _totalAmount => _unitPrice * _quantity;
 
   Future<void> _handleConfirmSale() async {
+    if (_isSubmitting) return;
     if (_selectedProduct == null) {
       ToastService.showToast(
         title: 'Select Fragrance',
@@ -119,7 +130,8 @@ class _RecordSaleDialogState extends ConsumerState<RecordSaleDialog> {
           type: 'success',
         );
       }
-    } catch (e) {
+    } catch (e, st) {
+      debugPrint('[_handleConfirmSale ERROR: $e\n$st]');
       setState(() => _isSubmitting = false);
       ToastService.showToast(
         title: 'Failed to Record Sale',
@@ -193,174 +205,368 @@ class _RecordSaleDialogState extends ConsumerState<RecordSaleDialog> {
             ),
             const SizedBox(height: 24),
 
-            // Product Selector Dropdown
-            Text(
-              'Select Product / SKU',
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.bold,
-                color: context.textSecondaryColor,
-              ),
-            ),
-            const SizedBox(height: 8),
-
-            productsAsync.when(
-              data: (products) {
-                final activeProducts = products
-                    .where((p) => p.isActive)
-                    .toList();
-                return Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 4,
+            // Product Selection: Locked Card or Dropdown Selector
+            if (widget.isLocked) ...[
+              if (_selectedProduct != null) ...[
+                Text(
+                  'Selected Fragrance (Locked to Alert)',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.bold,
+                    color: context.textSecondaryColor,
                   ),
+                ),
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
                     color: context.surfaceElevatedColor,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: context.borderColor),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: AppColors.brandGold.withValues(alpha: 0.6),
+                      width: 1.5,
+                    ),
                   ),
-                  child: DropdownButtonHideUnderline(
-                    child: DropdownButton<ProductModel>(
-                      value: _selectedProduct != null
-                          ? activeProducts
-                                .where((p) => p.id == _selectedProduct!.id)
-                                .firstOrNull
-                          : null,
-                      hint: Text(
-                        'Choose fragrance from catalog...',
-                        style: TextStyle(
-                          color: context.textMutedColor,
-                          fontSize: 14,
-                        ),
-                      ),
-                      isExpanded: true,
-                      dropdownColor: context.surfaceColor,
-                      items: activeProducts.map((p) {
-                        final is100 = p.bottleSize.toLowerCase().contains(
-                          '100',
-                        );
-                        final price = is100
-                            ? AppConstants.price100ml
-                            : AppConstants.price50ml;
-                        return DropdownMenuItem<ProductModel>(
-                          value: p,
-                          child: Row(
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 8,
-                                  vertical: 3,
-                                ),
-                                decoration: BoxDecoration(
-                                  color:
-                                      (p.category == 'Men'
-                                              ? AppColors.maleBlue
-                                              : AppColors.femalePink)
-                                          .withValues(alpha: 0.15),
-                                  borderRadius: BorderRadius.circular(6),
-                                ),
-                                child: Text(
-                                  p.perfumeCode,
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 12,
-                                    color: p.category == 'Men'
+                  child: Column(
+                    children: [
+                      Row(
+                        children: [
+                          // Cap Code Badge
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 5,
+                            ),
+                            decoration: BoxDecoration(
+                              color: (_selectedProduct!.category == 'Men'
+                                      ? AppColors.maleBlue
+                                      : AppColors.femalePink)
+                                  .withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                color: (_selectedProduct!.category == 'Men'
                                         ? AppColors.maleBlue
-                                        : AppColors.femalePink,
-                                  ),
-                                ),
+                                        : AppColors.femalePink)
+                                    .withValues(alpha: 0.4),
                               ),
-                              const SizedBox(width: 10),
-                              Expanded(
-                                child: Text(
-                                  p.name,
+                            ),
+                            child: Text(
+                              _selectedProduct!.perfumeCode,
+                              style: TextStyle(
+                                fontWeight: FontWeight.w900,
+                                fontSize: 14,
+                                color: _selectedProduct!.category == 'Men'
+                                    ? AppColors.maleBlue
+                                    : AppColors.femalePink,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  _selectedProduct!.name,
                                   style: TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w600,
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w800,
                                     color: context.textPrimaryColor,
                                   ),
-                                  overflow: TextOverflow.ellipsis,
                                 ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  _selectedProduct!.shelfLayer.isNotEmpty
+                                      ? '${_selectedProduct!.shelfLayer} • Cap Code: ${_selectedProduct!.perfumeCode}'
+                                      : 'Cap Code: ${_selectedProduct!.perfumeCode}',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: context.textSecondaryColor,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: AppColors.brandGold.withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                color: AppColors.brandGold.withValues(alpha: 0.4),
                               ),
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.lock_rounded,
+                                  size: 14,
+                                  color: AppColors.brandGold,
+                                ),
+                                SizedBox(width: 4),
+                                Text(
+                                  'LOCKED',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w900,
+                                    color: AppColors.brandGold,
+                                    letterSpacing: 0.5,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 14),
+                      Divider(height: 1, color: context.borderColor),
+                      const SizedBox(height: 14),
+                      Wrap(
+                        alignment: WrapAlignment.spaceBetween,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        spacing: 12,
+                        runSpacing: 6,
+                        children: [
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(
+                                Icons.local_offer_rounded,
+                                size: 16,
+                                color: AppColors.brandGold,
+                              ),
+                              const SizedBox(width: 6),
                               Text(
-                                '${p.bottleSize} • ₱${price.toStringAsFixed(0)}',
+                                'Bottle Size: ${_selectedProduct!.bottleSize}',
                                 style: TextStyle(
                                   fontSize: 13,
-                                  fontWeight: FontWeight.bold,
-                                  color: AppColors.brandGold,
+                                  fontWeight: FontWeight.w700,
+                                  color: context.textPrimaryColor,
                                 ),
                               ),
                             ],
                           ),
-                        );
-                      }).toList(),
-                      onChanged: (val) {
-                        setState(() {
-                          _selectedProduct = val;
-                        });
-                      },
+                          Text(
+                            'Unit Price: ₱${_unitPrice.toStringAsFixed(2)} / bottle',
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w800,
+                              color: AppColors.brandGold,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 20),
+              ] else ...[
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: AppColors.statusRed.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: AppColors.statusRed.withValues(alpha: 0.4),
                     ),
                   ),
-                );
-              },
-              loading: () => const LinearProgressIndicator(),
-              error: (_, _) => Text(
-                'Error loading products',
-                style: TextStyle(color: AppColors.statusRed),
-              ),
-            ),
-            const SizedBox(height: 20),
-
-            // Pricing & Bottle Size Summary Pill
-            if (_selectedProduct != null)
-              Container(
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: context.surfaceElevatedColor,
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: context.borderColor),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.local_offer_rounded,
-                          size: 18,
-                          color: AppColors.brandGold,
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          'Size: ${_selectedProduct!.bottleSize}',
+                  child: Row(
+                    children: [
+                      const Icon(
+                        Icons.lock_rounded,
+                        color: AppColors.statusRed,
+                        size: 24,
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          'No perfume product specified for this alert.',
                           style: TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.w700,
                             color: context.textPrimaryColor,
                           ),
                         ),
-                        const SizedBox(width: 12),
-                        Text(
-                          '(${_selectedProduct!.shelfLayer})',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: context.textSecondaryColor,
-                          ),
-                        ),
-                      ],
-                    ),
-                    Text(
-                      '₱${_unitPrice.toStringAsFixed(2)} / bottle',
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w800,
-                        color: AppColors.brandGold,
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 20),
+              ],
+            ] else ...[
+              // Product Selector Dropdown
+              Text(
+                'Select Product / SKU',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.bold,
+                  color: context.textSecondaryColor,
                 ),
               ),
-            const SizedBox(height: 20),
+              const SizedBox(height: 8),
+
+              productsAsync.when(
+                data: (products) {
+                  final activeProducts = products
+                      .where((p) => p.isActive)
+                      .toList();
+                  return Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: context.surfaceElevatedColor,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: context.borderColor),
+                    ),
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<ProductModel>(
+                        value: _selectedProduct != null
+                            ? activeProducts
+                                  .where((p) => p.id == _selectedProduct!.id)
+                                  .firstOrNull
+                            : null,
+                        hint: Text(
+                          'Choose fragrance from catalog...',
+                          style: TextStyle(
+                            color: context.textMutedColor,
+                            fontSize: 14,
+                          ),
+                        ),
+                        isExpanded: true,
+                        dropdownColor: context.surfaceColor,
+                        items: activeProducts.map((p) {
+                          final is100 = p.bottleSize.toLowerCase().contains(
+                            '100',
+                          );
+                          final price = is100
+                              ? AppConstants.price100ml
+                              : AppConstants.price50ml;
+                          return DropdownMenuItem<ProductModel>(
+                            value: p,
+                            child: Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 3,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color:
+                                        (p.category == 'Men'
+                                                ? AppColors.maleBlue
+                                                : AppColors.femalePink)
+                                            .withValues(alpha: 0.15),
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: Text(
+                                    p.perfumeCode,
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 12,
+                                      color: p.category == 'Men'
+                                          ? AppColors.maleBlue
+                                          : AppColors.femalePink,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Text(
+                                    p.name,
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w600,
+                                      color: context.textPrimaryColor,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                Text(
+                                  '${p.bottleSize} • ₱${price.toStringAsFixed(0)}',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.bold,
+                                    color: AppColors.brandGold,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        }).toList(),
+                        onChanged: (val) {
+                          setState(() {
+                            _selectedProduct = val;
+                          });
+                        },
+                      ),
+                    ),
+                  );
+                },
+                loading: () => const LinearProgressIndicator(),
+                error: (_, _) => Text(
+                  'Error loading products',
+                  style: TextStyle(color: AppColors.statusRed),
+                ),
+              ),
+              const SizedBox(height: 20),
+
+              // Pricing & Bottle Size Summary Pill
+              if (_selectedProduct != null)
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: context.surfaceElevatedColor,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: context.borderColor),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.local_offer_rounded,
+                            size: 18,
+                            color: AppColors.brandGold,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Size: ${_selectedProduct!.bottleSize}',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w700,
+                              color: context.textPrimaryColor,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Text(
+                            '(${_selectedProduct!.shelfLayer})',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: context.textSecondaryColor,
+                            ),
+                          ),
+                        ],
+                      ),
+                      Text(
+                        '₱${_unitPrice.toStringAsFixed(2)} / bottle',
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.brandGold,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              const SizedBox(height: 20),
+            ],
 
             // Quantity Stepper (Optimized for Touch Kiosk)
             Text(

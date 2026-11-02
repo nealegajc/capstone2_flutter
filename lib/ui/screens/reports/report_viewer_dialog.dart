@@ -274,7 +274,7 @@ class _ReportViewerDialogState extends ConsumerState<ReportViewerDialog>
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  'Interactive shelf stock table & 1-tap phone download via local store Wi-Fi • Branch: ${widget.branch}',
+                  'Interactive shelf stock table & 1-tap phone download via local store Wi-Fi',
                   style: TextStyle(
                     fontSize: 12,
                     color: context.textSecondaryColor,

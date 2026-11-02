@@ -274,7 +274,7 @@ class ReportsScreen extends ConsumerWidget {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        'Daily store performance, sales register, and wireless report sharing • Branch: $branch',
+                        'Daily store performance, sales register, and wireless report sharing',
                         style: TextStyle(
                           fontSize: 12,
                           color: context.textSecondaryColor,

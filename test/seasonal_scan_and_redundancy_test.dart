@@ -878,9 +878,10 @@ void main() {
       expect(find.widgetWithText(OutlinedButton, 'Live Cameras'), findsNothing);
 
       // Bottom quick actions checks
-      expect(find.text('Record Sale'), findsOneWidget);
+      expect(find.text('Record Sale'), findsNothing);
       expect(find.text('Log Restock'), findsOneWidget);
-      expect(find.text('Export Stock CSV'), findsOneWidget);
+      expect(find.text('View & Share Reports'), findsOneWidget);
+      expect(find.text('Export Stock CSV'), findsNothing);
       // Duplicate 'Shelf Scan' tile removed
       expect(find.text('Shelf Scan'), findsNothing);
 

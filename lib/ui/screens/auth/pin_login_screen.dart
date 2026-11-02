@@ -689,17 +689,6 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen> {
                       ],
                     ),
                   ),
-                  const SizedBox(height: 16),
-
-                  // Bottom Support / Version Indicator
-                  Text(
-                    'Otto Scents Smart Shelf • Kiosk Terminal #01',
-                    style: TextStyle(
-                      color: context.textMutedColor,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
                 ],
               ),
             ),

@@ -389,7 +389,7 @@ void main() {
 
       // Dialog should report failure
       expect(find.text('Verification Incomplete'), findsOneWidget);
-      expect(find.textContaining('Vision Scan failed: Unable to connect to edge camera service.'), findsOneWidget);
+      expect(find.textContaining('Shelf scan failed: Unable to connect to camera system.'), findsOneWidget);
 
       // Verify SQLite has a system alert recorded
       final unreadAlerts = await sqliteService.getAlerts(branch, unreadOnly: true);

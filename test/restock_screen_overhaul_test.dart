@@ -57,8 +57,8 @@ void main() {
 
       await tester.pumpAndSettle();
 
-      // Verify dynamic branch header
-      expect(find.text('Branch: San Pablo'), findsOneWidget);
+      // Verify single-store branding (Branch badge removed per R2)
+      expect(find.text('Branch: San Pablo'), findsNothing);
       expect(find.text('Restock & Deliveries Management'), findsOneWidget);
       expect(find.text('Log New Restock'), findsOneWidget);
       expect(find.text('Export Restock CSV'), findsWidgets);
