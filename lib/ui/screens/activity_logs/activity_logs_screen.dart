@@ -92,6 +92,116 @@ class _ActivityLogsScreenState extends ConsumerState<ActivityLogsScreen> {
     }
   }
 
+  Future<void> _confirmCleanSlateMovementLogs(
+    BuildContext context,
+    String branch,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: context.surfaceColor,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            const Icon(
+              Icons.cleaning_services_rounded,
+              color: AppColors.statusRed,
+              size: 28,
+            ),
+            const SizedBox(width: 10),
+            Text(
+              'Clean Slate Audit Logs?',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                color: context.textPrimaryColor,
+                fontSize: 18,
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'This will purge historical restock deliveries and bottle movement event logs for $branch.',
+              style: TextStyle(color: context.textSecondaryColor, fontSize: 14),
+            ),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: AppColors.statusGreen.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: AppColors.statusGreen.withValues(alpha: 0.3),
+                ),
+              ),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.shield_rounded,
+                    color: AppColors.statusGreen,
+                    size: 20,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Safeguarded: Products catalog (60 SKUs), sales records, and active inventory remain 100% intact.',
+                      style: const TextStyle(
+                        color: AppColors.statusGreen,
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(
+              'Cancel',
+              style: TextStyle(color: context.textSecondaryColor),
+            ),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.statusRed,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Clean Slate History'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      await SqliteService.instance.clearMovementAndRestockLogs(branch);
+      ref.invalidate(stockMovementLogsProvider(branch));
+      ref.invalidate(systemActivityLogsProvider(branch));
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Movement and restock audit history has been safely cleared.',
+            ),
+            backgroundColor: AppColors.statusRed,
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     const branch = 'San Pablo';
@@ -234,6 +344,31 @@ class _ActivityLogsScreenState extends ConsumerState<ActivityLogsScreen> {
                     ),
                     side: BorderSide(
                       color: AppColors.statusRed.withValues(alpha: 0.5),
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                OutlinedButton.icon(
+                  onPressed: () => _confirmCleanSlateMovementLogs(context, branch),
+                  icon: const Icon(
+                    Icons.cleaning_services_rounded,
+                    size: 18,
+                    color: AppColors.brandGold,
+                  ),
+                  label: const Text(
+                    'Clean Slate',
+                    style: TextStyle(color: AppColors.brandGold),
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 12,
+                    ),
+                    side: BorderSide(
+                      color: AppColors.brandGold.withValues(alpha: 0.5),
                     ),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(10),

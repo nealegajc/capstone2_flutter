@@ -232,8 +232,8 @@ class ShelfVisionPipeline:
 
         logger.info(f"[Capture] Camera {camera_id}: target assigned device = {target_device}")
 
-        # Attempt hardware capture if device exists
-        if os.path.exists(target_device):
+        # Attempt hardware capture if device exists and not in mock camera test mode
+        if os.getenv("MOCK_CAMERAS") != "1" and os.path.exists(target_device):
             for attempt in range(MAX_IMAGE_RETRIES):
                 captured = self._try_open_device(target_device)
                 if captured is not None:
@@ -411,9 +411,8 @@ class ShelfVisionPipeline:
             else:
                 processed_frame, applied_preprocessing = QualityEvaluator.enhance_image(frame)
                 metrics = QualityEvaluator.calculate_metrics(processed_frame)
-                if QualityEvaluator.is_acceptable(metrics):
-                    status = "ENHANCED"
-                    is_acceptable = True
+                status = "ENHANCED"
+                is_acceptable = True
 
         self.last_quality_log = {
             "id": f"qa_{int(time.time())}",
@@ -582,11 +581,28 @@ class ShelfVisionPipeline:
         if frame is None:
             raise RuntimeError(f"Unable to capture shelf frame from camera {camera_id}")
 
-        detections = self.run_inference(frame, branch=branch, camera_id=camera_id)
-        del frame
-
         assigned_trays = CAMERA_TRAYS_MAP.get(camera_id, ["tray_AA", "tray_AB", "tray_AC", "tray_AD", "tray_AE"])
         tray_counts: Dict[str, int] = {t: 0 for t in assigned_trays}
+
+        metrics = QualityEvaluator.calculate_metrics(frame)
+        if QualityEvaluator.is_zero_light(metrics):
+            logger.warning(f"[Vision] Camera {camera_id} rejected due to severe darkness: brightness={metrics['brightness']}")
+            del frame
+            return {
+                "cameraId": camera_id,
+                "totalBottles": 0,
+                "trayCounts": tray_counts,
+                "detections": [],
+                "success": False,
+                "rejected": True,
+                "qualityStatus": "REJECTED_LOW_LIGHT",
+                "reason": "LOW_LIGHT",
+                "brightness": metrics["brightness"],
+                "message": "Low Lighting Detected: Shelf illumination required"
+            }
+
+        detections = self.run_inference(frame, branch=branch, camera_id=camera_id)
+        del frame
 
         for d in detections:
             roi_id = d.get("roiId", "")
@@ -601,6 +617,8 @@ class ShelfVisionPipeline:
             "trayCounts": tray_counts,
             "detections": detections,
             "success": True,
+            "rejected": False,
+            "qualityStatus": self.last_quality_log.get("status", "ACCEPTED") if self.last_quality_log else "ACCEPTED",
             "bottlesDetected": total_bottles,
             "message": f"AI Shelf Vision scan completed for Camera {camera_id}"
         }

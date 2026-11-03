@@ -1,8 +1,11 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/theme_helper.dart';
+import '../../../data/models/hardware_camera_device.dart';
 import '../../../providers/kiosk_providers.dart';
 
 /// Read-only Hardware & Camera Diagnostics dialog.
@@ -90,11 +93,35 @@ class _CameraAssignmentDialogState
       final hwService = ref.read(cameraHardwareServiceProvider);
       await hwService.probeHardwareDevices();
       ref.invalidate(hardwareCamerasProvider);
+    } catch (_) {
     } finally {
       if (mounted) {
         setState(() => _isProbing = false);
       }
     }
+  }
+
+  bool _isCameraOnline(
+    String expectedNode,
+    String portId,
+    List<HardwareCameraDevice> detectedDevices,
+  ) {
+    try {
+      final file = File(expectedNode);
+      if (file.existsSync()) {
+        final resolvedPath = file.resolveSymbolicLinksSync();
+        if (detectedDevices.any((d) =>
+            d.deviceNode == resolvedPath || d.deviceNode == expectedNode)) {
+          return true;
+        }
+        // If symlink exists on the file system, camera node is physically present and online
+        return true;
+      }
+    } catch (_) {}
+
+    return detectedDevices.any((d) =>
+        d.deviceNode == expectedNode ||
+        d.usbPort == portId);
   }
 
   @override
@@ -216,10 +243,8 @@ class _CameraAssignmentDialogState
                   final String expectedNode = cam['node'] as String;
                   final String portId = cam['portId'] as String;
 
-                  // Determine connection status based on detected devices
-                  final isOnline = detectedDevices.any((d) =>
-                      d.deviceNode == expectedNode ||
-                      (d.usbPort == portId));
+                  // Determine connection status based on symlinks and detected devices
+                  final isOnline = _isCameraOnline(expectedNode, portId, detectedDevices);
 
                   return Container(
                     padding: const EdgeInsets.symmetric(
@@ -266,7 +291,10 @@ class _CameraAssignmentDialogState
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Row(
+                              Wrap(
+                                crossAxisAlignment: WrapCrossAlignment.center,
+                                spacing: 8,
+                                runSpacing: 4,
                                 children: [
                                   Text(
                                     cam['name'] as String,
@@ -276,7 +304,6 @@ class _CameraAssignmentDialogState
                                       color: context.textPrimaryColor,
                                     ),
                                   ),
-                                  const SizedBox(width: 8),
                                   Container(
                                     padding: const EdgeInsets.symmetric(
                                       horizontal: 6,

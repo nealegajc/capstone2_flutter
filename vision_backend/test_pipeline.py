@@ -14,6 +14,7 @@ class TestPureYoloVisionPipeline(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         print("\n=== Initializing Pure YOLO Vision Pipeline Test Suite ===")
+        os.environ["MOCK_CAMERAS"] = "1"
         t0 = time.time()
         cls.pipeline = ShelfVisionPipeline()
         cls.startup_time = time.time() - t0
@@ -327,6 +328,41 @@ class TestPureYoloVisionPipeline(unittest.TestCase):
         self.assertEqual(res_health.json()["status"], "ok")
 
         print("   [PASS] Async camera test, calibration frame, and health probe verified.")
+
+    def test_12_suboptimal_lighting_clahe_enhancement(self):
+        """R7: Verifies adaptive CLAHE enhancement on suboptimal illumination (15.0 <= brightness < 40.0)."""
+        dim_frame = np.full((720, 1280, 3), 28, dtype=np.uint8)
+        metrics = QualityEvaluator.calculate_metrics(dim_frame)
+        self.assertFalse(QualityEvaluator.is_zero_light(metrics))
+        self.assertFalse(QualityEvaluator.is_acceptable(metrics))
+
+        dets = self.pipeline.run_inference(dim_frame, camera_id=1)
+        self.assertEqual(self.pipeline.last_quality_log["status"], "ENHANCED")
+        self.assertIn("CLAHE", self.pipeline.last_quality_log["preprocessingApplied"])
+        self.assertTrue(self.pipeline.last_quality_log["isAcceptable"])
+        self.assertGreater(len(dets), 0)
+        print("   [PASS] R7: Suboptimal lighting CLAHE adaptive enhancement verified.")
+
+    def test_13_severe_darkness_zero_light_rejection(self):
+        """R7: Verifies severe darkness rejection (< 15.0) prevents ledger corruption."""
+        dark_frame = np.full((720, 1280, 3), 5, dtype=np.uint8)
+        metrics = QualityEvaluator.calculate_metrics(dark_frame)
+        self.assertTrue(QualityEvaluator.is_zero_light(metrics))
+
+        orig_capture = self.pipeline.capture_frame
+        try:
+            self.pipeline.capture_frame = lambda *args, **kwargs: dark_frame.copy()
+            res = self.pipeline.scan_camera(camera_id=1)
+            self.assertFalse(res["success"])
+            self.assertTrue(res["rejected"])
+            self.assertEqual(res["qualityStatus"], "REJECTED_LOW_LIGHT")
+            self.assertEqual(res["totalBottles"], 0)
+            self.assertEqual(len(res["detections"]), 0)
+            self.assertIn("Low Lighting", res["message"])
+        finally:
+            self.pipeline.capture_frame = orig_capture
+
+        print("   [PASS] R7: Severe darkness zero-light rejection and schema verified.")
 
 
 if __name__ == "__main__":

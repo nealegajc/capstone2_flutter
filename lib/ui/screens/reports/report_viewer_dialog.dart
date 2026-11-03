@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -43,6 +45,8 @@ class _ReportViewerDialogState extends ConsumerState<ReportViewerDialog>
   bool _isServerStarting = true;
   String? _serverError;
   bool _isSavingLocally = false;
+  Timer? _ipRetryTimer;
+  int _ipRetryCount = 0;
 
   @override
   void initState() {
@@ -80,6 +84,11 @@ class _ReportViewerDialogState extends ConsumerState<ReportViewerDialog>
           _serverUrl = url;
           _isServerStarting = false;
         });
+
+        // If local IP resolved to 127.0.0.1, poll in the background for late DHCP acquisition
+        if (url.contains('127.0.0.1')) {
+          _startIpRetryPolling();
+        }
       }
     } catch (e) {
       if (mounted) {
@@ -91,8 +100,48 @@ class _ReportViewerDialogState extends ConsumerState<ReportViewerDialog>
     }
   }
 
+  void _startIpRetryPolling() {
+    _ipRetryTimer?.cancel();
+    _ipRetryCount = 0;
+    _ipRetryTimer = Timer.periodic(const Duration(milliseconds: 2500), (timer) async {
+      _ipRetryCount++;
+      if (_ipRetryCount > 8) {
+        timer.cancel();
+        return;
+      }
+      final newIp = await ReportExportService.instance.updateOrRedetectIp();
+      if (newIp != '127.0.0.1' && mounted) {
+        timer.cancel();
+        setState(() {
+          _serverUrl = ReportExportService.instance.serverUrl;
+        });
+      }
+    });
+  }
+
+  Future<void> _handleRedetectIp() async {
+    final newIp = await ReportExportService.instance.updateOrRedetectIp();
+    if (mounted) {
+      setState(() {
+        _serverUrl = ReportExportService.instance.serverUrl;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            newIp != '127.0.0.1'
+                ? 'Network IP detected: $newIp'
+                : 'Still offline / using localhost ($newIp)',
+          ),
+          backgroundColor: newIp != '127.0.0.1' ? AppColors.statusGreen : Colors.orange,
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    }
+  }
+
   @override
   void dispose() {
+    _ipRetryTimer?.cancel();
     _tabController.dispose();
     _searchController.dispose();
     ReportExportService.instance.stopServer();
@@ -659,13 +708,12 @@ class _ReportViewerDialogState extends ConsumerState<ReportViewerDialog>
                   padding: const EdgeInsets.all(16),
                   child: Table(
                     columnWidths: const {
-                      0: FlexColumnWidth(1.2), // Time
-                      1: FlexColumnWidth(2.6), // Fragrance Name
+                      0: FlexColumnWidth(1.3), // Time
+                      1: FlexColumnWidth(3.2), // Fragrance Name
                       2: FlexColumnWidth(1.0), // Size
                       3: FlexColumnWidth(0.8), // Qty
-                      4: FlexColumnWidth(1.2), // Price
-                      5: FlexColumnWidth(1.4), // Total
-                      6: FlexColumnWidth(1.2), // Cashier
+                      4: FlexColumnWidth(1.3), // Price
+                      5: FlexColumnWidth(1.5), // Total
                     },
                     border: TableBorder(
                       horizontalInside: BorderSide(
@@ -685,7 +733,6 @@ class _ReportViewerDialogState extends ConsumerState<ReportViewerDialog>
                           _tableTh(context, 'Qty'),
                           _tableTh(context, 'Unit Price'),
                           _tableTh(context, 'Total Amount'),
-                          _tableTh(context, 'Cashier'),
                         ],
                       ),
                       for (final s in todaySales)
@@ -712,7 +759,6 @@ class _ReportViewerDialogState extends ConsumerState<ReportViewerDialog>
                               isBold: true,
                               color: AppColors.statusGreen,
                             ),
-                            _tableTd(context, s.soldBy),
                           ],
                         ),
                     ],
@@ -760,6 +806,63 @@ class _ReportViewerDialogState extends ConsumerState<ReportViewerDialog>
   // ---------------------------------------------------------------------------
   // TAB 3: RESTOCK & MOVEMENT AUDIT
   // ---------------------------------------------------------------------------
+  Future<void> _confirmCleanSlateHistory(BuildContext context) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: context.surfaceColor,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            const Icon(Icons.warning_amber_rounded, color: AppColors.statusRed, size: 28),
+            const SizedBox(width: 10),
+            Text(
+              'Clean Slate Movement History?',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                color: context.textPrimaryColor,
+                fontSize: 18,
+              ),
+            ),
+          ],
+        ),
+        content: Text(
+          'Are you sure you want to clear historical stock movement & restock logs for ${widget.branch}?\n\n'
+          '• Active shelf inventory and product catalogs will be strictly safeguarded.\n'
+          '• Sales transaction records will NOT be deleted.',
+          style: TextStyle(color: context.textSecondaryColor, fontSize: 14),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text('Cancel', style: TextStyle(color: context.textSecondaryColor)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.statusRed,
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Clean Slate History'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      await ref.read(sqliteServiceProvider).clearMovementAndRestockLogs(widget.branch);
+      ref.invalidate(stockMovementLogsProvider(widget.branch));
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Restock & movement history cleared. Inventory & catalog safeguarded.'),
+            backgroundColor: AppColors.statusGreen,
+          ),
+        );
+      }
+    }
+  }
+
   Widget _buildMovementAuditTab(
     BuildContext context,
     AsyncValue<List<InventoryEventModel>> eventsAsync,
@@ -776,64 +879,113 @@ class _ReportViewerDialogState extends ConsumerState<ReportViewerDialog>
           );
         }
 
-        return Scrollbar(
-          child: ListView.separated(
-            padding: const EdgeInsets.all(16),
-            itemCount: eventList.length,
-            separatorBuilder: (_, _) => const Divider(height: 1),
-            itemBuilder: (context, idx) {
-              final ev = eventList[idx];
-              final eventType = ev.eventType;
-              final perfumeCode = ev.perfumeCode;
-              final productName = ev.productName;
-              final qty = ev.quantity;
-              final timestamp = ev.timestamp;
+        return Column(
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              decoration: BoxDecoration(
+                color: context.surfaceElevatedColor,
+                border: Border(bottom: BorderSide(color: context.borderColor)),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Audit Event History (${eventList.length} recent)',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13,
+                      color: context.textPrimaryColor,
+                    ),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: () => _confirmCleanSlateHistory(context),
+                    icon: const Icon(
+                      Icons.cleaning_services_rounded,
+                      size: 16,
+                      color: AppColors.statusRed,
+                    ),
+                    label: const Text(
+                      'Clean Slate',
+                      style: TextStyle(color: AppColors.statusRed, fontSize: 12),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      side: BorderSide(color: AppColors.statusRed.withValues(alpha: 0.4)),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: Scrollbar(
+                child: ListView.separated(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: eventList.length,
+                  separatorBuilder: (_, _) => const Divider(height: 1),
+                  itemBuilder: (context, idx) {
+                    final ev = eventList[idx];
+                    final eventType = ev.eventType;
+                    final perfumeCode = ev.perfumeCode;
+                    final productName = ev.productName;
+                    final qty = ev.quantity;
+                    final timestamp = ev.timestamp;
 
-              return ListTile(
-                dense: true,
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 4,
+                    final isDamage = eventType == 'DAMAGE_WRITEOFF';
+                    final isRestock = eventType == 'RESTOCKED';
+
+                    return ListTile(
+                      dense: true,
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 4,
+                      ),
+                      leading: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: isRestock
+                              ? AppColors.statusGreen.withValues(alpha: 0.15)
+                              : (isDamage
+                                  ? AppColors.statusRed.withValues(alpha: 0.15)
+                                  : Colors.blue.withValues(alpha: 0.15)),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Icon(
+                          isRestock
+                              ? Icons.add_business_rounded
+                              : (isDamage
+                                  ? Icons.delete_sweep_rounded
+                                  : Icons.sync_alt_rounded),
+                          color: isRestock
+                              ? AppColors.statusGreen
+                              : (isDamage ? AppColors.statusRed : Colors.blue),
+                          size: 18,
+                        ),
+                      ),
+                      title: Text(
+                        '$eventType • $productName ($perfumeCode)',
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                      ),
+                      subtitle: Text(
+                        'Shelf: ${ev.shelfArea} • Quantity: $qty bottle(s)',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: context.textSecondaryColor,
+                        ),
+                      ),
+                      trailing: Text(
+                        DateFormat('yyyy-MM-dd HH:mm').format(timestamp),
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: context.textSecondaryColor,
+                        ),
+                      ),
+                    );
+                  },
                 ),
-                leading: Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: eventType == 'RESTOCKED'
-                        ? AppColors.statusGreen.withValues(alpha: 0.15)
-                        : Colors.blue.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Icon(
-                    eventType == 'RESTOCKED'
-                        ? Icons.add_business_rounded
-                        : Icons.sync_alt_rounded,
-                    color: eventType == 'RESTOCKED'
-                        ? AppColors.statusGreen
-                        : Colors.blue,
-                    size: 18,
-                  ),
-                ),
-                title: Text(
-                  '$eventType • $productName ($perfumeCode)',
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                ),
-                subtitle: Text(
-                  'Shelf: ${ev.shelfArea} • Quantity: $qty bottle(s)',
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: context.textSecondaryColor,
-                  ),
-                ),
-                trailing: Text(
-                  DateFormat('yyyy-MM-dd HH:mm').format(timestamp),
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: context.textSecondaryColor,
-                  ),
-                ),
-              );
-            },
-          ),
+              ),
+            ),
+          ],
         );
       },
       loading: () => const Center(child: CircularProgressIndicator()),
@@ -932,23 +1084,58 @@ class _ReportViewerDialogState extends ConsumerState<ReportViewerDialog>
           ),
           const SizedBox(height: 12),
 
-          // Server Address Badge
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-            decoration: BoxDecoration(
-              color: context.surfaceColor,
-              borderRadius: BorderRadius.circular(6),
-              border: Border.all(color: context.borderColor),
-            ),
-            child: Text(
-              serverUrl,
-              style: const TextStyle(
-                fontSize: 11,
-                fontFamily: 'monospace',
-                fontWeight: FontWeight.bold,
-                color: AppColors.brandGold,
+          // Server Address Badge & Re-detect Network IP Button
+          Wrap(
+            alignment: WrapAlignment.center,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 8,
+            runSpacing: 6,
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: context.surfaceColor,
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: context.borderColor),
+                ),
+                child: Text(
+                  serverUrl,
+                  style: const TextStyle(
+                    fontSize: 11,
+                    fontFamily: 'monospace',
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.brandGold,
+                  ),
+                ),
               ),
-            ),
+              InkWell(
+                onTap: _handleRedetectIp,
+                borderRadius: BorderRadius.circular(6),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: context.surfaceColor,
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: context.borderColor),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.refresh_rounded, size: 14, color: AppColors.brandGold),
+                      SizedBox(width: 4),
+                      Text(
+                        'Re-detect Network IP',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.brandGold,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 12),
 

@@ -133,7 +133,7 @@ void main() {
       expect(csv, contains('TOTALS,,6,300,,,1400.00,'));
     });
 
-    test('generateDailySalesCsv produces required headers and summary totals', () {
+    test('generateDailySalesCsv produces required headers and summary totals without Cashier', () {
       final csv = ReportExportService.instance.generateDailySalesCsv(
         sales: sampleSales,
         branch: 'San Pablo',
@@ -142,14 +142,15 @@ void main() {
       expect(
         csv,
         contains(
-          'Transaction ID,Time,Fragrance Name,Perfume Code,Bottle Size,Quantity Sold,Unit Price (PHP),Total Amount (PHP),Cashier,Sync Status',
+          'Transaction ID,Time,Fragrance Name,Perfume Code,Bottle Size,Quantity Sold,Unit Price (PHP),Total Amount (PHP),Sync Status',
         ),
       );
+      expect(csv.contains('Cashier'), isFalse);
 
       expect(csv, contains('sale_101'));
       expect(csv, contains('Sauvage Dior'));
       expect(csv, contains('520.00'));
-      expect(csv, contains('SUMMARY TOTALS,,,,,3,,700.00,,'));
+      expect(csv, contains('SUMMARY TOTALS,,,,,3,,700.00,'));
     });
 
     test('generateReportPdfBytes produces non-empty branded PDF bytes', () async {
@@ -371,7 +372,8 @@ void main() {
 
       await tester.pumpAndSettle();
 
-      expect(find.text('₱0.00'), findsOneWidget);
+      expect(find.text('₱0.00'), findsNWidgets(2));
+      expect(find.text('DAMAGE & SHRINKAGE'), findsOneWidget);
       expect(find.text('0 Bottles'), findsOneWidget);
       expect(find.text('None yet'), findsOneWidget);
       expect(find.text('No sales recorded today'), findsOneWidget);
@@ -574,6 +576,26 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 200));
       expect(find.textContaining('RESTOCKED • Sauvage Dior (AA1)'), findsOneWidget);
+
+      // 9. R6: Test "Re-detect Network IP" button
+      expect(find.text('Re-detect Network IP'), findsOneWidget);
+      await tester.tap(find.text('Re-detect Network IP'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(
+        find.byWidgetPredicate(
+          (w) => w is Text && (w.data?.contains('Network IP') == true || w.data?.contains('localhost') == true),
+        ),
+        findsOneWidget,
+      );
+    });
+
+    test('R6: ReportExportService updateOrRedetectIp updates local IP and server URL', () async {
+      final exportService = ReportExportService.instance;
+      final ip = await exportService.updateOrRedetectIp('192.168.1.99');
+      expect(ip, equals('192.168.1.99'));
+      expect(exportService.localIp, equals('192.168.1.99'));
+      expect(exportService.serverUrl, contains('192.168.1.99'));
     });
   });
 }

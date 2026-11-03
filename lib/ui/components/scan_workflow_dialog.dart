@@ -73,6 +73,7 @@ class _ScanWorkflowDialogState extends ConsumerState<ScanWorkflowDialog> {
   int _lowStockCount = 0;
   int _seasonalOffCount = 0;
   bool _verificationSuccess = false;
+  bool _isLowLightDetected = false;
   String _statusMessage = '';
   final List<String> _itemizedResults = [];
   Map<String, dynamic>? _singleTrayResult;
@@ -220,7 +221,15 @@ class _ScanWorkflowDialogState extends ConsumerState<ScanWorkflowDialog> {
           enableOcr: false,
           targetTray: isSingle ? _selectedTray : null,
         );
-        if (scanResult['success'] == false) {
+        final isRejected = scanResult['rejected'] == true ||
+            scanResult['qualityStatus'] == 'REJECTED_LOW_LIGHT' ||
+            scanResult['message']?.toString().contains('Low Lighting') == true;
+
+        if (isRejected || scanResult['success'] == false) {
+          if (isRejected) {
+            _isLowLightDetected = true;
+            _statusMessage = 'Low Lighting Detected: Shelf illumination required';
+          }
           debugPrint('[ScanWorkflow] Warning on camera $camId: ${scanResult['message']}');
           continue;
         }
@@ -345,7 +354,11 @@ class _ScanWorkflowDialogState extends ConsumerState<ScanWorkflowDialog> {
       }
 
       if (succeededCams == 0 && camerasToScan.isNotEmpty) {
-        _statusMessage = 'Shelf scan failed: Unable to connect to camera system.';
+        if (_isLowLightDetected) {
+          _statusMessage = 'Low Lighting Detected: Shelf illumination required';
+        } else {
+          _statusMessage = 'Shelf scan failed: Unable to connect to camera system.';
+        }
         _verificationSuccess = false;
         _lowStockCount = 1;
         if (widget.isTargetedVerification) {
@@ -1034,6 +1047,47 @@ class _ScanWorkflowDialogState extends ConsumerState<ScanWorkflowDialog> {
           ],
         ),
         const SizedBox(height: 20),
+
+        if (_isLowLightDetected) ...[
+          Container(
+            margin: const EdgeInsets.only(bottom: 16),
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.amber.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.amber, width: 1.5),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.lightbulb_outline_rounded, color: Colors.amber, size: 28),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Low Lighting Detected: Shelf illumination required',
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.amber,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Ambient shelf illumination is below minimum threshold (< 15.0). Shelf lighting must be activated to complete inventory verification.',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: context.textSecondaryColor,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
 
         if (_seasonalOffCount > 0) ...[
           Container(

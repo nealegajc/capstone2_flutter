@@ -4,6 +4,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:smart_shelf_linux/data/models/alert_model.dart';
 import 'package:smart_shelf_linux/data/models/inventory_record_model.dart';
+import 'package:smart_shelf_linux/data/repositories/python_api_repository.dart';
+import 'package:smart_shelf_linux/data/services/camera_hardware_service.dart';
 import 'package:smart_shelf_linux/data/services/sqlite_service.dart';
 import 'package:smart_shelf_linux/providers/kiosk_providers.dart';
 import 'package:smart_shelf_linux/ui/components/scan_workflow_dialog.dart';
@@ -11,7 +13,11 @@ import 'package:smart_shelf_linux/ui/components/scan_workflow_dialog.dart';
 void main() {
   setUpAll(() {
     sqfliteFfiInit();
-    databaseFactory = databaseFactoryFfi;
+    databaseFactory = databaseFactoryFfiNoIsolate;
+  });
+
+  tearDown(() {
+    CameraHardwareService.instance.stopMonitoring();
   });
 
   group('Targeted Verification Scan Fix Tests (R2)', () {
@@ -230,5 +236,106 @@ void main() {
       expect(find.textContaining('Tray AD'), findsWidgets);
       expect(find.text('I Understand, Verify Now'), findsOneWidget);
     });
+
+    testWidgets('R7: Low-light rejection displays amber banner and safeguards inventory from zero wipe', (tester) async {
+      tester.view.physicalSize = const Size(1920, 1080);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() => tester.view.resetPhysicalSize());
+
+      const branch = 'San Pablo';
+      final invAD1 = InventoryRecordModel(
+        id: 'inv_${branch}_AD1',
+        perfumeCode: 'AD1',
+        name: 'Perfume AD1',
+        branch: branch,
+        shelf: 'Tray AD',
+        recorded: 5,
+        detected: 4,
+        status: 'normal',
+      );
+      await sqliteService.saveInventoryRecord(invAD1);
+
+      final targetAlert = AlertModel(
+        id: 'alert_ad1_lowlight',
+        title: 'Discrepancy Detected',
+        desc: 'Inventory count mismatch on AD1',
+        branch: branch,
+        type: 'misplaced',
+        perfumeCode: 'AD1',
+        isRead: false,
+        createdAt: DateTime.now(),
+      );
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            sqliteServiceProvider.overrideWithValue(sqliteService),
+            pythonApiRepositoryProvider.overrideWithValue(_MockLowLightPythonApiRepository()),
+          ],
+          child: MaterialApp(
+            home: Scaffold(
+              body: ScanWorkflowDialog(
+                isTargetedVerification: true,
+                targetAlert: targetAlert,
+                targetSlotCodes: const ['AD1'],
+                targetTrayCodes: const ['AD'],
+                initialCameraId: 1,
+              ),
+            ),
+          ),
+        ),
+      );
+
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 200));
+
+      // Tap "I Understand, Verify Now"
+      final verifyBtn = find.text('I Understand, Verify Now');
+      expect(verifyBtn, findsOneWidget);
+      await tester.tap(verifyBtn);
+      await tester.pump();
+
+      // Advance scan timer and async tasks
+      for (int i = 0; i < 20; i++) {
+        await tester.pump(const Duration(milliseconds: 500));
+      }
+
+      // Verify that low-light warning banner is rendered
+      expect(find.text('Low Lighting Detected: Shelf illumination required'), findsWidgets);
+      expect(
+        find.textContaining('Ambient shelf illumination is below minimum threshold'),
+        findsOneWidget,
+      );
+
+      // Verify that inventory was NOT wiped to 0
+      final detectedAfter = await sqliteService.getDetectedCountForSlot('AD1', branch: branch);
+      expect(detectedAfter, equals(4));
+
+      // Cleanly unmount dialog
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump(const Duration(milliseconds: 200));
+    });
   });
+}
+
+class _MockLowLightPythonApiRepository extends PythonApiRepository {
+  @override
+  Future<Map<String, dynamic>> triggerManualScan(
+    String branch, {
+    int? cameraId,
+    String? cameraDevice,
+    bool enableOcr = false,
+    String? targetTray,
+  }) async {
+    return {
+      'cameraId': cameraId ?? 1,
+      'totalBottles': 0,
+      'trayCounts': {},
+      'detections': [],
+      'success': false,
+      'rejected': true,
+      'qualityStatus': 'REJECTED_LOW_LIGHT',
+      'message': 'Low Lighting Detected: Shelf illumination required',
+    };
+  }
 }

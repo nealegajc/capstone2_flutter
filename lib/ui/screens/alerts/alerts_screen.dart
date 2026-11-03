@@ -14,6 +14,32 @@ import '../../components/status_badge.dart';
 import '../../components/scan_workflow_dialog.dart';
 import '../reports/record_sale_dialog.dart';
 
+class _ConsolidatedAlertItem {
+  final String perfumeCode;
+  final List<AlertModel> alerts;
+  final bool isDiscrepancy;
+  final bool isOutOfStock;
+  final bool isLowStock;
+  final bool isSystem;
+  final bool isDeficit;
+  final bool isSurplus;
+  final AlertModel primaryAlert;
+  final int? stockCount;
+
+  _ConsolidatedAlertItem({
+    required this.perfumeCode,
+    required this.alerts,
+    required this.isDiscrepancy,
+    required this.isOutOfStock,
+    required this.isLowStock,
+    required this.isSystem,
+    required this.isDeficit,
+    required this.isSurplus,
+    required this.primaryAlert,
+    this.stockCount,
+  });
+}
+
 class AlertsScreen extends ConsumerStatefulWidget {
   final String? initialFilter;
 
@@ -47,9 +73,18 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
       a.title.toLowerCase().contains('out of stock');
 
   bool _isLow(AlertModel a) =>
-      (a.type == 'low_stock' || a.type == 'lowStock') && !_isOos(a);
+      (a.type == 'low_stock' ||
+          a.type == 'lowStock' ||
+          a.title.toLowerCase().contains('low stock')) &&
+      !_isOos(a);
 
-  bool _isSystem(AlertModel a) => !_isOos(a) && !_isLow(a);
+  bool _isDiscrepancy(AlertModel a) =>
+      a.type == 'discrepancy' ||
+      a.type == 'misplaced' ||
+      a.title.toLowerCase().contains('discrepancy');
+
+  bool _isSystem(AlertModel a) =>
+      !_isOos(a) && !_isLow(a) && !_isDiscrepancy(a);
 
   @override
   Widget build(BuildContext context) {
@@ -74,28 +109,131 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
     final inventoryList = inventoryAsync.valueOrNull ?? [];
     final invMap = {for (final item in inventoryList) item.perfumeCode: item};
 
-    final currentAlerts = _showHistory ? historyAlerts : activeAlerts;
-
-    // Deduplicate if a slot has both out_of_stock and low_stock (out_of_stock takes precedence)
-    final oosCodes = currentAlerts.where(_isOos).map((a) => a.perfumeCode).toSet();
-    final deduplicatedAlerts = currentAlerts.where((a) {
-      if (_isLow(a) && a.perfumeCode.isNotEmpty && oosCodes.contains(a.perfumeCode)) {
-        return false;
+    // R4: Consolidate active alerts by SKU into max 1 card per perfumeCode
+    final List<_ConsolidatedAlertItem> consolidatedItems = [];
+    if (_showHistory) {
+      for (final a in historyAlerts) {
+        consolidatedItems.add(_ConsolidatedAlertItem(
+          perfumeCode: a.perfumeCode.trim(),
+          alerts: [a],
+          isDiscrepancy: _isDiscrepancy(a),
+          isOutOfStock: _isOos(a),
+          isLowStock: _isLow(a),
+          isSystem: _isSystem(a),
+          isDeficit: false,
+          isSurplus: false,
+          primaryAlert: a,
+          stockCount: null,
+        ));
       }
-      return true;
-    }).toList();
+    } else {
+      final Map<String, List<AlertModel>> skuMap = {};
+      final List<AlertModel> nonSkuAlerts = [];
 
-    final oosCount = deduplicatedAlerts.where(_isOos).length;
-    final lowStockCount = deduplicatedAlerts.where(_isLow).length;
-    final systemCount = deduplicatedAlerts.where(_isSystem).length;
+      for (final a in activeAlerts) {
+        final code = a.perfumeCode.trim();
+        if (code.isEmpty) {
+          nonSkuAlerts.add(a);
+        } else {
+          skuMap.putIfAbsent(code, () => []).add(a);
+        }
+      }
 
-    final filtered = deduplicatedAlerts.where((a) {
+      for (final entry in skuMap.entries) {
+        final code = entry.key;
+        final alerts = entry.value;
+
+        final hasDiscrepancy = alerts.any(_isDiscrepancy);
+        final hasOos = alerts.any(_isOos);
+        final hasLow = alerts.any(_isLow);
+
+        AlertModel primaryAlert;
+        if (hasDiscrepancy) {
+          primaryAlert = alerts.firstWhere(_isDiscrepancy);
+        } else if (hasOos) {
+          primaryAlert = alerts.firstWhere(_isOos);
+        } else if (hasLow) {
+          primaryAlert = alerts.firstWhere(_isLow);
+        } else {
+          primaryAlert = alerts.first;
+        }
+
+        final invItem = invMap[code];
+        int? detected = invItem?.detected;
+        int? recorded = invItem?.recorded;
+
+        if (detected == null || recorded == null) {
+          for (final a in alerts) {
+            final match = RegExp(
+              r'detected\s+(\d+).*recorded\s+(\d+)',
+              caseSensitive: false,
+            ).firstMatch(a.desc);
+            if (match != null) {
+              detected ??= int.tryParse(match.group(1)!);
+              recorded ??= int.tryParse(match.group(2)!);
+              break;
+            }
+          }
+        }
+
+        bool isDeficit = false;
+        bool isSurplus = false;
+        if (detected != null && recorded != null) {
+          if (detected < recorded) {
+            isDeficit = true;
+          } else if (detected > recorded) {
+            isSurplus = true;
+          }
+        } else if (hasDiscrepancy) {
+          // If no ledger info available, discrepancy defaults to deficit (unrecorded sale)
+          isDeficit = true;
+        }
+
+        final stockCount = detected ?? (hasOos ? 0 : null);
+
+        consolidatedItems.add(_ConsolidatedAlertItem(
+          perfumeCode: code,
+          alerts: alerts,
+          isDiscrepancy: hasDiscrepancy,
+          isOutOfStock: hasOos,
+          isLowStock: hasLow,
+          isSystem: !hasDiscrepancy && !hasOos && !hasLow,
+          isDeficit: isDeficit,
+          isSurplus: isSurplus,
+          primaryAlert: primaryAlert,
+          stockCount: stockCount,
+        ));
+      }
+
+      for (final a in nonSkuAlerts) {
+        consolidatedItems.add(_ConsolidatedAlertItem(
+          perfumeCode: '',
+          alerts: [a],
+          isDiscrepancy: _isDiscrepancy(a),
+          isOutOfStock: _isOos(a),
+          isLowStock: _isLow(a),
+          isSystem: true,
+          isDeficit: false,
+          isSurplus: false,
+          primaryAlert: a,
+          stockCount: null,
+        ));
+      }
+    }
+
+    final totalCount = consolidatedItems.length;
+    final oosCount = consolidatedItems.where((g) => g.isOutOfStock).length;
+    final lowStockCount = consolidatedItems.where((g) => g.isLowStock).length;
+    final systemCount =
+        consolidatedItems.where((g) => g.isSystem || g.isDiscrepancy).length;
+
+    final filtered = consolidatedItems.where((g) {
       if (_selectedFilter == 'out_of_stock') {
-        return _isOos(a);
+        return g.isOutOfStock;
       } else if (_selectedFilter == 'low_stock') {
-        return _isLow(a);
+        return g.isLowStock;
       } else if (_selectedFilter == 'system') {
-        return _isSystem(a);
+        return g.isSystem || g.isDiscrepancy;
       }
       return true;
     }).toList();
@@ -169,7 +307,7 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                             child: Text(
                               _showHistory
                                   ? '${historyAlerts.length} RESOLVED'
-                                  : '${deduplicatedAlerts.length} ACTIVE',
+                                  : '$totalCount ACTIVE',
                               style: TextStyle(
                                 fontSize: 11,
                                 fontWeight: FontWeight.w900,
@@ -209,7 +347,7 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                     children: [
                       _buildToggleTab(
                         label: 'Active Alerts',
-                        count: deduplicatedAlerts.length,
+                        count: totalCount,
                         icon: Icons.warning_amber_rounded,
                         isSelected: !_showHistory,
                         activeColor: AppColors.statusRed,
@@ -309,7 +447,7 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                   _buildFilterChip(
                     'all',
                     'All Alerts',
-                    deduplicatedAlerts.length,
+                    totalCount,
                     AppColors.brandAccent,
                   ),
                   const SizedBox(width: 8),
@@ -329,7 +467,7 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                   const SizedBox(width: 8),
                   _buildFilterChip(
                     'system',
-                    'System / Camera',
+                    'System / Anomaly',
                     systemCount,
                     AppColors.statusBlue,
                   ),
@@ -346,25 +484,60 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                     padding: const EdgeInsets.all(20),
                     itemCount: filtered.length,
                     itemBuilder: (context, index) {
-                      final a = filtered[index];
-                      final isOutOfStock = _isOos(a);
-                      final isLowStock = _isLow(a);
-
-                      final invItem = a.perfumeCode.isNotEmpty ? invMap[a.perfumeCode] : null;
-                      final stockCount = invItem?.detected ?? (isOutOfStock ? 0 : null);
+                      final item = filtered[index];
+                      final a = item.primaryAlert;
 
                       final statusType = _showHistory
                           ? StatusBadgeType.synced
-                          : (isOutOfStock
-                              ? StatusBadgeType.lowStock
-                              : (isLowStock
+                          : (item.isDiscrepancy
+                              ? StatusBadgeType.misplaced
+                              : (item.isOutOfStock
                                   ? StatusBadgeType.lowStock
-                                  : StatusBadgeType.good));
+                                  : (item.isLowStock
+                                      ? StatusBadgeType.lowStock
+                                      : StatusBadgeType.good)));
+
                       final statusLabel = _showHistory
                           ? 'Resolved'
-                          : (isOutOfStock
-                              ? 'Out of Stock'
-                              : (isLowStock ? 'Low Stock' : 'System Alert'));
+                          : (item.isDiscrepancy
+                              ? 'Discrepancy'
+                              : (item.isOutOfStock
+                                  ? 'Out of Stock'
+                                  : (item.isLowStock
+                                      ? 'Low Stock'
+                                      : 'System Alert')));
+
+                      String? secondaryBadgeLabel;
+                      Color? secondaryBadgeColor;
+                      if (!_showHistory && item.isDiscrepancy) {
+                        if (item.isOutOfStock) {
+                          secondaryBadgeLabel = 'Out of Stock';
+                          secondaryBadgeColor = AppColors.statusRed;
+                        } else if (item.isLowStock) {
+                          secondaryBadgeLabel = 'Low Stock';
+                          secondaryBadgeColor = AppColors.statusOrange;
+                        }
+                      }
+
+                      final bool showRecordSale = !_showHistory &&
+                          item.isDiscrepancy &&
+                          item.isDeficit &&
+                          item.perfumeCode.isNotEmpty;
+
+                      final bool showManuallyCheckRestock = !_showHistory &&
+                          item.isDiscrepancy &&
+                          item.isSurplus &&
+                          item.perfumeCode.isNotEmpty;
+
+                      final String actionLabel =
+                          (item.isDiscrepancy || item.isOutOfStock || item.isLowStock)
+                              ? 'Verify Restock'
+                              : 'Inspect Camera View';
+
+                      final String? secondaryActionLabel =
+                          (item.isDiscrepancy || item.isOutOfStock || item.isLowStock)
+                              ? 'Restock Order'
+                              : null;
 
                       return Padding(
                         padding: const EdgeInsets.only(bottom: 12),
@@ -375,20 +548,21 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                           timestamp: a.formattedTime,
                           statusLabel: statusLabel,
                           statusType: statusType,
-                          hasPerfumeCode: a.perfumeCode.trim().isNotEmpty,
-                          perfumeCode: a.perfumeCode,
-                          stockCount: stockCount,
+                          secondaryBadgeLabel: secondaryBadgeLabel,
+                          secondaryBadgeColor: secondaryBadgeColor,
+                          hasPerfumeCode: item.perfumeCode.isNotEmpty,
+                          perfumeCode: item.perfumeCode,
+                          stockCount: item.stockCount,
                           isHistory: _showHistory,
+                          showRecordSale: showRecordSale,
+                          showManuallyCheckRestock: showManuallyCheckRestock,
                           onRecordSale: () async {
-                            final code = a.perfumeCode.trim();
+                            final code = item.perfumeCode.trim();
                             final sqlite = ref.read(sqliteServiceProvider);
-                            var product = await sqlite.getProductByCode(
-                              code,
-                            );
+                            var product = await sqlite.getProductByCode(code);
                             if (product == null) {
                               final allProducts =
-                                  ref.read(masterProductsProvider).valueOrNull ??
-                                  [];
+                                  ref.read(masterProductsProvider).valueOrNull ?? [];
                               product = allProducts
                                   .where((p) => p.perfumeCode.trim() == code)
                                   .firstOrNull;
@@ -399,12 +573,8 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                             product ??= ProductModel(
                               id: 'prod_$code',
                               perfumeCode: code,
-                              name: SqliteService.getPerfumeFullName(
-                                code,
-                              ),
-                              bottleSize: code.endsWith('1')
-                                  ? '100ml'
-                                  : '50ml',
+                              name: SqliteService.getPerfumeFullName(code),
+                              bottleSize: code.endsWith('1') ? '100ml' : '50ml',
                             );
                             if (context.mounted) {
                               final recorded = await RecordSaleDialog.show(
@@ -414,7 +584,8 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                                 isLocked: true,
                               );
                               if (recorded == true) {
-                                await sqlite.markAlertRead(a.id);
+                                final ids = item.alerts.map((al) => al.id).toList();
+                                await sqlite.markAllAlertsRead(ids, branch);
                                 ref.invalidate(liveAlertsProvider(branch));
                                 ref.invalidate(resolvedAlertsHistoryProvider(branch));
                                 ref.invalidate(dashboardStatsProvider(branch));
@@ -422,11 +593,32 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                               }
                             }
                           },
-                          actionLabel: isOutOfStock || isLowStock
-                              ? 'Verify Restock'
-                              : 'Inspect Camera View',
+                          onManuallyCheckRestock: () async {
+                            final code = item.perfumeCode.trim();
+                            await SqliteService.instance.confirmSurplusRestock(
+                              perfumeCode: code,
+                              branch: branch,
+                              detectedCount: item.stockCount,
+                            );
+                            ref.invalidate(liveAlertsProvider(branch));
+                            ref.invalidate(resolvedAlertsHistoryProvider(branch));
+                            ref.invalidate(dashboardStatsProvider(branch));
+                            ref.invalidate(liveInventoryProvider(branch));
+                            ref.invalidate(stockMovementLogsProvider(branch));
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    'Restock confirmed for $code. Ledger synchronized.',
+                                  ),
+                                  backgroundColor: AppColors.statusGreen,
+                                ),
+                              );
+                            }
+                          },
+                          actionLabel: actionLabel,
                           onAction: () async {
-                            if (isOutOfStock || isLowStock) {
+                            if (item.isDiscrepancy || item.isOutOfStock || item.isLowStock) {
                               await ScanWorkflowDialog.show(
                                 context,
                                 isTargetedVerification: true,
@@ -440,16 +632,17 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                               context.push(AppRoutePaths.cameraMonitor);
                             }
                           },
-                          secondaryActionLabel:
-                              (isOutOfStock || isLowStock) ? 'Restock Order' : null,
-                          onSecondaryAction: (isOutOfStock || isLowStock)
+                          secondaryActionLabel: secondaryActionLabel,
+                          onSecondaryAction: secondaryActionLabel != null
                               ? () => context.push(AppRoutePaths.createRestock)
                               : null,
                           onDismiss: _showHistory
                               ? null
                               : () async {
-                                  await SqliteService.instance.markAlertRead(
-                                    a.id,
+                                  final ids = item.alerts.map((al) => al.id).toList();
+                                  await SqliteService.instance.markAllAlertsRead(
+                                    ids,
+                                    branch,
                                   );
                                   ref.invalidate(liveAlertsProvider(branch));
                                   ref.invalidate(resolvedAlertsHistoryProvider(branch));
@@ -592,11 +785,16 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
     required String timestamp,
     required String statusLabel,
     required StatusBadgeType statusType,
+    String? secondaryBadgeLabel,
+    Color? secondaryBadgeColor,
     required bool hasPerfumeCode,
     String perfumeCode = '',
     int? stockCount,
     bool isHistory = false,
-    required VoidCallback onRecordSale,
+    bool showRecordSale = false,
+    bool showManuallyCheckRestock = false,
+    VoidCallback? onRecordSale,
+    VoidCallback? onManuallyCheckRestock,
     required String actionLabel,
     required VoidCallback onAction,
     String? secondaryActionLabel,
@@ -658,6 +856,32 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                         customLabel: statusLabel,
                         large: true,
                       ),
+                      if (secondaryBadgeLabel != null) ...[
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: (secondaryBadgeColor ?? AppColors.statusOrange)
+                                .withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: (secondaryBadgeColor ?? AppColors.statusOrange)
+                                  .withValues(alpha: 0.4),
+                            ),
+                          ),
+                          child: Text(
+                            secondaryBadgeLabel,
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w800,
+                              color: secondaryBadgeColor ?? AppColors.statusOrange,
+                            ),
+                          ),
+                        ),
+                      ],
                       const SizedBox(width: 16),
                       Expanded(
                         child: Column(
@@ -787,7 +1011,7 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                       ),
                       const SizedBox(width: 16),
                       // Action buttons with touch target (min 44-48dp)
-                      if (hasPerfumeCode && !isHistory) ...[
+                      if (showRecordSale && onRecordSale != null && hasPerfumeCode && !isHistory) ...[
                         SizedBox(
                           height: 44,
                           child: ElevatedButton.icon(
@@ -799,6 +1023,34 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                             label: const Text('Record Sale'),
                             style: ElevatedButton.styleFrom(
                               backgroundColor: AppColors.statusGreen,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              textStyle: const TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                      ],
+                      if (showManuallyCheckRestock && onManuallyCheckRestock != null && !isHistory) ...[
+                        SizedBox(
+                          height: 44,
+                          child: ElevatedButton.icon(
+                            onPressed: onManuallyCheckRestock,
+                            icon: const Icon(
+                              Icons.check_circle_outline_rounded,
+                              size: 18,
+                            ),
+                            label: const Text('Manually Check Restock'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppColors.brandAccent,
                               foregroundColor: Colors.white,
                               padding: const EdgeInsets.symmetric(
                                 horizontal: 16,

@@ -100,7 +100,7 @@ class ReportExportService {
   }) {
     final buffer = StringBuffer();
     buffer.writeln(
-      'Transaction ID,Time,Fragrance Name,Perfume Code,Bottle Size,Quantity Sold,Unit Price (PHP),Total Amount (PHP),Cashier,Sync Status',
+      'Transaction ID,Time,Fragrance Name,Perfume Code,Bottle Size,Quantity Sold,Unit Price (PHP),Total Amount (PHP),Sync Status',
     );
 
     double totalRev = 0.0;
@@ -118,7 +118,6 @@ class ReportExportService {
         s.quantitySold,
         s.unitPrice.toStringAsFixed(2),
         s.totalAmount.toStringAsFixed(2),
-        _escapeCsv(s.soldBy),
         s.syncStatus,
       ];
       buffer.writeln(row.join(','));
@@ -126,7 +125,7 @@ class ReportExportService {
 
     buffer.writeln();
     buffer.writeln(
-      'SUMMARY TOTALS,,,,,$totalUnits,,${totalRev.toStringAsFixed(2)},,',
+      'SUMMARY TOTALS,,,,,$totalUnits,,${totalRev.toStringAsFixed(2)},',
     );
     return buffer.toString();
   }
@@ -284,7 +283,6 @@ class ReportExportService {
                       _pdfTh('Qty'),
                       _pdfTh('Price'),
                       _pdfTh('Total'),
-                      _pdfTh('Cashier'),
                     ],
                   ),
                   for (final s in todaySales.take(20))
@@ -297,7 +295,6 @@ class ReportExportService {
                         _pdfTd('${s.quantitySold}'),
                         _pdfTd('PHP ${s.unitPrice.toStringAsFixed(2)}'),
                         _pdfTd('PHP ${s.totalAmount.toStringAsFixed(2)}'),
-                        _pdfTd(s.soldBy),
                       ],
                     ),
                 ],
@@ -529,27 +526,80 @@ class ReportExportService {
   }
 
   // ---------------------------------------------------------------------------
-  // 5. IP DISCOVERY
+  // 5. IP DISCOVERY & RESILIENCE
   // ---------------------------------------------------------------------------
   Future<String> _discoverLocalIp() async {
-    final netIp = NetworkService.instance.status.ipAddress;
-    if (netIp != null && netIp.isNotEmpty && netIp != '127.0.0.1') {
-      return netIp;
-    }
-
     try {
       final ifaces = await NetworkInterface.list(
         type: InternetAddressType.IPv4,
         includeLoopback: false,
       );
-      for (final iface in ifaces) {
+
+      // Filter out virtual, container, and bridge interfaces
+      bool isVirtual(String name) {
+        final lower = name.toLowerCase();
+        return lower.startsWith('docker') ||
+            lower.startsWith('virbr') ||
+            lower.startsWith('veth') ||
+            lower.startsWith('br-') ||
+            lower.startsWith('dummy') ||
+            lower == 'lo';
+      }
+
+      final validIfaces = ifaces.where((iface) => !isVirtual(iface.name)).toList();
+
+      // 1. Prioritize Wi-Fi interfaces (wl*, wlan*, wifi*)
+      final wifiRegex = RegExp(r'^(wl|wlan|wifi)', caseSensitive: false);
+      for (final iface in validIfaces) {
+        if (wifiRegex.hasMatch(iface.name)) {
+          for (final addr in iface.addresses) {
+            if (!addr.isLoopback && addr.type == InternetAddressType.IPv4) {
+              return addr.address;
+            }
+          }
+        }
+      }
+
+      // 2. Prioritize Ethernet interfaces (eth*, en*)
+      final ethRegex = RegExp(r'^(eth|en)', caseSensitive: false);
+      for (final iface in validIfaces) {
+        if (ethRegex.hasMatch(iface.name)) {
+          for (final addr in iface.addresses) {
+            if (!addr.isLoopback && addr.type == InternetAddressType.IPv4) {
+              return addr.address;
+            }
+          }
+        }
+      }
+
+      // 3. Any remaining non-virtual IPv4
+      for (final iface in validIfaces) {
         for (final addr in iface.addresses) {
-          if (!addr.isLoopback) return addr.address;
+          if (!addr.isLoopback && addr.type == InternetAddressType.IPv4) {
+            return addr.address;
+          }
         }
       }
     } catch (_) {}
 
+    final netIp = NetworkService.instance.status.ipAddress;
+    if (netIp != null && netIp.isNotEmpty && netIp != '127.0.0.1') {
+      return netIp;
+    }
+
     return '127.0.0.1';
+  }
+
+  /// Re-detects the local IP address or applies a preferred IP, updating active state.
+  Future<String> updateOrRedetectIp([String? preferredIp]) async {
+    if (preferredIp != null && preferredIp.isNotEmpty && preferredIp != '127.0.0.1') {
+      _localIp = preferredIp;
+      return _localIp!;
+    }
+
+    final detected = await _discoverLocalIp();
+    _localIp = detected;
+    return detected;
   }
 
   // ---------------------------------------------------------------------------

@@ -1377,7 +1377,7 @@ class _CreateRestockScreenState extends ConsumerState<CreateRestockScreen> {
                           )
                         : const Icon(Icons.check_circle_rounded, size: 22),
                     label: Text(
-                      _isSaving ? 'Saving Restock...' : 'Confirm Restock',
+                      _isSaving ? 'Saving Restock...' : 'Manually Check Restock',
                       style: const TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w900,

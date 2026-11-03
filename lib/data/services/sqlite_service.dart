@@ -273,6 +273,15 @@ class SqliteService {
     try {
       await db.delete('sync_queue', where: "status = 'synced'");
     } catch (_) {}
+
+    // Purge legacy mock/test records from inventory_events
+    try {
+      await db.delete(
+        'inventory_events',
+        where:
+            "id LIKE 'test_%' OR id LIKE 'mock_%' OR perfumeCode IN ('A', 'B', 'C', 'D')",
+      );
+    } catch (_) {}
   }
 
   /// Consolidated single helper containing all 12 tables and 11 indexes (CREATE TABLE IF NOT EXISTS / CREATE INDEX IF NOT EXISTS)
@@ -2784,6 +2793,175 @@ class SqliteService {
       } catch (_) {}
     }
   }
+
+  /// Safely deletes historical movement events from inventory_events and restock_records
+  /// while strictly safeguarding products, sales_records, and active inventory in inventory_records.
+  Future<void> clearMovementAndRestockLogs(
+    String branch, {
+    bool purgeSystemInventoryLogs = true,
+  }) async {
+    final db = await database;
+    await db.transaction((txn) async {
+      // 1. Safely delete historical movement events from inventory_events
+      await txn.delete(
+        'inventory_events',
+        where: 'branch = ?',
+        whereArgs: [branch],
+      );
+
+      // 2. Delete restock records for this branch
+      await txn.delete(
+        'restock_records',
+        where: 'toBranch = ? OR fromBranch = ?',
+        whereArgs: [branch, branch],
+      );
+
+      // 3. Purge inventory-related system logs if requested
+      if (purgeSystemInventoryLogs) {
+        await txn.delete(
+          'system_logs',
+          where:
+              "branch = ? AND (type LIKE '%RESTOCK%' OR type LIKE '%INVENTORY%' OR type LIKE '%WRITEOFF%')",
+          whereArgs: [branch],
+        );
+      }
+
+      // 4. Record audit ledger entry
+      final now = DateTime.now().millisecondsSinceEpoch;
+      await txn.insert(
+        'system_logs',
+        {
+          'id': 'log_cleanslate_$now',
+          'type': 'AUDIT_CLEAN_SLATE',
+          'description':
+              'Store Manager executed clean slate on historical restock & movement logs.',
+          'user': 'Manager',
+          'branch': branch,
+          'timestamp': now,
+        },
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    });
+
+    _activityLogUpdateController.add(null);
+  }
+
+  Future<void> clearHistoricalMovementAndRestockLogs(
+    String branch, {
+    bool purgeSystemInventoryLogs = true,
+  }) =>
+      clearMovementAndRestockLogs(
+        branch,
+        purgeSystemInventoryLogs: purgeSystemInventoryLogs,
+      );
+
+  /// Synchronizes ledger (recorded = detected), logs RESTOCKED event with surplus delta,
+  /// and automatically dismisses associated discrepancy, low_stock, and out_of_stock alerts.
+  Future<void> confirmSurplusRestock({
+    required String perfumeCode,
+    String? branch,
+    int? detectedCount,
+  }) async {
+    final effectiveBranch = branch ?? await getBranchName();
+    final db = await database;
+    final now = DateTime.now();
+
+    await db.transaction((txn) async {
+      // 1. Fetch current inventory record
+      final records = await txn.query(
+        'inventory_records',
+        where: 'perfumeCode = ? AND branch = ?',
+        whereArgs: [perfumeCode, effectiveBranch],
+        limit: 1,
+      );
+      if (records.isEmpty) return;
+
+      final rec = records.first;
+      final int detected =
+          detectedCount ?? (rec['detected'] as num?)?.toInt() ?? 0;
+      final int recorded = (rec['recorded'] as num?)?.toInt() ?? 0;
+      final String name =
+          (rec['name'] as String?) ?? getPerfumeFullName(perfumeCode);
+      final String shelf = (rec['shelf'] as String?) ?? 'Shelf';
+
+      // 2. Align recorded ledger to detected physical count
+      await txn.update(
+        'inventory_records',
+        {
+          'recorded': detected,
+          'status': 'normal',
+          'lastUpdated': now.millisecondsSinceEpoch,
+        },
+        where: 'perfumeCode = ? AND branch = ?',
+        whereArgs: [perfumeCode, effectiveBranch],
+      );
+
+      // 3. Log RESTOCKED event with surplus delta (min 1)
+      final surplusQty = (detected - recorded) > 0 ? (detected - recorded) : 1;
+      await txn.insert(
+        'inventory_events',
+        {
+          'id':
+              'evt_manual_restock_${perfumeCode}_${now.millisecondsSinceEpoch}',
+          'eventType': 'RESTOCKED',
+          'productName': name,
+          'perfumeCode': perfumeCode,
+          'shelfArea': shelf,
+          'branch': effectiveBranch,
+          'quantity': surplusQty,
+          'timestamp': now.millisecondsSinceEpoch,
+          'syncStatus': 'synced',
+        },
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+
+      // 4. Clear/dismiss both discrepancy and low/out-of-stock alerts for this SKU
+      await txn.update(
+        'alerts',
+        {'isRead': 1},
+        where:
+            '(type = ? OR type = ? OR type = ? OR type = ? OR type = ?) AND perfumeCode = ? AND branch = ? AND isRead = 0',
+        whereArgs: [
+          'discrepancy',
+          'low_stock',
+          'lowStock',
+          'out_of_stock',
+          'outOfStock',
+          perfumeCode,
+          effectiveBranch,
+        ],
+      );
+
+      // 5. System activity log
+      await txn.insert(
+        'system_logs',
+        {
+          'id':
+              'log_manual_restock_${perfumeCode}_${now.millisecondsSinceEpoch}',
+          'type': 'RESTOCK_MANUAL_CHECK',
+          'description':
+              'Manually verified restock for $perfumeCode ($name): synchronized recorded ledger to $detected bottles.',
+          'user': 'Staff',
+          'branch': effectiveBranch,
+          'timestamp': now.millisecondsSinceEpoch,
+        },
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    });
+
+    _activityLogUpdateController.add(null);
+  }
+
+  Future<void> manuallyCheckRestock({
+    required String perfumeCode,
+    String? branch,
+    int? detectedCount,
+  }) =>
+      confirmSurplusRestock(
+        perfumeCode: perfumeCode,
+        branch: branch,
+        detectedCount: detectedCount,
+      );
 
   Future<void> deleteSystemLog(String id, {bool enqueueSync = true}) async {
     final db = await database;

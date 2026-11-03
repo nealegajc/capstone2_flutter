@@ -449,7 +449,7 @@ void main() {
       expect(find.text('Fill Tray (4)'), findsOneWidget);
       expect(find.text('+1'), findsOneWidget);
       expect(find.text('+5'), findsOneWidget);
-      expect(find.text('Confirm Restock'), findsOneWidget);
+      expect(find.text('Manually Check Restock'), findsOneWidget);
       expect(find.text('Verify with Camera (Camera 1)'), findsOneWidget);
     });
 
@@ -666,9 +666,9 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // 6. Tap Confirm Restock button
-      await tester.ensureVisible(find.text('Confirm Restock'));
-      await tester.tap(find.text('Confirm Restock'));
+      // 6. Tap Manually Check Restock button
+      await tester.ensureVisible(find.text('Manually Check Restock'));
+      await tester.tap(find.text('Manually Check Restock'));
       await tester.pumpAndSettle();
 
       // Verify SQLite state: recorded stock was incremented from 2 to 5 (2 + 3)

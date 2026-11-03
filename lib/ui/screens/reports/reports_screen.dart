@@ -3,9 +3,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
+import '../../../core/constants/app_constants.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/theme_helper.dart';
+import '../../../data/models/inventory_event_model.dart';
+import '../../../data/models/sale_record_model.dart';
 import '../../../data/services/csv_export_service.dart';
 import '../../../providers/kiosk_providers.dart';
 import '../../../providers/sales_provider.dart';
@@ -164,6 +167,7 @@ class ReportsScreen extends ConsumerWidget {
     final salesAsync = ref.watch(salesRecordsProvider(branch));
     final dashboardStatsAsync = ref.watch(dashboardStatsProvider(branch));
     final inventoryAsync = ref.watch(liveInventoryProvider(branch));
+    final movementLogsAsync = ref.watch(stockMovementLogsProvider(branch));
 
     final canGoBack = onBack != null || Navigator.of(context).canPop();
 
@@ -174,6 +178,31 @@ class ReportsScreen extends ConsumerWidget {
         s.soldAt.year == now.year &&
         s.soldAt.month == now.month &&
         s.soldAt.day == now.day).toList();
+
+    // Calculate Today's Damage Write-Off & Shrinkage Loss
+    final allMovements = movementLogsAsync.valueOrNull ?? const [];
+    final todayDamageEvents = allMovements.where((e) {
+      if (e.eventType != 'DAMAGE_WRITEOFF') return false;
+      return e.timestamp.year == now.year &&
+          e.timestamp.month == now.month &&
+          e.timestamp.day == now.day;
+    }).toList();
+
+    final todayDamageUnits = todayDamageEvents.fold<int>(
+      0,
+      (sum, e) => sum + e.quantity,
+    );
+    final todayDamageLoss = todayDamageEvents.fold<double>(
+      0.0,
+      (sum, e) {
+        final unitPrice = e.perfumeCode.endsWith('2')
+            ? AppConstants.price50ml
+            : (e.perfumeCode.endsWith('1')
+                ? AppConstants.price100ml
+                : AppConstants.priceFor(''));
+        return sum + (e.quantity * unitPrice);
+      },
+    );
 
     final todayRevenue = todaySales.fold<double>(
       0.0,
@@ -370,6 +399,22 @@ class ReportsScreen extends ConsumerWidget {
                         accentColor: lowStockTotal > 0 ? Colors.orange : AppColors.statusGreen,
                       ),
                     ),
+                    const SizedBox(width: 14),
+                    // Card 5: Damage & Shrinkage
+                    Expanded(
+                      child: _buildKpiCard(
+                        context: context,
+                        title: 'Damage & Shrinkage',
+                        value: todayDamageLoss > 0
+                            ? '-₱${NumberFormat('#,##0.00').format(todayDamageLoss)}'
+                            : '₱0.00',
+                        subtitle: todayDamageUnits > 0
+                            ? '$todayDamageUnits bottle(s) written off'
+                            : 'Optimal (0 write-offs)',
+                        icon: Icons.delete_sweep_rounded,
+                        accentColor: todayDamageUnits > 0 ? AppColors.statusRed : AppColors.statusGreen,
+                      ),
+                    ),
                   ],
                 ),
                 const SizedBox(height: 20),
@@ -379,7 +424,7 @@ class ReportsScreen extends ConsumerWidget {
                 const SizedBox(height: 24),
 
                 // 3. Recent Sales Activity List (Today's Transaction Feed)
-                _buildRecentSalesSection(context, branch, todaySales),
+                _buildRecentSalesSection(context, branch, todaySales, todayDamageEvents),
                 const SizedBox(height: 24),
 
                 // 4. Secondary Accordion / Shortcuts for CSV Exports & Sales Analytics
@@ -417,15 +462,20 @@ class ReportsScreen extends ConsumerWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                title.toUpperCase(),
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 0.5,
-                  color: context.textSecondaryColor,
+              Expanded(
+                child: Text(
+                  title.toUpperCase(),
+                  overflow: TextOverflow.ellipsis,
+                  maxLines: 1,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.5,
+                    color: context.textSecondaryColor,
+                  ),
                 ),
               ),
+              const SizedBox(width: 6),
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
@@ -578,8 +628,18 @@ class ReportsScreen extends ConsumerWidget {
   Widget _buildRecentSalesSection(
     BuildContext context,
     String branch,
-    List<dynamic> todaySales,
-  ) {
+    List<dynamic> todaySales, [
+    List<InventoryEventModel> todayDamageEvents = const [],
+  ]) {
+    final combined = <dynamic>[
+      ...todaySales,
+      ...todayDamageEvents,
+    ]..sort((a, b) {
+        final DateTime timeA = a is SaleRecordModel ? a.soldAt : (a as InventoryEventModel).timestamp;
+        final DateTime timeB = b is SaleRecordModel ? b.soldAt : (b as InventoryEventModel).timestamp;
+        return timeB.compareTo(timeA);
+      });
+
     return Container(
       decoration: BoxDecoration(
         color: context.surfaceColor,
@@ -622,7 +682,7 @@ class ReportsScreen extends ConsumerWidget {
                         border: Border.all(color: context.borderColor),
                       ),
                       child: Text(
-                        '${todaySales.length} items',
+                        '${combined.length} items',
                         style: TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.bold,
@@ -649,7 +709,7 @@ class ReportsScreen extends ConsumerWidget {
           ),
           const Divider(height: 1),
 
-          if (todaySales.isEmpty)
+          if (combined.isEmpty)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 36, horizontal: 20),
               child: Center(
@@ -685,76 +745,154 @@ class ReportsScreen extends ConsumerWidget {
             ListView.separated(
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
-              itemCount: todaySales.take(6).length,
+              itemCount: combined.take(6).length,
               separatorBuilder: (_, _) => const Divider(height: 1),
               itemBuilder: (context, idx) {
-                final s = todaySales[idx];
-                return ListTile(
-                  dense: false,
-                  minTileHeight: 62.0,
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 20,
-                    vertical: 8,
-                  ),
-                  leading: Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: AppColors.statusGreen.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(8),
+                final item = combined[idx];
+                if (item is SaleRecordModel) {
+                  return ListTile(
+                    dense: false,
+                    minTileHeight: 62.0,
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 8,
                     ),
-                    child: const Icon(
-                      Icons.point_of_sale_rounded,
-                      color: AppColors.statusGreen,
-                      size: 22,
-                    ),
-                  ),
-                  title: Row(
-                    children: [
-                      Text(
-                        s.productName,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 15,
-                        ),
+                    leading: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: AppColors.statusGreen.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(8),
                       ),
-                      const SizedBox(width: 8),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 6,
-                          vertical: 2,
-                        ),
-                        decoration: BoxDecoration(
-                          color: context.surfaceElevatedColor,
-                          borderRadius: BorderRadius.circular(4),
-                          border: Border.all(color: context.borderColor),
-                        ),
-                        child: Text(
-                          '${s.perfumeCode} • ${s.bottleSize}',
-                          style: TextStyle(
-                            fontSize: 12,
+                      child: const Icon(
+                        Icons.point_of_sale_rounded,
+                        color: AppColors.statusGreen,
+                        size: 22,
+                      ),
+                    ),
+                    title: Row(
+                      children: [
+                        Text(
+                          item.productName,
+                          style: const TextStyle(
                             fontWeight: FontWeight.bold,
-                            color: context.textSecondaryColor,
+                            fontSize: 15,
                           ),
                         ),
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: context.surfaceElevatedColor,
+                            borderRadius: BorderRadius.circular(4),
+                            border: Border.all(color: context.borderColor),
+                          ),
+                          child: Text(
+                            '${item.perfumeCode} • ${item.bottleSize}',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                              color: context.textSecondaryColor,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    subtitle: Text(
+                      'Time: ${DateFormat('hh:mm a').format(item.soldAt)} • Qty: ${item.quantitySold} @ ${item.formattedUnitPrice}',
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        color: context.textSecondaryColor,
                       ),
-                    ],
-                  ),
-                  subtitle: Text(
-                    'Time: ${DateFormat('hh:mm a').format(s.soldAt)} • Cashier: ${s.soldBy} • Qty: ${s.quantitySold} @ ${s.formattedUnitPrice}',
-                    style: TextStyle(
-                      fontSize: 12.5,
-                      color: context.textSecondaryColor,
                     ),
-                  ),
-                  trailing: Text(
-                    s.formattedTotal,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w900,
-                      color: AppColors.statusGreen,
+                    trailing: Text(
+                      item.formattedTotal,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w900,
+                        color: AppColors.statusGreen,
+                      ),
                     ),
-                  ),
-                );
+                  );
+                } else {
+                  final e = item as InventoryEventModel;
+                  final unitPrice = e.perfumeCode.endsWith('2')
+                      ? AppConstants.price50ml
+                      : (e.perfumeCode.endsWith('1')
+                          ? AppConstants.price100ml
+                          : AppConstants.priceFor(''));
+                  final loss = e.quantity * unitPrice;
+                  return ListTile(
+                    dense: false,
+                    minTileHeight: 62.0,
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 8,
+                    ),
+                    leading: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: AppColors.statusRed.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(
+                        Icons.delete_sweep_rounded,
+                        color: AppColors.statusRed,
+                        size: 22,
+                      ),
+                    ),
+                    title: Row(
+                      children: [
+                        Text(
+                          e.productName.isNotEmpty ? e.productName : e.perfumeCode,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 15,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: AppColors.statusRed.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(4),
+                            border: Border.all(
+                              color: AppColors.statusRed.withValues(alpha: 0.3),
+                            ),
+                          ),
+                          child: Text(
+                            '${e.perfumeCode} • Written Off',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                              color: AppColors.statusRed,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    subtitle: Text(
+                      'Time: ${DateFormat('hh:mm a').format(e.timestamp)} • Written Off: ${e.quantity} bottle(s) • Shelf ${e.shelfArea}',
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        color: context.textSecondaryColor,
+                      ),
+                    ),
+                    trailing: Text(
+                      '-₱${NumberFormat('#,##0.00').format(loss)}',
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w900,
+                        color: AppColors.statusRed,
+                      ),
+                    ),
+                  );
+                }
               },
             ),
         ],

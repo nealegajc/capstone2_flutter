@@ -317,7 +317,7 @@ void main() {
   });
 
   group('AlertsScreen Ribbon, Subtitles, and Record Sale Actions (R1-R3)', () {
-    testWidgets('AlertsScreen: Log Restock ribbon button and clean subtitle branding', (tester) async {
+    testWidgets('AlertsScreen: Log Restock ribbon button and clean subtitle branding (pure low stock has NO Record Sale)', (tester) async {
       tester.view.physicalSize = const Size(1920, 1080);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(() => tester.view.resetPhysicalSize());
@@ -358,8 +358,8 @@ void main() {
       expect(find.textContaining('Shelf Station'), findsNothing);
       expect(find.textContaining('Branch: San Pablo'), findsNothing);
 
-      // Verify Record Sale action button
-      expect(find.widgetWithText(ElevatedButton, 'Record Sale'), findsOneWidget);
+      // Pure low stock alert MUST NOT render Record Sale
+      expect(find.widgetWithText(ElevatedButton, 'Record Sale'), findsNothing);
     });
 
     testWidgets('AlertsScreen: Tapping Record Sale opens locked dialog and marks alert read on confirm', (tester) async {
@@ -368,11 +368,11 @@ void main() {
       addTearDown(() => tester.view.resetPhysicalSize());
 
       final alert = AlertModel(
-        id: 'alt_cd1_low',
-        title: 'Low Stock Alert - CD1',
-        desc: 'Only 2 bottles remaining on shelf',
+        id: 'alt_cd1_disc',
+        title: 'Stock Discrepancy - CD1',
+        desc: 'Camera detected 2 bottles, but ledger recorded 5',
         branch: branch,
-        type: 'low_stock',
+        type: 'discrepancy',
         perfumeCode: 'CD1',
         isRead: false,
         createdAt: DateTime.now(),
@@ -396,6 +396,7 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 200));
 
+      expect(find.widgetWithText(ElevatedButton, 'Record Sale'), findsOneWidget);
       await tester.tap(find.widgetWithText(ElevatedButton, 'Record Sale'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 300));
@@ -409,7 +410,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 500));
 
       final unreadAlerts = await sqliteService.getAlerts(branch, unreadOnly: true);
-      expect(unreadAlerts.any((a) => a.id == 'alt_cd1_low'), isFalse);
+      expect(unreadAlerts.any((a) => a.id == 'alt_cd1_disc'), isFalse);
     });
 
     testWidgets('AlertsScreen Edge Case: Whitespace or empty perfumeCode hides Record Sale button', (tester) async {
@@ -456,11 +457,11 @@ void main() {
 
       // 100ml unknown SKU (ends with '1')
       final alert100 = AlertModel(
-        id: 'alt_xx1_low',
-        title: 'Low Stock Alert - XX1',
-        desc: 'Unknown SKU XX1 is low',
+        id: 'alt_xx1_disc',
+        title: 'Stock Discrepancy - XX1',
+        desc: 'Camera detected 1 bottle, but ledger recorded 3',
         branch: branch,
-        type: 'low_stock',
+        type: 'discrepancy',
         perfumeCode: 'XX1',
         isRead: false,
         createdAt: DateTime.now(),
@@ -595,10 +596,10 @@ void main() {
 
       final alertSpaced = AlertModel(
         id: 'alt_cd1_spaces',
-        title: 'Low Stock Alert - CD1',
-        desc: 'Only 2 bottles remaining on shelf',
+        title: 'Stock Discrepancy - CD1',
+        desc: 'Camera detected 2 bottles, but ledger recorded 5',
         branch: branch,
-        type: 'low_stock',
+        type: 'discrepancy',
         perfumeCode: '  CD1  ',
         isRead: false,
         createdAt: DateTime.now(),
@@ -637,6 +638,146 @@ void main() {
       await tester.tap(find.byIcon(Icons.close_rounded));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 200));
+    });
+
+    testWidgets('R4 Surplus Discrepancy: Shows Manually Check Restock and hides Record Sale', (tester) async {
+      tester.view.physicalSize = const Size(1920, 1080);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() => tester.view.resetPhysicalSize());
+
+      // Surplus: detected (4) > recorded (2)
+      final surplusAlert = AlertModel(
+        id: 'alt_cd2_surplus',
+        title: 'Stock Discrepancy - CD2',
+        desc: 'Camera detected 4 bottles, but ledger recorded 2',
+        branch: branch,
+        type: 'discrepancy',
+        perfumeCode: 'CD2',
+        isRead: false,
+        createdAt: DateTime.now(),
+      );
+      await sqliteService.saveAlert(surplusAlert);
+
+      final invSurplus = InventoryRecordModel(
+        id: 'inv_${branch}_CD2',
+        perfumeCode: 'CD2',
+        name: 'Estee Lauder Pleasures (50ml)',
+        branch: branch,
+        shelf: 'Tray CD',
+        recorded: 2,
+        detected: 4,
+        status: 'needs_review',
+        lastUpdated: DateTime.now(),
+      );
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            sqliteServiceProvider.overrideWithValue(sqliteService),
+            liveAlertsProvider(branch).overrideWith((ref) => [surplusAlert]),
+            resolvedAlertsHistoryProvider(branch).overrideWith((ref) => []),
+            liveInventoryProvider(branch).overrideWith((ref) => [invSurplus]),
+          ],
+          child: const MaterialApp(
+            home: AlertsScreen(),
+          ),
+        ),
+      );
+
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 200));
+
+      // Surplus discrepancy must render Manually Check Restock button
+      expect(find.widgetWithText(ElevatedButton, 'Manually Check Restock'), findsOneWidget);
+      // Surplus discrepancy MUST NOT render Record Sale
+      expect(find.widgetWithText(ElevatedButton, 'Record Sale'), findsNothing);
+
+      // Tap Manually Check Restock
+      await tester.tap(find.widgetWithText(ElevatedButton, 'Manually Check Restock'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+
+      // Alert must be resolved
+      final unreadAlerts = await sqliteService.getAlerts(branch, unreadOnly: true);
+      expect(unreadAlerts.any((a) => a.id == 'alt_cd2_surplus'), isFalse);
+    });
+
+    testWidgets('R4 Alert Consolidation: Discrepancy and Low Stock merge into 1 card with secondary badge', (tester) async {
+      tester.view.physicalSize = const Size(1920, 1080);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() => tester.view.resetPhysicalSize());
+
+      final discAlert = AlertModel(
+        id: 'alt_cd1_disc_combo',
+        title: 'Stock Discrepancy Detected',
+        desc: 'Camera detected 1 bottle, but ledger recorded 4',
+        branch: branch,
+        type: 'discrepancy',
+        perfumeCode: 'CD1',
+        isRead: false,
+        createdAt: DateTime.now(),
+      );
+      final lowAlert = AlertModel(
+        id: 'alt_cd1_low_combo',
+        title: 'Low Stock Alert - CD1',
+        desc: 'Only 1 bottle remaining on shelf',
+        branch: branch,
+        type: 'low_stock',
+        perfumeCode: 'CD1',
+        isRead: false,
+        createdAt: DateTime.now(),
+      );
+      await sqliteService.saveAlert(discAlert);
+      await sqliteService.saveAlert(lowAlert);
+
+      final invItem = InventoryRecordModel(
+        id: 'inv_${branch}_CD1',
+        perfumeCode: 'CD1',
+        name: 'Estee Lauder Pleasures',
+        branch: branch,
+        shelf: 'Tray CD',
+        recorded: 4,
+        detected: 1,
+        status: 'low',
+        lastUpdated: DateTime.now(),
+      );
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            sqliteServiceProvider.overrideWithValue(sqliteService),
+            liveAlertsProvider(branch).overrideWith((ref) => [discAlert, lowAlert]),
+            resolvedAlertsHistoryProvider(branch).overrideWith((ref) => []),
+            liveInventoryProvider(branch).overrideWith((ref) => [invItem]),
+          ],
+          child: const MaterialApp(
+            home: AlertsScreen(),
+          ),
+        ),
+      );
+
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 200));
+
+      // 1 card total for active CD1 alerts (not 2 cards)
+      expect(find.text('1 ACTIVE'), findsOneWidget);
+      expect(find.text('Stock Discrepancy Detected'), findsOneWidget);
+      expect(find.text('Low Stock Alert - CD1'), findsNothing);
+
+      // Discrepancy primary status + Low Stock secondary badge inside the card
+      expect(find.text('Discrepancy'), findsOneWidget);
+      expect(find.descendant(of: find.byType(ListView), matching: find.text('Low Stock')), findsOneWidget);
+
+      // Dismiss button resolves BOTH underlying alerts
+      final dismissBtn = find.byTooltip('Mark as Resolved');
+      expect(dismissBtn, findsOneWidget);
+      await tester.tap(dismissBtn);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+
+      final unreadAlerts = await sqliteService.getAlerts(branch, unreadOnly: true);
+      expect(unreadAlerts.any((a) => a.id == 'alt_cd1_disc_combo'), isFalse);
+      expect(unreadAlerts.any((a) => a.id == 'alt_cd1_low_combo'), isFalse);
     });
   });
 }

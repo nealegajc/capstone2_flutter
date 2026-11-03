@@ -552,8 +552,8 @@ class CameraHardwareService extends ChangeNotifier {
           onTimeout: () => -1,
         );
       } catch (_) {}
+      await Future.delayed(const Duration(milliseconds: 300));
     }
-    await Future.delayed(const Duration(milliseconds: 300));
     notifyListeners();
   }
 
@@ -732,17 +732,22 @@ class CameraHardwareService extends ChangeNotifier {
       5: '/dev/cam3a',
       6: '/dev/cam3b',
     };
-    bool hasSymlinks = true;
-    for (final sym in persistentSymlinks.values) {
-      if (!File(sym).existsSync()) {
-        hasSymlinks = false;
-        break;
-      }
-    }
-    if (hasSymlinks) {
-      for (int i = 1; i <= 6; i++) {
-        _cameraNodeMap[i] = persistentSymlinks[i]!;
-      }
+    for (final entry in persistentSymlinks.entries) {
+      final camId = entry.key;
+      final symPath = entry.value;
+      try {
+        final symFile = File(symPath);
+        if (symFile.existsSync()) {
+          _cameraNodeMap[camId] = symPath;
+          final resolved = symFile.resolveSymbolicLinksSync();
+          final matched = discovered
+              .where((d) => d.deviceNode == resolved || d.deviceNode == symPath)
+              .firstOrNull;
+          if (matched != null) {
+            _cameraUsbPortMap[camId] = matched.usbPort;
+          }
+        }
+      } catch (_) {}
     }
 
     // Default 2-hub topology fallback (Hub 1: 1-1.* or 1-3.* | Hub 2: 1-2.* or 1-4.*)
