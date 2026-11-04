@@ -9,6 +9,7 @@ import '../../../data/models/product_model.dart';
 import '../../../data/services/sqlite_service.dart';
 import '../../../providers/kiosk_providers.dart';
 import '../../components/status_badge.dart';
+import '../../components/stock_movement_hub_dialog.dart';
 
 class InventoryScreen extends ConsumerStatefulWidget {
   const InventoryScreen({super.key});
@@ -432,6 +433,34 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                         ),
                         const SizedBox(width: 12),
 
+                        // Stock Movement Hub Ribbon Button (R1)
+                        SizedBox(
+                          height: 56,
+                          child: ElevatedButton.icon(
+                            key: const Key('btn_inventory_stock_movement_hub'),
+                            onPressed: () {
+                              StockMovementHubDialog.show(context);
+                            },
+                            icon: const Icon(Icons.swap_horiz_rounded, size: 24),
+                            label: const Text(
+                              'Stock Movement',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w800,
+                                fontSize: 16,
+                              ),
+                            ),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppColors.brandPrimary,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(horizontal: 18),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+
                         // Add / Shelf Full Capacity Action
                         if (isShelfFull)
                           Tooltip(
@@ -715,7 +744,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                         gridDelegate:
                             const SliverGridDelegateWithMaxCrossAxisExtent(
                               maxCrossAxisExtent: 420,
-                              mainAxisExtent: 268,
+                              mainAxisExtent: 310,
                               crossAxisSpacing: 16,
                               mainAxisSpacing: 16,
                             ),
@@ -978,220 +1007,249 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              // Top Row: Cap Code Badge + Gender + Size + Shelf Info + Edit Action
+              // 1. Polished Top Header: Shelf Location, Gender/Size Badges, and Edit Button
               Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  Opacity(
-                    opacity: isOff ? 0.6 : 1.0,
-                    child: Container(
-                      width: 56,
-                      height: 56,
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: isOff
-                              ? const [Color(0xFF6B7280), Color(0xFF4B5563)]
-                              : (isFemale
-                                    ? const [
-                                        Color(0xFFEC4899),
-                                        Color(0xFFBE185D),
-                                      ]
-                                    : const [
-                                        Color(0xFF0284C7),
-                                        Color(0xFF0369A1),
-                                      ]),
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                        ),
-                        borderRadius: BorderRadius.circular(14),
-                        boxShadow: [
-                          BoxShadow(
-                            color: (isOff ? Colors.black26 : themeGenderColor)
-                                .withValues(alpha: 0.35),
-                            blurRadius: 8,
-                            offset: const Offset(0, 3),
-                          ),
-                        ],
-                      ),
-                      child: Center(
-                        child: Text(
-                          code,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w900,
-                            fontSize: 18,
-                            letterSpacing: 0.5,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
                   Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                    child: Wrap(
+                      spacing: 6,
+                      runSpacing: 4,
+                      crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
-                        Wrap(
-                          spacing: 6,
-                          runSpacing: 4,
-                          crossAxisAlignment: WrapCrossAlignment.center,
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 3,
+                        // Shelf Location Pill
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 3.5,
+                          ),
+                          decoration: BoxDecoration(
+                            color: context.surfaceElevatedColor,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: context.borderColor),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.shelves,
+                                size: 12,
+                                color: context.textMutedColor,
                               ),
-                              decoration: BoxDecoration(
-                                color: themeGenderColor.withValues(alpha: 0.15),
-                                borderRadius: BorderRadius.circular(8),
-                                border: Border.all(
-                                  color: themeGenderColor.withValues(
-                                    alpha: 0.4,
-                                  ),
-                                ),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(
-                                    isFemale
-                                        ? Icons.female_rounded
-                                        : Icons.male_rounded,
-                                    size: 13,
-                                    color: themeGenderColor,
-                                  ),
-                                  const SizedBox(width: 3),
-                                  Text(
-                                    isFemale ? 'Women' : 'Men',
-                                    style: TextStyle(
-                                      fontSize: 11.5,
-                                      fontWeight: FontWeight.w800,
-                                      color: themeGenderColor,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 3,
-                              ),
-                              decoration: BoxDecoration(
-                                color: context.surfaceElevatedColor,
-                                borderRadius: BorderRadius.circular(8),
-                                border: Border.all(color: context.borderColor),
-                              ),
-                              child: Text(
-                                size,
+                              const SizedBox(width: 4),
+                              Text(
+                                '$layer • $slot',
                                 style: TextStyle(
                                   fontSize: 11.5,
-                                  fontWeight: FontWeight.w800,
                                   color: context.textSecondaryColor,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        // Gender Badge
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 7,
+                            vertical: 3.5,
+                          ),
+                          decoration: BoxDecoration(
+                            color: themeGenderColor.withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: themeGenderColor.withValues(alpha: 0.35),
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                isFemale
+                                    ? Icons.female_rounded
+                                    : Icons.male_rounded,
+                                size: 12,
+                                color: themeGenderColor,
+                              ),
+                              const SizedBox(width: 3),
+                              Text(
+                                isFemale ? 'Women' : 'Men',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w800,
+                                  color: themeGenderColor,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        // Bottle Size Badge
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 7,
+                            vertical: 3.5,
+                          ),
+                          decoration: BoxDecoration(
+                            color: context.surfaceElevatedColor,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: context.borderColor),
+                          ),
+                          child: Text(
+                            size,
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w800,
+                              color: context.textMutedColor,
+                            ),
+                          ),
+                        ),
+                        if (isOff)
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 7,
+                              vertical: 3.5,
+                            ),
+                            decoration: BoxDecoration(
+                              color: AppColors.statusOrange.withValues(
+                                alpha: 0.15,
+                              ),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                color: AppColors.statusOrange.withValues(
+                                  alpha: 0.45,
                                 ),
                               ),
                             ),
-                            if (isOff)
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 8,
-                                  vertical: 3,
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.wb_sunny_outlined,
+                                  size: 11,
+                                  color: AppColors.statusOrange,
                                 ),
-                                decoration: BoxDecoration(
-                                  color: AppColors.statusOrange.withValues(
-                                    alpha: 0.15,
+                                SizedBox(width: 3),
+                                Text(
+                                  'Off',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w800,
+                                    color: AppColors.statusOrange,
                                   ),
-                                  borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(
-                                    color: AppColors.statusOrange.withValues(
-                                      alpha: 0.5,
-                                    ),
-                                  ),
                                 ),
-                                child: const Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(
-                                      Icons.wb_sunny_outlined,
-                                      size: 13,
-                                      color: AppColors.statusOrange,
-                                    ),
-                                    SizedBox(width: 3),
-                                    Text(
-                                      'Seasonal / Off',
-                                      style: TextStyle(
-                                        fontSize: 11.5,
-                                        fontWeight: FontWeight.w800,
-                                        color: AppColors.statusOrange,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                          ],
-                        ),
-                        const SizedBox(height: 5),
-                        Text(
-                          '$layer • $slot',
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: context.textMutedColor,
-                            fontWeight: FontWeight.w700,
+                              ],
+                            ),
                           ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
                       ],
                     ),
                   ),
                   IconButton(
-                    icon: const Icon(Icons.edit_outlined, size: 20),
+                    icon: const Icon(Icons.edit_outlined, size: 18),
                     tooltip: 'Edit Fragrance',
                     padding: EdgeInsets.zero,
                     constraints: const BoxConstraints(
-                      minWidth: 44,
-                      minHeight: 44,
+                      minWidth: 36,
+                      minHeight: 36,
                     ),
                     onPressed: onEdit,
                   ),
                 ],
               ),
 
-              // Middle: Fragrance Name & Brand
+              // 2. Centered Product Hero: Cap Code Badge, Centered Name & Brand
               Padding(
-                padding: const EdgeInsets.symmetric(vertical: 4),
+                padding: const EdgeInsets.symmetric(vertical: 6),
                 child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    Text(
-                      name,
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w800,
-                        color: isOff
-                            ? context.textSecondaryColor
-                            : context.textPrimaryColor,
-                        decoration: isOff ? TextDecoration.lineThrough : null,
+                    // Cap Code Badge (Centered)
+                    Opacity(
+                      opacity: isOff ? 0.6 : 1.0,
+                      child: Container(
+                        width: 58,
+                        height: 58,
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: isOff
+                                ? const [Color(0xFF6B7280), Color(0xFF4B5563)]
+                                : (isFemale
+                                      ? const [
+                                          Color(0xFFEC4899),
+                                          Color(0xFFBE185D),
+                                        ]
+                                      : const [
+                                          Color(0xFF0284C7),
+                                          Color(0xFF0369A1),
+                                        ]),
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
+                          borderRadius: BorderRadius.circular(16),
+                          boxShadow: [
+                            BoxShadow(
+                              color: (isOff ? Colors.black26 : themeGenderColor)
+                                  .withValues(alpha: 0.35),
+                              blurRadius: 8,
+                              offset: const Offset(0, 3),
+                            ),
+                          ],
+                        ),
+                        child: Center(
+                          child: Text(
+                            code,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w900,
+                              fontSize: 19,
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                        ),
                       ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
                     ),
-                    const SizedBox(height: 3),
-                    Text(
-                      brand,
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: context.textSecondaryColor,
+                    const SizedBox(height: 10),
+
+                    // Centered Perfume Name
+                    SizedBox(
+                      width: double.infinity,
+                      child: Text(
+                        name,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w800,
+                          color: isOff
+                              ? context.textSecondaryColor
+                              : context.textPrimaryColor,
+                          decoration: isOff ? TextDecoration.lineThrough : null,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 2),
+
+                    // Centered Brand Name
+                    SizedBox(
+                      width: double.infinity,
+                      child: Text(
+                        brand,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w600,
+                          color: context.textMutedColor,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
                   ],
                 ),
               ),
 
-              // Bottom Row: Stock Count Bar & Active Switch
+              // 3. Bottom Stock Bar with 5-Segment Mini Visual Indicator & Active Switch
               Container(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 12,
@@ -1205,62 +1263,100 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
+                    // Stock Count & 5-Segment Level Visual Gauge
                     Expanded(
-                      child: Row(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(
-                            isOff
-                                ? Icons.pause_circle_outline_rounded
-                                : (isLow
-                                    ? Icons.warning_amber_rounded
-                                    : Icons.check_circle_outline_rounded),
-                            size: 16,
-                            color: isOff
-                                ? AppColors.statusOrange
-                                : (isLow
-                                    ? AppColors.statusRed
-                                    : AppColors.statusGreen),
-                          ),
-                          const SizedBox(width: 6),
-                          Flexible(
-                            child: Text(
-                              isOff
-                                  ? 'Seasonal / Off'
-                                  : '$currentQty / 5 in Stock',
-                              style: TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w800,
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                isOff
+                                    ? Icons.pause_circle_outline_rounded
+                                    : (isLow
+                                        ? Icons.warning_amber_rounded
+                                        : Icons.check_circle_outline_rounded),
+                                size: 14,
                                 color: isOff
                                     ? AppColors.statusOrange
                                     : (isLow
                                         ? AppColors.statusRed
                                         : AppColors.statusGreen),
                               ),
-                              overflow: TextOverflow.ellipsis,
-                            ),
+                              const SizedBox(width: 5),
+                              Flexible(
+                                child: Text(
+                                  isOff
+                                      ? 'Seasonal / Off'
+                                      : '$currentQty / 5 in Stock',
+                                  style: TextStyle(
+                                    fontSize: 12.5,
+                                    fontWeight: FontWeight.w800,
+                                    color: isOff
+                                        ? AppColors.statusOrange
+                                        : (isLow
+                                            ? AppColors.statusRed
+                                            : AppColors.statusGreen),
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 5),
+
+                          // 5-Segment Mini Stock Level Bar
+                          Row(
+                            children: List.generate(5, (dotIndex) {
+                              final isFilled =
+                                  !isOff && dotIndex < currentQty;
+                              final segmentColor = isLow
+                                  ? AppColors.statusRed
+                                  : AppColors.statusGreen;
+
+                              return Expanded(
+                                child: Container(
+                                  margin: EdgeInsets.only(
+                                    right: dotIndex < 4 ? 3.0 : 0.0,
+                                  ),
+                                  height: 4.5,
+                                  decoration: BoxDecoration(
+                                    color: isFilled
+                                        ? segmentColor
+                                        : context.borderColor.withValues(
+                                            alpha: context.isDark ? 0.35 : 0.5,
+                                          ),
+                                    borderRadius: BorderRadius.circular(2),
+                                  ),
+                                ),
+                              );
+                            }),
                           ),
                         ],
                       ),
                     ),
-                    const SizedBox(width: 6),
+                    const SizedBox(width: 10),
+
+                    // Active Switch
                     Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Text(
                           isOff ? 'Off' : 'Active',
                           style: TextStyle(
-                            fontSize: 12,
+                            fontSize: 11.5,
                             fontWeight: FontWeight.w800,
                             color: isOff
                                 ? AppColors.statusOrange
                                 : context.textSecondaryColor,
                           ),
                         ),
-                        const SizedBox(width: 6),
+                        const SizedBox(width: 4),
                         SizedBox(
-                          height: 28,
-                          width: 44,
+                          height: 26,
+                          width: 40,
                           child: FittedBox(
                             fit: BoxFit.fill,
                             child: Switch(
@@ -1582,6 +1678,16 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                 ],
               ),
               const SizedBox(width: 12),
+
+              // Stock Movement Shortcut Button
+              IconButton(
+                icon: const Icon(Icons.swap_horiz_rounded, size: 22),
+                tooltip: 'Stock Movement (Sale, Restock, Return, Write-off, Count)',
+                constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+                onPressed: () {
+                  StockMovementHubDialog.show(context, initialProduct: product);
+                },
+              ),
 
               // Edit Shortcut Button
               IconButton(

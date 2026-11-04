@@ -97,6 +97,7 @@ class ReportExportService {
   String generateDailySalesCsv({
     required List<SaleRecordModel> sales,
     required String branch,
+    String dateRangeLabel = 'Today',
   }) {
     final buffer = StringBuffer();
     buffer.writeln(
@@ -137,41 +138,120 @@ class ReportExportService {
     required List<InventoryRecordModel> inventory,
     required List<SaleRecordModel> sales,
     required String branch,
+    String dateRangeLabel = 'Today',
   }) async {
     final pdf = pw.Document();
 
     final now = DateTime.now();
-    final todaySales = sales.where((s) =>
-        s.soldAt.year == now.year &&
-        s.soldAt.month == now.month &&
-        s.soldAt.day == now.day).toList();
+    final bool alreadyFiltered = dateRangeLabel != 'Today';
+    final targetSales = alreadyFiltered
+        ? sales
+        : sales.where((s) =>
+            s.soldAt.year == now.year &&
+            s.soldAt.month == now.month &&
+            s.soldAt.day == now.day).toList();
 
-    final double todayRev = todaySales.fold(0.0, (sum, s) => sum + s.totalAmount);
-    final int todayUnits = todaySales.fold(0, (sum, s) => sum + s.quantitySold);
+    // Aggregates & Metrics
+    final double grossRev = targetSales.where((s) => !s.isRefund).fold(0.0, (sum, s) => sum + s.totalAmount);
+    final double totalRefunds = targetSales.where((s) => s.isRefund).fold(0.0, (sum, s) => sum + (-s.totalAmount));
+    final double netRev = targetSales.fold(0.0, (sum, s) => sum + s.totalAmount);
+    final int totalUnitsSold = targetSales.where((s) => !s.isRefund).fold(0, (sum, s) => sum + s.quantitySold);
     final int onShelf = inventory.where((i) => !i.isSeasonalOff).fold(0, (sum, i) => sum + i.detected);
-    final int lowStockCount = inventory.where((i) => !i.isSeasonalOff && (i.detected <= 2)).length;
+    final int lowStockCount = inventory.where((i) => !i.isSeasonalOff && i.detected > 0 && i.detected <= 2).length;
+    final int outOfStockCount = inventory.where((i) => !i.isSeasonalOff && i.detected == 0).length;
+    final int optimalCount = inventory.where((i) => !i.isSeasonalOff && i.detected > 2).length;
+    final int activeSlots = inventory.where((i) => !i.isSeasonalOff).length;
 
-    // OttoScents Brand Palette
+    // Top Selling Fragrances aggregation
+    final Map<String, ({String name, int units, double rev})> productAggs = {};
+    for (final s in targetSales.where((s) => !s.isRefund)) {
+      final key = s.perfumeCode;
+      final existing = productAggs[key];
+      if (existing == null) {
+        productAggs[key] = (name: s.productName, units: s.quantitySold, rev: s.totalAmount);
+      } else {
+        productAggs[key] = (
+          name: s.productName,
+          units: existing.units + s.quantitySold,
+          rev: existing.rev + s.totalAmount,
+        );
+      }
+    }
+    final topSellers = productAggs.values.toList()
+      ..sort((a, b) => b.units.compareTo(a.units));
+    final top5Sellers = topSellers.take(5).toList();
+    final maxUnits = top5Sellers.isNotEmpty ? top5Sellers.first.units : 1;
+
+    // OttoScents Dual-Mode Printable Palette
     const goldColor = PdfColor.fromInt(0xFFD97706);
-    const darkBg = PdfColor.fromInt(0xFF0F172A);
-    const cardBg = PdfColor.fromInt(0xFF1E293B);
-    const borderColor = PdfColor.fromInt(0xFF334155);
-    const textMuted = PdfColor.fromInt(0xFF94A3B8);
-    const greenText = PdfColor.fromInt(0xFF22C55E);
+    const darkHeaderBg = PdfColor.fromInt(0xFF0F172A);
+    const darkCardBg = PdfColor.fromInt(0xFF1E293B);
+    const lightTableBorder = PdfColor.fromInt(0xFFE2E8F0);
+    const lightTableHeadBg = PdfColor.fromInt(0xFFF1F5F9);
+    const lightTextPrimary = PdfColor.fromInt(0xFF0F172A);
+    const lightTextSecondary = PdfColor.fromInt(0xFF475569);
+    const greenColor = PdfColor.fromInt(0xFF16A34A);
+    const amberColor = PdfColor.fromInt(0xFFD97706);
+    const redColor = PdfColor.fromInt(0xFFDC2626);
+    const blueColor = PdfColor.fromInt(0xFF2563EB);
 
     pdf.addPage(
       pw.MultiPage(
         pageFormat: PdfPageFormat.a4,
         margin: const pw.EdgeInsets.all(24),
+        header: (pw.Context context) {
+          if (context.pageNumber == 1) return pw.SizedBox();
+          return pw.Container(
+            margin: const pw.EdgeInsets.only(bottom: 12),
+            padding: const pw.EdgeInsets.only(bottom: 6),
+            decoration: const pw.BoxDecoration(
+              border: pw.Border(bottom: pw.BorderSide(color: lightTableBorder, width: 0.8)),
+            ),
+            child: pw.Row(
+              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+              children: [
+                pw.Text(
+                  'OTTO SCENTS • $branch Store Report ($dateRangeLabel)',
+                  style: const pw.TextStyle(color: lightTextSecondary, fontSize: 9),
+                ),
+                pw.Text(
+                  'Page ${context.pageNumber} of ${context.pagesCount}',
+                  style: const pw.TextStyle(color: lightTextSecondary, fontSize: 9),
+                ),
+              ],
+            ),
+          );
+        },
+        footer: (pw.Context context) {
+          return pw.Container(
+            margin: const pw.EdgeInsets.only(top: 12),
+            padding: const pw.EdgeInsets.only(top: 6),
+            decoration: const pw.BoxDecoration(
+              border: pw.Border(top: pw.BorderSide(color: lightTableBorder, width: 0.8)),
+            ),
+            child: pw.Row(
+              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+              children: [
+                pw.Text(
+                  'Generated wirelessly via OttoScents Smart Shelf Local Wi-Fi Gateway',
+                  style: const pw.TextStyle(color: lightTextSecondary, fontSize: 8),
+                ),
+                pw.Text(
+                  'Page ${context.pageNumber} of ${context.pagesCount}',
+                  style: const pw.TextStyle(color: lightTextSecondary, fontSize: 8),
+                ),
+              ],
+            ),
+          );
+        },
         build: (pw.Context context) {
           return [
-            // Header
+            // Dark Header Card (Dual Mode contrast)
             pw.Container(
               padding: const pw.EdgeInsets.all(16),
               decoration: pw.BoxDecoration(
-                color: cardBg,
+                color: darkHeaderBg,
                 borderRadius: pw.BorderRadius.circular(8),
-                border: pw.Border.all(color: borderColor),
               ),
               child: pw.Row(
                 mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
@@ -179,18 +259,40 @@ class ReportExportService {
                   pw.Column(
                     crossAxisAlignment: pw.CrossAxisAlignment.start,
                     children: [
-                      pw.Text(
-                        'OTTO SCENTS',
-                        style: pw.TextStyle(
-                          color: goldColor,
-                          fontSize: 22,
-                          fontWeight: pw.FontWeight.bold,
-                        ),
+                      pw.Row(
+                        children: [
+                          pw.Text(
+                            'OTTO SCENTS',
+                            style: pw.TextStyle(
+                              color: goldColor,
+                              fontSize: 22,
+                              fontWeight: pw.FontWeight.bold,
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                          pw.SizedBox(width: 8),
+                          pw.Container(
+                            padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: pw.BoxDecoration(
+                              color: darkCardBg,
+                              borderRadius: pw.BorderRadius.circular(4),
+                              border: pw.Border.all(color: goldColor, width: 0.5),
+                            ),
+                            child: pw.Text(
+                              dateRangeLabel.toUpperCase(),
+                              style: pw.TextStyle(
+                                color: goldColor,
+                                fontSize: 9,
+                                fontWeight: pw.FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                       pw.SizedBox(height: 4),
                       pw.Text(
-                        'Smart Shelf Retail & Inventory Report',
-                        style: const pw.TextStyle(color: PdfColors.white, fontSize: 12),
+                        'Smart Shelf Retail & Inventory Performance Report',
+                        style: const pw.TextStyle(color: PdfColors.white, fontSize: 11),
                       ),
                     ],
                   ),
@@ -208,140 +310,350 @@ class ReportExportService {
                       pw.SizedBox(height: 4),
                       pw.Text(
                         DateFormat('yyyy-MM-dd HH:mm:ss').format(now),
-                        style: const pw.TextStyle(color: textMuted, fontSize: 10),
+                        style: const pw.TextStyle(color: PdfColor.fromInt(0xFF94A3B8), fontSize: 9),
                       ),
                     ],
                   ),
                 ],
               ),
             ),
-            pw.SizedBox(height: 16),
+            pw.SizedBox(height: 14),
 
-            // 4 KPI Summary Cards
+            // 4 KPI Summary Cards (Dark card contrast with vibrant KPI highlights)
             pw.Row(
               children: [
                 _buildPdfKpiCard(
-                  title: "Today's Revenue",
-                  value: 'PHP ${todayRev.toStringAsFixed(2)}',
-                  accentColor: greenText,
+                  title: "$dateRangeLabel's Net Revenue",
+                  value: 'PHP ${NumberFormat('#,##0.00').format(netRev)}',
+                  accentColor: greenColor,
                 ),
                 pw.SizedBox(width: 8),
                 _buildPdfKpiCard(
-                  title: 'Bottles Sold Today',
-                  value: '$todayUnits Bottles',
-                  accentColor: PdfColors.blue,
+                  title: 'Bottles Sold',
+                  value: '$totalUnitsSold Sold',
+                  accentColor: blueColor,
                 ),
                 pw.SizedBox(width: 8),
                 _buildPdfKpiCard(
-                  title: 'Bottles on Shelf',
+                  title: 'Shelf Bottles',
                   value: '$onShelf / 300',
                   accentColor: goldColor,
                 ),
                 pw.SizedBox(width: 8),
                 _buildPdfKpiCard(
                   title: 'Low Stock Alerts',
-                  value: '$lowStockCount Fragrances',
-                  accentColor: lowStockCount > 0 ? PdfColors.red : greenText,
+                  value: '$lowStockCount Items Low',
+                  accentColor: lowStockCount > 0 ? amberColor : greenColor,
                 ),
               ],
             ),
-            pw.SizedBox(height: 20),
+            pw.SizedBox(height: 16),
 
-            // Today's Sales Section
-            pw.Text(
-              "Today's Sales Transactions (${todaySales.length} records)",
-              style: pw.TextStyle(
-                fontSize: 14,
-                fontWeight: pw.FontWeight.bold,
-                color: goldColor,
+            // Visual Analytics: Charts Section
+            pw.Container(
+              padding: const pw.EdgeInsets.all(12),
+              decoration: pw.BoxDecoration(
+                color: lightTableHeadBg,
+                borderRadius: pw.BorderRadius.circular(6),
+                border: pw.Border.all(color: lightTableBorder),
+              ),
+              child: pw.Row(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  // Chart 1: Top 5 Selling Fragrances Horizontal Bar Chart
+                  pw.Expanded(
+                    flex: 55,
+                    child: pw.Column(
+                      crossAxisAlignment: pw.CrossAxisAlignment.start,
+                      children: [
+                        pw.Text(
+                          'TOP-SELLING FRAGRANCES (UNITS & REVENUE)',
+                          style: pw.TextStyle(
+                            color: lightTextPrimary,
+                            fontSize: 9,
+                            fontWeight: pw.FontWeight.bold,
+                          ),
+                        ),
+                        pw.SizedBox(height: 8),
+                        if (top5Sellers.isEmpty)
+                          pw.Text(
+                            'No sales recorded in this period.',
+                            style: const pw.TextStyle(color: lightTextSecondary, fontSize: 8),
+                          )
+                        else
+                          for (final item in top5Sellers) ...[
+                            pw.Row(
+                              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                              children: [
+                                pw.Expanded(
+                                  child: pw.Text(
+                                    item.name,
+                                    overflow: pw.TextOverflow.clip,
+                                    maxLines: 1,
+                                    style: const pw.TextStyle(fontSize: 8, color: lightTextPrimary),
+                                  ),
+                                ),
+                                pw.Text(
+                                  '${item.units} units • PHP ${NumberFormat('#,##0.00').format(item.rev)}',
+                                  style: pw.TextStyle(
+                                    fontSize: 8,
+                                    fontWeight: pw.FontWeight.bold,
+                                    color: goldColor,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            pw.SizedBox(height: 2),
+                            // Bar
+                            pw.Container(
+                              height: 6,
+                              width: double.infinity,
+                              decoration: pw.BoxDecoration(
+                                color: const PdfColor.fromInt(0xFFE2E8F0),
+                                borderRadius: pw.BorderRadius.circular(3),
+                              ),
+                              child: pw.Row(
+                                children: [
+                                  pw.Expanded(
+                                    flex: (item.units * 100 ~/ maxUnits).clamp(5, 100),
+                                    child: pw.Container(
+                                      decoration: pw.BoxDecoration(
+                                        color: goldColor,
+                                        borderRadius: pw.BorderRadius.circular(3),
+                                      ),
+                                    ),
+                                  ),
+                                  pw.Expanded(
+                                    flex: (100 - (item.units * 100 ~/ maxUnits)).clamp(0, 95),
+                                    child: pw.SizedBox(),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            pw.SizedBox(height: 5),
+                          ],
+                      ],
+                    ),
+                  ),
+                  pw.SizedBox(width: 14),
+
+                  // Chart 2: Shelf Stock Health Distribution Segmented Ratio Bar
+                  pw.Expanded(
+                    flex: 45,
+                    child: pw.Column(
+                      crossAxisAlignment: pw.CrossAxisAlignment.start,
+                      children: [
+                        pw.Text(
+                          'SHELF STOCK HEALTH STATUS',
+                          style: pw.TextStyle(
+                            color: lightTextPrimary,
+                            fontSize: 9,
+                            fontWeight: pw.FontWeight.bold,
+                          ),
+                        ),
+                        pw.SizedBox(height: 8),
+                        // Segmented bar
+                        pw.Container(
+                          height: 14,
+                          decoration: pw.BoxDecoration(
+                            borderRadius: pw.BorderRadius.circular(4),
+                            color: const PdfColor.fromInt(0xFFE2E8F0),
+                          ),
+                          child: activeSlots == 0
+                              ? pw.SizedBox()
+                              : pw.Row(
+                                  children: [
+                                    if (optimalCount > 0)
+                                      pw.Expanded(
+                                        flex: optimalCount,
+                                        child: pw.Container(color: greenColor),
+                                      ),
+                                    if (lowStockCount > 0)
+                                      pw.Expanded(
+                                        flex: lowStockCount,
+                                        child: pw.Container(color: amberColor),
+                                      ),
+                                    if (outOfStockCount > 0)
+                                      pw.Expanded(
+                                        flex: outOfStockCount,
+                                        child: pw.Container(color: redColor),
+                                      ),
+                                  ],
+                                ),
+                        ),
+                        pw.SizedBox(height: 8),
+                        // Legend
+                        pw.Row(
+                          children: [
+                            _buildLegendItem('Optimal (>2)', '$optimalCount', greenColor),
+                            pw.SizedBox(width: 8),
+                            _buildLegendItem('Low (1-2)', '$lowStockCount', amberColor),
+                            pw.SizedBox(width: 8),
+                            _buildLegendItem('Empty (0)', '$outOfStockCount', redColor),
+                          ],
+                        ),
+                        pw.SizedBox(height: 6),
+                        pw.Text(
+                          'Total Capacity: 300 bottles (60 slots × 5 max capacity)',
+                          style: const pw.TextStyle(color: lightTextSecondary, fontSize: 7.5),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
             ),
-            pw.SizedBox(height: 8),
-            if (todaySales.isEmpty)
+            pw.SizedBox(height: 16),
+
+            // Section 1: Sales Transactions Table (Light Printable Theme)
+            pw.Row(
+              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+              children: [
+                pw.Text(
+                  "Sales Transactions ($dateRangeLabel • ${targetSales.length} records)",
+                  style: pw.TextStyle(
+                    fontSize: 12,
+                    fontWeight: pw.FontWeight.bold,
+                    color: lightTextPrimary,
+                  ),
+                ),
+                pw.Text(
+                  "Net Revenue: PHP ${NumberFormat('#,##0.00').format(netRev)}",
+                  style: pw.TextStyle(
+                    fontSize: 11,
+                    fontWeight: pw.FontWeight.bold,
+                    color: netRev >= 0 ? greenColor : redColor,
+                  ),
+                ),
+              ],
+            ),
+            pw.SizedBox(height: 6),
+            if (targetSales.isEmpty)
               pw.Container(
-                padding: const pw.EdgeInsets.all(12),
+                padding: const pw.EdgeInsets.all(10),
                 decoration: pw.BoxDecoration(
-                  color: darkBg,
-                  borderRadius: pw.BorderRadius.circular(6),
+                  color: lightTableHeadBg,
+                  borderRadius: pw.BorderRadius.circular(4),
+                  border: pw.Border.all(color: lightTableBorder),
                 ),
                 child: pw.Text(
-                  'No transactions recorded today.',
-                  style: const pw.TextStyle(color: textMuted, fontSize: 11),
+                  'No transactions recorded for this period.',
+                  style: const pw.TextStyle(color: lightTextSecondary, fontSize: 9),
                 ),
               )
             else
               pw.Table(
-                border: pw.TableBorder.all(color: borderColor, width: 0.5),
+                border: pw.TableBorder.all(color: lightTableBorder, width: 0.5),
                 children: [
                   pw.TableRow(
-                    decoration: const pw.BoxDecoration(color: darkBg),
+                    decoration: const pw.BoxDecoration(color: lightTableHeadBg),
                     children: [
-                      _pdfTh('Time'),
-                      _pdfTh('Fragrance'),
-                      _pdfTh('Code'),
-                      _pdfTh('Size'),
-                      _pdfTh('Qty'),
-                      _pdfTh('Price'),
-                      _pdfTh('Total'),
+                      _pdfThLight('Time'),
+                      _pdfThLight('Type'),
+                      _pdfThLight('Fragrance Name'),
+                      _pdfThLight('Code'),
+                      _pdfThLight('Size'),
+                      _pdfThLight('Qty'),
+                      _pdfThLight('Unit Price'),
+                      _pdfThLight('Total'),
                     ],
                   ),
-                  for (final s in todaySales.take(20))
+                  for (final s in targetSales.take(40))
                     pw.TableRow(
                       children: [
-                        _pdfTd(DateFormat('HH:mm:ss').format(s.soldAt)),
-                        _pdfTd(s.productName),
-                        _pdfTd(s.perfumeCode),
-                        _pdfTd(s.bottleSize),
-                        _pdfTd('${s.quantitySold}'),
-                        _pdfTd('PHP ${s.unitPrice.toStringAsFixed(2)}'),
-                        _pdfTd('PHP ${s.totalAmount.toStringAsFixed(2)}'),
+                        _pdfTdLight(DateFormat('HH:mm:ss').format(s.soldAt)),
+                        _pdfTdLight(
+                          s.isRefund ? 'Refund' : 'Sale',
+                          color: s.isRefund ? amberColor : greenColor,
+                          isBold: true,
+                        ),
+                        _pdfTdLight(s.productName, isBold: true),
+                        _pdfTdLight(s.perfumeCode),
+                        _pdfTdLight(s.bottleSize),
+                        _pdfTdLight('${s.quantitySold}'),
+                        _pdfTdLight('PHP ${s.unitPrice.toStringAsFixed(2)}'),
+                        _pdfTdLight(
+                          s.isRefund
+                              ? '-PHP ${(-s.totalAmount).toStringAsFixed(2)}'
+                              : 'PHP ${s.totalAmount.toStringAsFixed(2)}',
+                          color: s.isRefund ? redColor : greenColor,
+                          isBold: true,
+                        ),
                       ],
                     ),
+                  // Summary Totals Row
+                  pw.TableRow(
+                    decoration: const pw.BoxDecoration(color: lightTableHeadBg),
+                    children: [
+                      _pdfTdLight('TOTAL', isBold: true),
+                      _pdfTdLight('${targetSales.length} txns', isBold: true),
+                      _pdfTdLight('Gross: PHP ${NumberFormat('#,##0.00').format(grossRev)}', isBold: true),
+                      _pdfTdLight('-', isBold: true),
+                      _pdfTdLight('-', isBold: true),
+                      _pdfTdLight('$totalUnitsSold units', isBold: true),
+                      _pdfTdLight(
+                        totalRefunds > 0 ? 'Ref: -PHP ${NumberFormat('#,##0.00').format(totalRefunds)}' : 'Ref: 0',
+                        isBold: true,
+                        color: totalRefunds > 0 ? amberColor : lightTextSecondary,
+                      ),
+                      _pdfTdLight(
+                        'PHP ${NumberFormat('#,##0.00').format(netRev)}',
+                        isBold: true,
+                        color: netRev >= 0 ? greenColor : redColor,
+                      ),
+                    ],
+                  ),
                 ],
               ),
-            pw.SizedBox(height: 20),
+            pw.SizedBox(height: 18),
 
-            // Shelf Stock Summary Section
+            // Section 2: Shelf Stock Inventory Table (Light Printable Theme)
             pw.Text(
               'Shelf Stock Inventory (${inventory.length} slots)',
               style: pw.TextStyle(
-                fontSize: 14,
+                fontSize: 12,
                 fontWeight: pw.FontWeight.bold,
-                color: goldColor,
+                color: lightTextPrimary,
               ),
             ),
-            pw.SizedBox(height: 8),
+            pw.SizedBox(height: 6),
             pw.Table(
-              border: pw.TableBorder.all(color: borderColor, width: 0.5),
+              border: pw.TableBorder.all(color: lightTableBorder, width: 0.5),
               children: [
                 pw.TableRow(
-                  decoration: const pw.BoxDecoration(color: darkBg),
+                  decoration: const pw.BoxDecoration(color: lightTableHeadBg),
                   children: [
-                    _pdfTh('Slot'),
-                    _pdfTh('Fragrance Name'),
-                    _pdfTh('Shelf / Layer'),
-                    _pdfTh('Stock (Cap 5)'),
-                    _pdfTh('Status'),
-                    _pdfTh('Price'),
-                    _pdfTh('Total Value'),
+                    _pdfThLight('Slot'),
+                    _pdfThLight('Fragrance Name'),
+                    _pdfThLight('Shelf / Layer'),
+                    _pdfThLight('Stock (Cap 5)'),
+                    _pdfThLight('Stock Health'),
+                    _pdfThLight('Unit Price'),
+                    _pdfThLight('Total Value'),
                   ],
                 ),
                 for (final item in inventory.where((i) => i.status != 'deleted'))
                   pw.TableRow(
                     children: [
-                      _pdfTd(item.perfumeCode),
-                      _pdfTd(item.name),
-                      _pdfTd(item.shelf),
-                      _pdfTd(item.isSeasonalOff ? '0 (Off)' : '${item.detected} / 5'),
-                      _pdfTd(
+                      _pdfTdLight(item.perfumeCode, isBold: true),
+                      _pdfTdLight(item.name),
+                      _pdfTdLight(item.shelf),
+                      _pdfTdLight(item.isSeasonalOff ? '0 (Off)' : '${item.detected} / 5'),
+                      _pdfTdLight(
                         item.isSeasonalOff
                             ? 'Seasonal Off'
                             : (item.detected == 0
                                 ? 'Out of Stock'
                                 : (item.detected <= 2 ? 'Low Stock' : 'Optimal')),
+                        color: item.isSeasonalOff
+                            ? lightTextSecondary
+                            : (item.detected == 0
+                                ? redColor
+                                : (item.detected <= 2 ? amberColor : greenColor)),
+                        isBold: true,
                       ),
-                      _pdfTd('PHP ${(item.price > 0 ? item.price : 260.0).toStringAsFixed(2)}'),
-                      _pdfTd(
+                      _pdfTdLight('PHP ${(item.price > 0 ? item.price : 260.0).toStringAsFixed(2)}'),
+                      _pdfTdLight(
                         'PHP ${((item.isSeasonalOff ? 0 : item.detected) * (item.price > 0 ? item.price : 260.0)).toStringAsFixed(2)}',
                       ),
                     ],
@@ -354,6 +666,23 @@ class ReportExportService {
     );
 
     return await pdf.save();
+  }
+
+  static pw.Widget _buildLegendItem(String label, String count, PdfColor color) {
+    return pw.Row(
+      children: [
+        pw.Container(
+          width: 8,
+          height: 8,
+          decoration: pw.BoxDecoration(color: color, borderRadius: pw.BorderRadius.circular(2)),
+        ),
+        pw.SizedBox(width: 4),
+        pw.Text(
+          '$label: $count',
+          style: const pw.TextStyle(fontSize: 7.5, color: PdfColor.fromInt(0xFF475569)),
+        ),
+      ],
+    );
   }
 
   static pw.Widget _buildPdfKpiCard({
@@ -376,16 +705,16 @@ class ReportExportService {
               title.toUpperCase(),
               style: const pw.TextStyle(
                 color: PdfColor.fromInt(0xFF94A3B8),
-                fontSize: 8,
+                fontSize: 7.5,
                 fontWeight: pw.FontWeight.bold,
               ),
             ),
-            pw.SizedBox(height: 4),
+            pw.SizedBox(height: 3),
             pw.Text(
               value,
               style: pw.TextStyle(
                 color: accentColor,
-                fontSize: 12,
+                fontSize: 11,
                 fontWeight: pw.FontWeight.bold,
               ),
             ),
@@ -395,28 +724,33 @@ class ReportExportService {
     );
   }
 
-  static pw.Widget _pdfTh(String text) {
+  static pw.Widget _pdfThLight(String text) {
     return pw.Padding(
-      padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 5),
+      padding: const pw.EdgeInsets.symmetric(horizontal: 5, vertical: 4),
       child: pw.Text(
         text,
         style: pw.TextStyle(
-          color: PdfColors.white,
-          fontSize: 9,
+          color: const PdfColor.fromInt(0xFF0F172A),
+          fontSize: 8,
           fontWeight: pw.FontWeight.bold,
         ),
       ),
     );
   }
 
-  static pw.Widget _pdfTd(String text) {
+  static pw.Widget _pdfTdLight(
+    String text, {
+    PdfColor color = const PdfColor.fromInt(0xFF1E293B),
+    bool isBold = false,
+  }) {
     return pw.Padding(
-      padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+      padding: const pw.EdgeInsets.symmetric(horizontal: 5, vertical: 3.5),
       child: pw.Text(
         text,
-        style: const pw.TextStyle(
-          color: PdfColor.fromInt(0xFFCBD5E1),
-          fontSize: 8,
+        style: pw.TextStyle(
+          color: color,
+          fontSize: 7.5,
+          fontWeight: isBold ? pw.FontWeight.bold : pw.FontWeight.normal,
         ),
       ),
     );
@@ -425,6 +759,44 @@ class ReportExportService {
   // ---------------------------------------------------------------------------
   // 4. LIGHTWEIGHT LOCAL HTTP SERVER (dart:io HttpServer)
   // ---------------------------------------------------------------------------
+  List<SaleRecordModel> filterSalesByRange(List<SaleRecordModel> allSales, String? range) {
+    final now = DateTime.now();
+    switch (range) {
+      case 'yesterday':
+        final yesterday = now.subtract(const Duration(days: 1));
+        return allSales.where((s) =>
+            s.soldAt.year == yesterday.year &&
+            s.soldAt.month == yesterday.month &&
+            s.soldAt.day == yesterday.day).toList();
+      case '7days':
+        final cutoff = now.subtract(const Duration(days: 7));
+        return allSales.where((s) => s.soldAt.isAfter(cutoff)).toList();
+      case 'month':
+        return allSales.where((s) =>
+            s.soldAt.year == now.year &&
+            s.soldAt.month == now.month).toList();
+      case 'all':
+        return allSales;
+      case 'today':
+      default:
+        return allSales.where((s) =>
+            s.soldAt.year == now.year &&
+            s.soldAt.month == now.month &&
+            s.soldAt.day == now.day).toList();
+    }
+  }
+
+  String getRangeLabel(String? range) {
+    switch (range) {
+      case 'yesterday': return 'Yesterday';
+      case '7days': return 'Last 7 Days';
+      case 'month': return 'This Month';
+      case 'all': return 'All Time';
+      case 'today':
+      default: return 'Today';
+    }
+  }
+
   Future<String> startServer({
     required List<InventoryRecordModel> inventory,
     required List<SaleRecordModel> sales,
@@ -458,7 +830,12 @@ class ReportExportService {
     }
 
     _server!.listen((HttpRequest request) async {
-      final path = request.uri.path;
+      final uri = request.uri;
+      final path = uri.path;
+      final queryRange = uri.queryParameters['range'] ?? 'today';
+      final rangeLabel = getRangeLabel(queryRange);
+      final filteredSales = filterSalesByRange(sales, queryRange);
+
       final res = request.response;
 
       res.headers.add('Access-Control-Allow-Origin', '*');
@@ -475,6 +852,7 @@ class ReportExportService {
           branch: branch,
           inventory: inventory,
           sales: sales,
+          selectedRange: queryRange,
         );
         res.headers.contentType = ContentType.html;
         res.write(html);
@@ -488,25 +866,30 @@ class ReportExportService {
         );
         res.write(csv);
       } else if (path == '/download/sales-csv') {
-        final csv = generateDailySalesCsv(sales: sales, branch: branch);
+        final csv = generateDailySalesCsv(
+          sales: filteredSales,
+          branch: branch,
+          dateRangeLabel: rangeLabel,
+        );
         final date = DateFormat('yyyyMMdd').format(DateTime.now());
         res.headers.contentType = ContentType('text', 'csv', charset: 'utf-8');
         res.headers.add(
           'Content-Disposition',
-          'attachment; filename="OttoScents_Sales_${branch}_$date.csv"',
+          'attachment; filename="OttoScents_Sales_${branch}_${queryRange}_$date.csv"',
         );
         res.write(csv);
       } else if (path == '/download/pdf') {
         final pdfBytes = await generateReportPdfBytes(
           inventory: inventory,
-          sales: sales,
+          sales: filteredSales,
           branch: branch,
+          dateRangeLabel: rangeLabel,
         );
         final date = DateFormat('yyyyMMdd').format(DateTime.now());
         res.headers.contentType = ContentType('application', 'pdf');
         res.headers.add(
           'Content-Disposition',
-          'attachment; filename="OttoScents_Report_${branch}_$date.pdf"',
+          'attachment; filename="OttoScents_Report_${branch}_${queryRange}_$date.pdf"',
         );
         res.add(pdfBytes);
       } else {
@@ -603,67 +986,246 @@ class ReportExportService {
   }
 
   // ---------------------------------------------------------------------------
-  // 6. RESPONSIVE MOBILE LANDING PAGE (HTML5)
+  // 6. MODERN RESPONSIVE MOBILE LANDING PAGE (HTML5 GLASSMORPHIC)
   // ---------------------------------------------------------------------------
   String _generateMobileLandingHtml({
     required String branch,
     required List<InventoryRecordModel> inventory,
     required List<SaleRecordModel> sales,
+    String selectedRange = 'today',
   }) {
     final now = DateTime.now();
-    final todaySales = sales.where((s) =>
-        s.soldAt.year == now.year &&
-        s.soldAt.month == now.month &&
-        s.soldAt.day == now.day).toList();
+    final activeSales = filterSalesByRange(sales, selectedRange);
+    final rangeTitle = getRangeLabel(selectedRange);
 
-    final revenue = todaySales.fold<double>(0, (sum, s) => sum + s.totalAmount);
-    final soldUnits = todaySales.fold<int>(0, (sum, s) => sum + s.quantitySold);
+    final revenue = activeSales.fold<double>(0, (sum, s) => sum + s.totalAmount);
+    final soldUnits = activeSales.fold<int>(0, (sum, s) => sum + s.quantitySold);
     final onShelf = inventory.where((i) => !i.isSeasonalOff).fold<int>(0, (sum, i) => sum + i.detected);
     final lowStock = inventory.where((i) => !i.isSeasonalOff && (i.detected <= 2)).length;
+
+    // Top 3 Sellers in this range
+    final Map<String, ({String name, int units, double rev})> productAggregates = {};
+    for (final s in activeSales) {
+      final key = s.perfumeCode;
+      final existing = productAggregates[key];
+      if (existing == null) {
+        productAggregates[key] = (name: s.productName, units: s.quantitySold, rev: s.totalAmount);
+      } else {
+        productAggregates[key] = (
+          name: s.productName,
+          units: existing.units + s.quantitySold,
+          rev: existing.rev + s.totalAmount,
+        );
+      }
+    }
+    final topSellers = productAggregates.values.toList()
+      ..sort((a, b) => b.units.compareTo(a.units));
+
+    final topSellersHtml = topSellers.isEmpty
+        ? '<div style="color:#64748b; font-size:12px; text-align:center; padding:8px;">No sales recorded for this period.</div>'
+        : topSellers.take(3).map((item) => '''
+          <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid rgba(255,255,255,0.05);">
+            <div>
+              <span style="color:#f8fafc; font-weight:600; font-size:13px;">${item.name}</span>
+              <div style="color:#94a3b8; font-size:11px;">${item.units} bottles sold</div>
+            </div>
+            <span style="color:#d97706; font-weight:700; font-size:13px;">₱${NumberFormat('#,##0.00').format(item.rev)}</span>
+          </div>
+        ''').join('');
 
     return '''
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>OttoScents Reports - $branch</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>OttoScents Reports • $branch</title>
   <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: #0f172a; color: #f8fafc; margin: 0; padding: 20px; }
-    .card { background: #1e293b; border-radius: 16px; padding: 24px; max-width: 500px; margin: 0 auto; box-shadow: 0 10px 25px rgba(0,0,0,0.5); border: 1px solid #334155; }
-    .header { text-align: center; margin-bottom: 24px; }
-    .logo { color: #d97706; font-size: 24px; font-weight: 800; letter-spacing: -0.5px; }
-    .sub { color: #94a3b8; font-size: 14px; margin-top: 4px; }
-    .kpi-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 24px; }
-    .kpi { background: #0f172a; padding: 14px; border-radius: 12px; border: 1px solid #334155; }
-    .kpi-title { font-size: 11px; text-transform: uppercase; color: #94a3b8; font-weight: 700; }
-    .kpi-val { font-size: 20px; font-weight: 800; color: #38bdf8; margin-top: 4px; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: radial-gradient(circle at top, #1e293b 0%, #0f172a 100%);
+      color: #f8fafc;
+      min-height: 100vh;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .wrapper { width: 100%; max-width: 480px; }
+    .card {
+      background: rgba(30, 41, 59, 0.7);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-radius: 20px;
+      padding: 20px;
+      box-shadow: 0 16px 36px rgba(0, 0, 0, 0.4);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      margin-bottom: 16px;
+    }
+    .header { text-align: center; margin-bottom: 18px; }
+    .badge {
+      display: inline-block;
+      background: rgba(217, 119, 6, 0.2);
+      color: #fbbf24;
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0.8px;
+      padding: 4px 10px;
+      border-radius: 20px;
+      text-transform: uppercase;
+      border: 1px solid rgba(217, 119, 6, 0.4);
+      margin-bottom: 8px;
+    }
+    .logo { color: #f59e0b; font-size: 22px; font-weight: 900; letter-spacing: -0.5px; }
+    .sub { color: #94a3b8; font-size: 12px; margin-top: 4px; }
+    
+    /* Date Filter Chips */
+    .filter-bar {
+      display: flex;
+      gap: 6px;
+      overflow-x: auto;
+      padding-bottom: 8px;
+      margin-bottom: 16px;
+    }
+    .chip {
+      text-decoration: none;
+      padding: 7px 12px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 700;
+      white-space: nowrap;
+      transition: all 0.2s ease;
+      color: #94a3b8;
+      background: #0f172a;
+      border: 1px solid #334155;
+    }
+    .chip.active {
+      background: #d97706;
+      color: #ffffff;
+      border-color: #d97706;
+      box-shadow: 0 4px 12px rgba(217, 119, 6, 0.35);
+    }
+
+    .kpi-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px; }
+    .kpi {
+      background: rgba(15, 23, 42, 0.6);
+      padding: 12px;
+      border-radius: 14px;
+      border: 1px solid rgba(255, 255, 255, 0.05);
+    }
+    .kpi-title { font-size: 10px; text-transform: uppercase; color: #94a3b8; font-weight: 700; }
+    .kpi-val { font-size: 18px; font-weight: 800; color: #38bdf8; margin-top: 4px; }
     .kpi-val.rev { color: #4ade80; }
     .kpi-val.alert { color: #fbbf24; }
-    .btn { display: block; width: 100%; box-sizing: border-box; text-align: center; padding: 16px; border-radius: 12px; font-size: 16px; font-weight: 700; text-decoration: none; margin-bottom: 12px; transition: 0.2s; }
-    .btn-pdf { background: #d97706; color: #ffffff; }
-    .btn-csv { background: #2563eb; color: #ffffff; }
-    .btn-sales { background: #10b981; color: #ffffff; }
-    .footer { text-align: center; font-size: 11px; color: #64748b; margin-top: 24px; }
+    
+    /* Top Sellers Card */
+    .section-title {
+      font-size: 12px;
+      font-weight: 800;
+      color: #fbbf24;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 8px;
+    }
+
+    /* Action Buttons */
+    .btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      width: 100%;
+      text-align: center;
+      padding: 14px;
+      border-radius: 14px;
+      font-size: 14px;
+      font-weight: 700;
+      text-decoration: none;
+      margin-bottom: 10px;
+      transition: transform 0.15s ease, opacity 0.15s ease;
+      border: none;
+      cursor: pointer;
+    }
+    .btn:active { transform: scale(0.98); }
+    .btn-pdf {
+      background: linear-gradient(135deg, #d97706 0%, #b45309 100%);
+      color: #ffffff;
+      box-shadow: 0 6px 18px rgba(217, 119, 6, 0.35);
+    }
+    .btn-csv {
+      background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+      color: #ffffff;
+      box-shadow: 0 6px 18px rgba(37, 99, 235, 0.35);
+    }
+    .btn-sales {
+      background: linear-gradient(135deg, #059669 0%, #047857 100%);
+      color: #ffffff;
+      box-shadow: 0 6px 18px rgba(5, 150, 105, 0.35);
+    }
+    .footer { text-align: center; font-size: 11px; color: #64748b; margin-top: 16px; line-height: 1.5; }
   </style>
 </head>
 <body>
-  <div class="card">
-    <div class="header">
-      <div class="logo">OTTO SCENTS</div>
-      <div class="sub">Smart Shelf Kiosk • Branch: $branch</div>
-      <div class="sub">${DateFormat('MMMM dd, yyyy • hh:mm a').format(now)}</div>
+  <div class="wrapper">
+    <div class="card">
+      <div class="header">
+        <div class="badge">Wireless Fast Transfer</div>
+        <div class="logo">OTTO SCENTS</div>
+        <div class="sub">Smart Shelf Kiosk • Branch: <strong>$branch</strong></div>
+        <div class="sub">${DateFormat('MMMM dd, yyyy • hh:mm a').format(now)}</div>
+      </div>
+
+      <!-- Quick Range Selector -->
+      <div class="filter-bar">
+        <a href="/?range=today" class="chip ${selectedRange == 'today' ? 'active' : ''}">Today</a>
+        <a href="/?range=yesterday" class="chip ${selectedRange == 'yesterday' ? 'active' : ''}">Yesterday</a>
+        <a href="/?range=7days" class="chip ${selectedRange == '7days' ? 'active' : ''}">Last 7 Days</a>
+        <a href="/?range=month" class="chip ${selectedRange == 'month' ? 'active' : ''}">This Month</a>
+      </div>
+
+      <!-- Live KPI Grid -->
+      <div class="kpi-grid">
+        <div class="kpi">
+          <div class="kpi-title">$rangeTitle Revenue</div>
+          <div class="kpi-val rev">₱${NumberFormat('#,##0.00').format(revenue)}</div>
+        </div>
+        <div class="kpi">
+          <div class="kpi-title">Bottles Sold</div>
+          <div class="kpi-val">$soldUnits Sold</div>
+        </div>
+        <div class="kpi">
+          <div class="kpi-title">Shelf Bottles</div>
+          <div class="kpi-val">$onShelf / 300</div>
+        </div>
+        <div class="kpi">
+          <div class="kpi-title">Low Stock</div>
+          <div class="kpi-val alert">$lowStock Alerts</div>
+        </div>
+      </div>
+
+      <!-- Top Performing Fragrances -->
+      <div style="background: rgba(15, 23, 42, 0.4); border-radius: 14px; padding: 12px; margin-bottom: 16px; border: 1px solid rgba(255, 255, 255, 0.05);">
+        <div class="section-title">🏆 Top Sellers ($rangeTitle)</div>
+        $topSellersHtml
+      </div>
+
+      <!-- Instant 1-Tap Wireless Downloads -->
+      <a href="/download/pdf?range=$selectedRange" class="btn btn-pdf">
+        📄 Download Branded PDF Report
+      </a>
+      <a href="/download/sales-csv?range=$selectedRange" class="btn btn-sales">
+        💳 Download ${selectedRange == 'today' ? "Today's" : rangeTitle} Sales CSV
+      </a>
+      <a href="/download/csv" class="btn btn-csv">
+        📊 Download Shelf Stock CSV (8 Cols)
+      </a>
+
+      <div class="footer">
+        ⚡ Transferred wirelessly over local store Wi-Fi.<br>
+        Direct browser download • No third-party apps required.
+      </div>
     </div>
-    <div class="kpi-grid">
-      <div class="kpi"><div class="kpi-title">Today's Revenue</div><div class="kpi-val rev">₱${NumberFormat('#,##0.00').format(revenue)}</div></div>
-      <div class="kpi"><div class="kpi-title">Bottles Sold</div><div class="kpi-val">$soldUnits Sold</div></div>
-      <div class="kpi"><div class="kpi-title">Shelf Bottles</div><div class="kpi-val">$onShelf / 300</div></div>
-      <div class="kpi"><div class="kpi-title">Low Stock</div><div class="kpi-val alert">$lowStock Fragrances</div></div>
-    </div>
-    <a href="/download/pdf" class="btn btn-pdf">📄 Download Branded PDF Report</a>
-    <a href="/download/csv" class="btn btn-csv">📊 Download Shelf Stock CSV (8 Cols)</a>
-    <a href="/download/sales-csv" class="btn btn-sales">💳 Download Today's Sales CSV</a>
-    <div class="footer">Transferred wirelessly over local store Wi-Fi • No apps required</div>
   </div>
 </body>
 </html>
@@ -674,7 +1236,8 @@ class ReportExportService {
     if (value == null) return '""';
     final str = value.toString();
     if (str.contains(',') || str.contains('"') || str.contains('\n') || str.contains('\r')) {
-      return '"${str.replaceAll('"', '""')}"';
+      final escaped = str.replaceAll('"', '""');
+      return '"$escaped"';
     }
     return '"$str"';
   }

@@ -9,190 +9,153 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/theme_helper.dart';
 import '../../../data/models/inventory_event_model.dart';
 import '../../../data/models/sale_record_model.dart';
-import '../../../data/services/csv_export_service.dart';
 import '../../../providers/kiosk_providers.dart';
 import '../../../providers/sales_provider.dart';
-import 'record_sale_dialog.dart';
 import 'report_viewer_dialog.dart';
 
-class ReportsScreen extends ConsumerWidget {
+class ReportsScreen extends ConsumerStatefulWidget {
   final VoidCallback? onBack;
 
   const ReportsScreen({super.key, this.onBack});
 
-  Future<void> _exportInventoryCsv(
-    BuildContext context,
-    WidgetRef ref,
-    String branch,
-  ) async {
-    try {
-      final sqlite = ref.read(sqliteServiceProvider);
-      final items = await sqlite.getInventoryRecords(branch);
-      final file = await CsvExportService.instance.exportInventorySummaryCsv(
-        items,
-        branch: branch,
-      );
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              '✓ Exported ${items.length} inventory records to ${file.path}',
-            ),
-            backgroundColor: AppColors.statusGreen,
-            duration: const Duration(seconds: 4),
-          ),
-        );
-      }
-    } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to export inventory CSV: $e'),
-            backgroundColor: AppColors.statusRed,
-          ),
-        );
-      }
+  @override
+  ConsumerState<ReportsScreen> createState() => _ReportsScreenState();
+}
+class _ReportsScreenState extends ConsumerState<ReportsScreen> {
+  String _selectedRange = 'today'; // 'today', 'yesterday', '7days', 'month', 'custom'
+  DateTimeRange? _customDateRange;
+
+  List<SaleRecordModel> _filterSales(List<SaleRecordModel> allSales) {
+    final now = DateTime.now();
+    switch (_selectedRange) {
+      case 'yesterday':
+        final yesterday = now.subtract(const Duration(days: 1));
+        return allSales.where((s) =>
+            s.soldAt.year == yesterday.year &&
+            s.soldAt.month == yesterday.month &&
+            s.soldAt.day == yesterday.day).toList();
+      case '7days':
+        final cutoff = now.subtract(const Duration(days: 7));
+        return allSales.where((s) => s.soldAt.isAfter(cutoff)).toList();
+      case 'month':
+        return allSales.where((s) =>
+            s.soldAt.year == now.year &&
+            s.soldAt.month == now.month).toList();
+      case 'custom':
+        if (_customDateRange == null) return allSales;
+        return allSales.where((s) =>
+            !s.soldAt.isBefore(_customDateRange!.start) &&
+            !s.soldAt.isAfter(_customDateRange!.end.add(const Duration(days: 1)))).toList();
+      case 'today':
+      default:
+        return allSales.where((s) =>
+            s.soldAt.year == now.year &&
+            s.soldAt.month == now.month &&
+            s.soldAt.day == now.day).toList();
     }
   }
 
-  Future<void> _exportMovementCsv(
-    BuildContext context,
-    WidgetRef ref,
-    String branch,
-  ) async {
-    try {
-      final sqlite = ref.read(sqliteServiceProvider);
-      final events = await sqlite.getInventoryEvents(branch);
-      final file = await CsvExportService.instance.exportStockMovementCsv(
-        events,
-        branch: branch,
-      );
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              '✓ Exported ${events.length} movement audit events to ${file.path}',
-            ),
-            backgroundColor: AppColors.statusGreen,
-            duration: const Duration(seconds: 4),
-          ),
-        );
-      }
-    } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to export movement CSV: $e'),
-            backgroundColor: AppColors.statusRed,
-          ),
-        );
-      }
+  List<InventoryEventModel> _filterDamageEvents(List<InventoryEventModel> allMovements) {
+    final now = DateTime.now();
+    final damages = allMovements.where((e) => e.eventType == 'DAMAGE_WRITEOFF');
+    switch (_selectedRange) {
+      case 'yesterday':
+        final yesterday = now.subtract(const Duration(days: 1));
+        return damages.where((e) =>
+            e.timestamp.year == yesterday.year &&
+            e.timestamp.month == yesterday.month &&
+            e.timestamp.day == yesterday.day).toList();
+      case '7days':
+        final cutoff = now.subtract(const Duration(days: 7));
+        return damages.where((e) => e.timestamp.isAfter(cutoff)).toList();
+      case 'month':
+        return damages.where((e) =>
+            e.timestamp.year == now.year &&
+            e.timestamp.month == now.month).toList();
+      case 'custom':
+        if (_customDateRange == null) return damages.toList();
+        return damages.where((e) =>
+            !e.timestamp.isBefore(_customDateRange!.start) &&
+            !e.timestamp.isAfter(_customDateRange!.end.add(const Duration(days: 1)))).toList();
+      case 'today':
+      default:
+        return damages.where((e) =>
+            e.timestamp.year == now.year &&
+            e.timestamp.month == now.month &&
+            e.timestamp.day == now.day).toList();
     }
   }
 
-  Future<void> _exportSyncAuditCsv(
-    BuildContext context,
-    WidgetRef ref,
-    String branch,
-  ) async {
-    try {
-      final sqlite = ref.read(sqliteServiceProvider);
-      final queue = await sqlite.getSyncQueue(branch);
-      final file = await CsvExportService.instance.exportSyncAuditCsv(
-        queue,
-        branch: branch,
-      );
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              '✓ Exported ${queue.length} cloud sync queue items to ${file.path}',
-            ),
-            backgroundColor: AppColors.statusGreen,
-            duration: const Duration(seconds: 4),
-          ),
-        );
-      }
-    } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to export sync audit CSV: $e'),
-            backgroundColor: AppColors.statusRed,
-          ),
-        );
-      }
+  String _getRangeLabel() {
+    switch (_selectedRange) {
+      case 'yesterday': return 'Yesterday';
+      case '7days': return 'Last 7 Days';
+      case 'month': return 'This Month';
+      case 'custom':
+        if (_customDateRange != null) {
+          return '${DateFormat('MMM d').format(_customDateRange!.start)} - ${DateFormat('MMM d').format(_customDateRange!.end)}';
+        }
+        return 'Custom';
+      case 'today':
+      default: return 'Today';
     }
   }
 
-  Future<void> _exportVisionAccuracyCsv(
-    BuildContext context,
-    WidgetRef ref,
-    String branch,
-  ) async {
-    try {
-      final sqlite = ref.read(sqliteServiceProvider);
-      final logs = await sqlite.getImageQualityLogs(branch);
-      final visionFile = await CsvExportService.instance.exportVisionQualityCsv(
-        logs,
-        branch: branch,
-      );
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              '✓ Exported ${logs.length} vision quality records to ${visionFile.path}',
+  Future<void> _pickCustomDateRange() async {
+    final now = DateTime.now();
+    final picked = await showDateRangePicker(
+      context: context,
+      firstDate: now.subtract(const Duration(days: 365)),
+      lastDate: now,
+      initialDateRange: _customDateRange ?? DateTimeRange(
+        start: now.subtract(const Duration(days: 7)),
+        end: now,
+      ),
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: ColorScheme.dark(
+              primary: AppColors.brandGold,
+              onPrimary: Colors.white,
+              surface: context.surfaceColor,
+              onSurface: context.textPrimaryColor,
             ),
-            backgroundColor: AppColors.statusGreen,
-            duration: const Duration(seconds: 4),
           ),
+          child: child!,
         );
-      }
-    } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to export vision accuracy CSV: $e'),
-            backgroundColor: AppColors.statusRed,
-          ),
-        );
-      }
+      },
+    );
+    if (picked != null) {
+      setState(() {
+        _customDateRange = picked;
+        _selectedRange = 'custom';
+      });
     }
   }
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final branch = ref.watch(currentBranchProvider).valueOrNull ?? 'San Pablo';
 
     final salesAsync = ref.watch(salesRecordsProvider(branch));
     final dashboardStatsAsync = ref.watch(dashboardStatsProvider(branch));
-    final inventoryAsync = ref.watch(liveInventoryProvider(branch));
     final movementLogsAsync = ref.watch(stockMovementLogsProvider(branch));
 
-    final canGoBack = onBack != null || Navigator.of(context).canPop();
+    final canGoBack = widget.onBack != null || Navigator.of(context).canPop();
 
-    // Calculate Today's Retail Metrics
-    final now = DateTime.now();
+    // Calculate Filtered Retail Metrics
     final allSales = salesAsync.valueOrNull ?? const [];
-    final todaySales = allSales.where((s) =>
-        s.soldAt.year == now.year &&
-        s.soldAt.month == now.month &&
-        s.soldAt.day == now.day).toList();
+    final activeSales = _filterSales(allSales);
 
-    // Calculate Today's Damage Write-Off & Shrinkage Loss
+    // Calculate Filtered Damage Write-Off & Shrinkage Loss
     final allMovements = movementLogsAsync.valueOrNull ?? const [];
-    final todayDamageEvents = allMovements.where((e) {
-      if (e.eventType != 'DAMAGE_WRITEOFF') return false;
-      return e.timestamp.year == now.year &&
-          e.timestamp.month == now.month &&
-          e.timestamp.day == now.day;
-    }).toList();
+    final activeDamageEvents = _filterDamageEvents(allMovements);
 
-    final todayDamageUnits = todayDamageEvents.fold<int>(
+    final activeDamageUnits = activeDamageEvents.fold<int>(
       0,
       (sum, e) => sum + e.quantity,
     );
-    final todayDamageLoss = todayDamageEvents.fold<double>(
+    final activeDamageLoss = activeDamageEvents.fold<double>(
       0.0,
       (sum, e) {
         final unitPrice = e.perfumeCode.endsWith('2')
@@ -204,47 +167,45 @@ class ReportsScreen extends ConsumerWidget {
       },
     );
 
-    final todayRevenue = todaySales.fold<double>(
+    final activeRevenue = activeSales.fold<double>(
       0.0,
       (sum, s) => sum + s.totalAmount,
     );
-    final bottlesSoldToday = todaySales.fold<int>(
+    final bottlesSoldActive = activeSales.fold<int>(
       0,
       (sum, s) => sum + s.quantitySold,
     );
 
-    // Derive Best Seller
-    String bestSellerName = 'None yet';
-    int bestSellerUnits = 0;
-    double bestSellerRevenue = 0.0;
-    if (todaySales.isNotEmpty) {
-      final Map<String, ({String name, int units, double rev})> productAggregates = {};
-      for (final s in todaySales) {
-        final key = s.perfumeCode;
-        final existing = productAggregates[key];
-        if (existing == null) {
-          productAggregates[key] = (name: s.productName, units: s.quantitySold, rev: s.totalAmount);
-        } else {
-          productAggregates[key] = (
-            name: s.productName,
-            units: existing.units + s.quantitySold,
-            rev: existing.rev + s.totalAmount,
-          );
-        }
+    // Derive Top Sellers Aggregation
+    final Map<String, ({String name, String code, int units, double rev})> productAggregates = {};
+    for (final s in activeSales) {
+      final key = s.perfumeCode;
+      final existing = productAggregates[key];
+      if (existing == null) {
+        productAggregates[key] = (name: s.productName, code: s.perfumeCode, units: s.quantitySold, rev: s.totalAmount);
+      } else {
+        productAggregates[key] = (
+          name: s.productName,
+          code: s.perfumeCode,
+          units: existing.units + s.quantitySold,
+          rev: existing.rev + s.totalAmount,
+        );
       }
-      final sorted = productAggregates.values.toList()
-        ..sort((a, b) => b.units.compareTo(a.units));
-      final top = sorted.first;
-      bestSellerName = top.name;
-      bestSellerUnits = top.units;
-      bestSellerRevenue = top.rev;
     }
+    final sortedTopSellers = productAggregates.values.toList()
+      ..sort((a, b) => b.units.compareTo(a.units));
+
+    final bestSellerName = sortedTopSellers.isNotEmpty ? sortedTopSellers.first.name : 'None yet';
+    final bestSellerUnits = sortedTopSellers.isNotEmpty ? sortedTopSellers.first.units : 0;
+    final bestSellerRevenue = sortedTopSellers.isNotEmpty ? sortedTopSellers.first.rev : 0.0;
 
     // Derive Low Stock Count
     final stats = dashboardStatsAsync.valueOrNull;
     final lowStockTotal = stats != null
         ? (stats.lowStockCount + stats.outOfStockCount)
         : 0;
+
+    final rangeLabel = _getRangeLabel();
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -262,11 +223,11 @@ class ReportsScreen extends ConsumerWidget {
               children: [
                 if (canGoBack) ...[
                   IconButton(
-                    icon: const Icon(Icons.arrow_back_rounded),
+                    icon: const Icon(Icons.arrow_back_rounded, size: 24),
                     tooltip: 'Back',
                     onPressed: () {
-                      if (onBack != null) {
-                        onBack!();
+                      if (widget.onBack != null) {
+                        widget.onBack!();
                       } else if (Navigator.of(context).canPop()) {
                         Navigator.of(context).pop();
                       }
@@ -275,14 +236,13 @@ class ReportsScreen extends ConsumerWidget {
                   const SizedBox(width: 8),
                 ],
                 Container(
-                  width: 44,
-                  height: 44,
+                  padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
-                    color: AppColors.brandGold.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(12),
+                    color: AppColors.brandGold.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(10),
                   ),
                   child: const Icon(
-                    Icons.assessment_rounded,
+                    Icons.analytics_rounded,
                     color: AppColors.brandGold,
                     size: 24,
                   ),
@@ -312,29 +272,6 @@ class ReportsScreen extends ConsumerWidget {
                     ],
                   ),
                 ),
-                const SizedBox(width: 16),
-                // Prominent Action Button: Record New Sale
-                ElevatedButton.icon(
-                  onPressed: () => RecordSaleDialog.show(context, branch: branch),
-                  icon: const Icon(Icons.add_shopping_cart_rounded, size: 22),
-                  label: const Text('Record New Sale'),
-                  style: ElevatedButton.styleFrom(
-                    minimumSize: const Size(0, 56),
-                    backgroundColor: AppColors.brandGold,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 24,
-                      vertical: 16,
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    textStyle: const TextStyle(
-                      fontWeight: FontWeight.w800,
-                      fontSize: 16,
-                    ),
-                  ),
-                ),
               ],
             ),
           ),
@@ -344,27 +281,31 @@ class ReportsScreen extends ConsumerWidget {
             child: ListView(
               padding: const EdgeInsets.all(24),
               children: [
-                // 1. 4-Card Daily Retail KPI Grid
+                // Date Range Filter Bar
+                _buildDateFilterBar(context),
+                const SizedBox(height: 16),
+
+                // 1. 5-Card Daily/Periodic Retail KPI Grid
                 Row(
                   children: [
-                    // Card 1: Today's Revenue
+                    // Card 1: Revenue
                     Expanded(
                       child: _buildKpiCard(
                         context: context,
-                        title: "Today's Revenue",
-                        value: '₱${NumberFormat('#,##0.00').format(todayRevenue)}',
-                        subtitle: '${todaySales.length} transaction(s)',
+                        title: _selectedRange == 'today' ? "Today's Revenue" : "$rangeLabel Revenue",
+                        value: '₱${NumberFormat('#,##0.00').format(activeRevenue)}',
+                        subtitle: '${activeSales.length} transaction(s)',
                         icon: Icons.payments_rounded,
                         accentColor: AppColors.statusGreen,
                       ),
                     ),
                     const SizedBox(width: 14),
-                    // Card 2: Bottles Sold Today
+                    // Card 2: Bottles Sold
                     Expanded(
                       child: _buildKpiCard(
                         context: context,
-                        title: 'Bottles Sold Today',
-                        value: '$bottlesSoldToday Bottles',
+                        title: _selectedRange == 'today' ? 'Bottles Sold Today' : 'Bottles Sold ($rangeLabel)',
+                        value: '$bottlesSoldActive Bottles',
                         subtitle: 'Active store volume',
                         icon: Icons.shopping_bag_rounded,
                         accentColor: Colors.blueAccent,
@@ -375,11 +316,11 @@ class ReportsScreen extends ConsumerWidget {
                     Expanded(
                       child: _buildKpiCard(
                         context: context,
-                        title: 'Best-Selling Fragrance',
+                        title: _selectedRange == 'today' ? 'Best-Selling Fragrance' : 'Top Seller ($rangeLabel)',
                         value: bestSellerUnits > 0 ? bestSellerName : 'None yet',
                         subtitle: bestSellerUnits > 0
                             ? '$bestSellerUnits sold • ₱${NumberFormat('#,##0.00').format(bestSellerRevenue)}'
-                            : 'No sales recorded today',
+                            : (_selectedRange == 'today' ? 'No sales recorded today' : 'No sales recorded in period'),
                         icon: Icons.star_rounded,
                         accentColor: AppColors.brandGold,
                         isTitleDense: true,
@@ -405,14 +346,14 @@ class ReportsScreen extends ConsumerWidget {
                       child: _buildKpiCard(
                         context: context,
                         title: 'Damage & Shrinkage',
-                        value: todayDamageLoss > 0
-                            ? '-₱${NumberFormat('#,##0.00').format(todayDamageLoss)}'
+                        value: activeDamageLoss > 0
+                            ? '-₱${NumberFormat('#,##0.00').format(activeDamageLoss)}'
                             : '₱0.00',
-                        subtitle: todayDamageUnits > 0
-                            ? '$todayDamageUnits bottle(s) written off'
+                        subtitle: activeDamageUnits > 0
+                            ? '$activeDamageUnits bottle(s) written off'
                             : 'Optimal (0 write-offs)',
                         icon: Icons.delete_sweep_rounded,
-                        accentColor: todayDamageUnits > 0 ? AppColors.statusRed : AppColors.statusGreen,
+                        accentColor: activeDamageUnits > 0 ? AppColors.statusRed : AppColors.statusGreen,
                       ),
                     ),
                   ],
@@ -423,14 +364,221 @@ class ReportsScreen extends ConsumerWidget {
                 _buildReportViewerBanner(context, branch),
                 const SizedBox(height: 24),
 
-                // 3. Recent Sales Activity List (Today's Transaction Feed)
-                _buildRecentSalesSection(context, branch, todaySales, todayDamageEvents),
-                const SizedBox(height: 24),
+                // 3. Clean Performance Analytics: Top-Selling Fragrances Ranking
+                if (sortedTopSellers.isNotEmpty) ...[
+                  _buildTopSellersRankingCard(context, sortedTopSellers, rangeLabel),
+                  const SizedBox(height: 24),
+                ],
 
-                // 4. Secondary Accordion / Shortcuts for CSV Exports & Sales Analytics
-                _buildSecondaryAccordion(context, ref, branch, inventoryAsync),
+                // 4. Recent Sales Activity List (Transaction Feed)
+                _buildRecentSalesSection(context, branch, activeSales, activeDamageEvents, rangeLabel),
               ],
             ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDateFilterBar(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      decoration: BoxDecoration(
+        color: context.surfaceColor,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: context.borderColor),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.calendar_today_rounded, size: 16, color: AppColors.brandGold),
+          const SizedBox(width: 8),
+          Text(
+            'Filter Period:',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+              color: context.textSecondaryColor,
+            ),
+          ),
+          const SizedBox(width: 12),
+          _buildFilterChip('today', 'Today'),
+          const SizedBox(width: 6),
+          _buildFilterChip('yesterday', 'Yesterday'),
+          const SizedBox(width: 6),
+          _buildFilterChip('7days', 'Last 7 Days'),
+          const SizedBox(width: 6),
+          _buildFilterChip('month', 'This Month'),
+          const SizedBox(width: 6),
+          _buildFilterChip('custom', _selectedRange == 'custom' && _customDateRange != null
+              ? '${DateFormat('MMM d').format(_customDateRange!.start)} - ${DateFormat('MMM d').format(_customDateRange!.end)}'
+              : 'Custom Range...'),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFilterChip(String key, String label) {
+    final isSelected = _selectedRange == key;
+    return InkWell(
+      onTap: () {
+        if (key == 'custom') {
+          _pickCustomDateRange();
+        } else {
+          setState(() {
+            _selectedRange = key;
+          });
+        }
+      },
+      borderRadius: BorderRadius.circular(10),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? AppColors.brandGold
+              : context.surfaceElevatedColor,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: isSelected ? AppColors.brandGold : context.borderColor,
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 11.5,
+            fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+            color: isSelected ? Colors.white : context.textPrimaryColor,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTopSellersRankingCard(
+    BuildContext context,
+    List<({String code, String name, double rev, int units})> topSellers,
+    String rangeLabel,
+  ) {
+    return Container(
+      decoration: BoxDecoration(
+        color: context.surfaceColor,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: context.borderColor),
+      ),
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.leaderboard_rounded, color: AppColors.brandGold, size: 20),
+                  const SizedBox(width: 10),
+                  Text(
+                    'Top-Selling Fragrances ($rangeLabel)',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                      color: context.textPrimaryColor,
+                    ),
+                  ),
+                ],
+              ),
+              Text(
+                '${topSellers.length} fragrance(s) sold',
+                style: TextStyle(fontSize: 12, color: context.textSecondaryColor),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: topSellers.take(4).toList().asMap().entries.map((entry) {
+              final rank = entry.key + 1;
+              final item = entry.value;
+              return Expanded(
+                child: Container(
+                  margin: EdgeInsets.only(right: entry.key < 3 ? 12 : 0),
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: context.surfaceElevatedColor,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: rank == 1 ? AppColors.brandGold.withValues(alpha: 0.6) : context.borderColor,
+                      width: rank == 1 ? 1.5 : 1.0,
+                    ),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: rank == 1
+                                  ? AppColors.brandGold
+                                  : (rank == 2 ? Colors.blueGrey : (rank == 3 ? Colors.brown : context.surfaceColor)),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              '#$rank',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w900,
+                                fontSize: 10,
+                              ),
+                            ),
+                          ),
+                          Text(
+                            item.code,
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                              color: context.textSecondaryColor,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        item.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold,
+                          color: context.textPrimaryColor,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            '${item.units} bottle(s)',
+                            style: const TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.blueAccent,
+                            ),
+                          ),
+                          Text(
+                            '₱${NumberFormat('#,##0.00').format(item.rev)}',
+                            style: const TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w800,
+                              color: AppColors.statusGreen,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }).toList(),
           ),
         ],
       ),
@@ -630,6 +778,7 @@ class ReportsScreen extends ConsumerWidget {
     String branch,
     List<dynamic> todaySales, [
     List<InventoryEventModel> todayDamageEvents = const [],
+    String rangeLabel = 'Today',
   ]) {
     final combined = <dynamic>[
       ...todaySales,
@@ -663,7 +812,7 @@ class ReportsScreen extends ConsumerWidget {
                     ),
                     const SizedBox(width: 10),
                     Text(
-                      "Today's Sales Register Feed",
+                      "$rangeLabel's Sales Register Feed",
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w800,
@@ -722,7 +871,9 @@ class ReportsScreen extends ConsumerWidget {
                     ),
                     const SizedBox(height: 10),
                     Text(
-                      'No transactions recorded today.',
+                      _selectedRange == 'today'
+                          ? 'No transactions recorded today.'
+                          : 'No transactions recorded for $rangeLabel.',
                       style: TextStyle(
                         fontWeight: FontWeight.bold,
                         fontSize: 14,
@@ -731,7 +882,7 @@ class ReportsScreen extends ConsumerWidget {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      'Tap "Record New Sale" to register customer fragrance purchases.',
+                      'Transactions will automatically populate as customer purchases are registered.',
                       style: TextStyle(
                         fontSize: 12,
                         color: context.textSecondaryColor,
@@ -750,6 +901,7 @@ class ReportsScreen extends ConsumerWidget {
               itemBuilder: (context, idx) {
                 final item = combined[idx];
                 if (item is SaleRecordModel) {
+                  final isRefund = item.isRefund;
                   return ListTile(
                     dense: false,
                     minTileHeight: 62.0,
@@ -760,22 +912,31 @@ class ReportsScreen extends ConsumerWidget {
                     leading: Container(
                       padding: const EdgeInsets.all(8),
                       decoration: BoxDecoration(
-                        color: AppColors.statusGreen.withValues(alpha: 0.12),
+                        color: isRefund
+                            ? const Color(0xFFD97706).withValues(alpha: 0.12)
+                            : AppColors.statusGreen.withValues(alpha: 0.12),
                         borderRadius: BorderRadius.circular(8),
                       ),
-                      child: const Icon(
-                        Icons.point_of_sale_rounded,
-                        color: AppColors.statusGreen,
+                      child: Icon(
+                        isRefund
+                            ? Icons.keyboard_return_rounded
+                            : Icons.point_of_sale_rounded,
+                        color: isRefund
+                            ? const Color(0xFFD97706)
+                            : AppColors.statusGreen,
                         size: 22,
                       ),
                     ),
                     title: Row(
                       children: [
                         Text(
-                          item.productName,
-                          style: const TextStyle(
+                          isRefund
+                              ? '[REFUND] ${item.productName}'
+                              : item.productName,
+                          style: TextStyle(
                             fontWeight: FontWeight.bold,
                             fontSize: 15,
+                            color: isRefund ? const Color(0xFFD97706) : null,
                           ),
                         ),
                         const SizedBox(width: 8),
@@ -785,34 +946,48 @@ class ReportsScreen extends ConsumerWidget {
                             vertical: 2,
                           ),
                           decoration: BoxDecoration(
-                            color: context.surfaceElevatedColor,
+                            color: isRefund
+                                ? const Color(0xFFD97706).withValues(alpha: 0.12)
+                                : context.surfaceElevatedColor,
                             borderRadius: BorderRadius.circular(4),
-                            border: Border.all(color: context.borderColor),
+                            border: Border.all(
+                              color: isRefund
+                                  ? const Color(0xFFD97706).withValues(alpha: 0.4)
+                                  : context.borderColor,
+                            ),
                           ),
                           child: Text(
-                            '${item.perfumeCode} • ${item.bottleSize}',
+                            isRefund
+                                ? 'REFUND • ${item.perfumeCode}'
+                                : '${item.perfumeCode} • ${item.bottleSize}',
                             style: TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.bold,
-                              color: context.textSecondaryColor,
+                              color: isRefund
+                                  ? const Color(0xFFD97706)
+                                  : context.textSecondaryColor,
                             ),
                           ),
                         ),
                       ],
                     ),
                     subtitle: Text(
-                      'Time: ${DateFormat('hh:mm a').format(item.soldAt)} • Qty: ${item.quantitySold} @ ${item.formattedUnitPrice}',
+                      'Time: ${DateFormat('hh:mm a').format(item.soldAt)} • ${isRefund ? "Returned" : "Qty"}: ${item.quantitySold.abs()} @ ${item.formattedUnitPrice}',
                       style: TextStyle(
                         fontSize: 12.5,
                         color: context.textSecondaryColor,
                       ),
                     ),
                     trailing: Text(
-                      item.formattedTotal,
-                      style: const TextStyle(
+                      isRefund
+                          ? '-₱${NumberFormat('#,##0.00').format(item.totalAmount.abs())}'
+                          : '+₱${NumberFormat('#,##0.00').format(item.totalAmount)}',
+                      style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w900,
-                        color: AppColors.statusGreen,
+                        color: isRefund
+                            ? const Color(0xFFD97706)
+                            : AppColors.statusGreen,
                       ),
                     ),
                   );
@@ -899,136 +1074,5 @@ class ReportsScreen extends ConsumerWidget {
       ),
     );
   }
-
-  // ---------------------------------------------------------------------------
-  // SECONDARY ACCORDION / SHORTCUTS FOR CSV EXPORTS
-  // ---------------------------------------------------------------------------
-  Widget _buildSecondaryAccordion(
-    BuildContext context,
-    WidgetRef ref,
-    String branch,
-    AsyncValue<dynamic> inventoryAsync,
-  ) {
-    return Container(
-      decoration: BoxDecoration(
-        color: context.surfaceColor,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: context.borderColor),
-      ),
-      child: ExpansionTile(
-        initiallyExpanded: false,
-        shape: const RoundedRectangleBorder(side: BorderSide.none),
-        collapsedShape: const RoundedRectangleBorder(side: BorderSide.none),
-        leading: Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: context.surfaceElevatedColor,
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: const Icon(
-            Icons.file_download_outlined,
-            color: AppColors.brandGold,
-            size: 20,
-          ),
-        ),
-        title: Text(
-          'Direct CSV Downloads & Store Records',
-          style: TextStyle(
-            fontSize: 15,
-            fontWeight: FontWeight.bold,
-            color: context.textPrimaryColor,
-          ),
-        ),
-        subtitle: Text(
-          'Direct CSV files saved to Kiosk local storage (~/Downloads/OttoScents_Reports).',
-          style: TextStyle(
-            fontSize: 11,
-            color: context.textSecondaryColor,
-          ),
-        ),
-        childrenPadding: const EdgeInsets.all(16),
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: _buildExportTile(
-                  context: context,
-                  title: 'Current Fragrance Stock',
-                  subtitle: 'All shelf bottles and pricing',
-                  icon: Icons.inventory_2_outlined,
-                  onTap: () => _exportInventoryCsv(context, ref, branch),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _buildExportTile(
-                  context: context,
-                  title: 'Stock Movements & Restocks',
-                  subtitle: 'Historical bottle refills',
-                  icon: Icons.trending_up_rounded,
-                  onTap: () => _exportMovementCsv(context, ref, branch),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: _buildExportTile(
-                  context: context,
-                  title: 'Camera Detection Accuracy',
-                  subtitle: '6-Camera image logs & scores',
-                  icon: Icons.camera_enhance_outlined,
-                  onTap: () => _exportVisionAccuracyCsv(context, ref, branch),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _buildExportTile(
-                  context: context,
-                  title: 'Cloud Backup & Sync Queue',
-                  subtitle: 'Pending cloud payloads',
-                  icon: Icons.cloud_done_outlined,
-                  onTap: () => _exportSyncAuditCsv(context, ref, branch),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildExportTile({
-    required BuildContext context,
-    required String title,
-    required String subtitle,
-    required IconData icon,
-    required VoidCallback onTap,
-  }) {
-    return Container(
-      constraints: const BoxConstraints(minHeight: 60),
-      decoration: BoxDecoration(
-        color: context.surfaceElevatedColor,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: context.borderColor),
-      ),
-      child: ListTile(
-        dense: false,
-        minTileHeight: 60.0,
-        leading: Icon(icon, color: AppColors.brandGold, size: 22),
-        title: Text(
-          title,
-          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-        ),
-        subtitle: Text(
-          subtitle,
-          style: TextStyle(fontSize: 12, color: context.textSecondaryColor),
-        ),
-        trailing: const Icon(Icons.download_rounded, size: 20),
-        onTap: onTap,
-      ),
-    );
-  }
 }
+

@@ -635,8 +635,8 @@ void main() {
         // Secondary badge: Low Stock
         expect(find.descendant(of: find.byType(ListView), matching: find.text('Low Stock')), findsOneWidget);
 
-        // Deficit Discrepancy: Record Sale button MUST be visible
-        expect(find.widgetWithText(ElevatedButton, 'Record Sale'), findsOneWidget);
+        // Deficit Discrepancy: Take Action button MUST be visible
+        expect(find.widgetWithText(ElevatedButton, 'Take Action'), findsOneWidget);
         // Deficit Discrepancy: Manually Check Restock MUST NOT be visible
         expect(find.widgetWithText(ElevatedButton, 'Manually Check Restock'), findsNothing);
       });
@@ -804,13 +804,12 @@ void main() {
         // 6 alerts across 3 SKUs -> exactly 3 consolidated cards
         expect(find.text('3 ACTIVE'), findsOneWidget);
 
-        // SKU1 (deficit): Record Sale is present
-        expect(find.widgetWithText(ElevatedButton, 'Record Sale'), findsOneWidget);
+        // SKU1 (deficit): Take Action is present
+        expect(find.widgetWithText(ElevatedButton, 'Take Action'), findsNWidgets(2));
 
-        // SKU2 (surplus): Manually Check Restock is present
-        expect(find.widgetWithText(ElevatedButton, 'Manually Check Restock'), findsOneWidget);
-
-        // SKU3 (pure low/out of stock): neither is present
+        // Old redundant buttons must not exist
+        expect(find.widgetWithText(ElevatedButton, 'Record Sale'), findsNothing);
+        expect(find.widgetWithText(ElevatedButton, 'Manually Check Restock'), findsNothing);
       });
     });
   });

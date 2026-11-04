@@ -39,6 +39,7 @@ class NetworkStatus {
   final int signalStrength;
   final List<WifiNetwork> availableNetworks;
   final bool isScanning;
+  final bool isWifiEnabled;
   final String connectionType; // 'Ethernet', 'WiFi', 'Offline'
   final ReachabilityResult? lastReachabilityResult;
 
@@ -50,6 +51,7 @@ class NetworkStatus {
     this.signalStrength = 0,
     this.availableNetworks = const [],
     this.isScanning = false,
+    this.isWifiEnabled = true,
     this.connectionType = 'Offline',
     this.lastReachabilityResult,
   });
@@ -67,6 +69,7 @@ class NetworkStatus {
     int? signalStrength,
     List<WifiNetwork>? availableNetworks,
     bool? isScanning,
+    bool? isWifiEnabled,
     String? connectionType,
     ReachabilityResult? lastReachabilityResult,
   }) {
@@ -78,6 +81,7 @@ class NetworkStatus {
       signalStrength: signalStrength ?? this.signalStrength,
       availableNetworks: availableNetworks ?? this.availableNetworks,
       isScanning: isScanning ?? this.isScanning,
+      isWifiEnabled: isWifiEnabled ?? this.isWifiEnabled,
       connectionType: connectionType ?? this.connectionType,
       lastReachabilityResult:
           lastReachabilityResult ?? this.lastReachabilityResult,
@@ -266,6 +270,8 @@ class NetworkService extends ChangeNotifier {
       }
     }
 
+    final wifiRadioEnabled = await checkWifiRadio();
+
     // If interface is down or socket unreachable, force offline
     if (!online || activeIfaceName == null) {
       connectionType = 'Offline';
@@ -275,6 +281,7 @@ class NetworkService extends ChangeNotifier {
 
     final newStatus = _status.copyWith(
       isOnline: online,
+      isWifiEnabled: wifiRadioEnabled,
       connectionType: connectionType,
       currentSsid: currentSsid,
       ipAddress: localIp,
@@ -285,6 +292,7 @@ class NetworkService extends ChangeNotifier {
     _isChecking = false;
 
     if (newStatus.isOnline != _status.isOnline ||
+        newStatus.isWifiEnabled != _status.isWifiEnabled ||
         newStatus.currentSsid != _status.currentSsid ||
         newStatus.connectionType != _status.connectionType ||
         newStatus.interfaceName != _status.interfaceName) {
@@ -350,14 +358,151 @@ class NetworkService extends ChangeNotifier {
     return result;
   }
 
-  /// Scans for ACTUAL available WiFi networks nearby (Zero Hardcoded SSIDs)
-  Future<List<WifiNetwork>> scanNetworks() async {
+  /// Checks current Wi-Fi radio status via nmcli
+  Future<bool> checkWifiRadio() async {
+    try {
+      final res = await Process.run('nmcli', ['radio', 'wifi']);
+      if (res.exitCode == 0) {
+        final out = res.stdout.toString().trim().toLowerCase();
+        final enabled = out.startsWith('enabled');
+        if (enabled != _status.isWifiEnabled) {
+          _status = _status.copyWith(isWifiEnabled: enabled);
+          notifyListeners();
+        }
+        return enabled;
+      }
+    } catch (_) {}
+    return _status.isWifiEnabled;
+  }
+
+  /// Toggles Wi-Fi radio on or off
+  Future<bool> setWifiEnabled(bool enable) async {
+    try {
+      final res = await Process.run('nmcli', [
+        'radio',
+        'wifi',
+        enable ? 'on' : 'off',
+      ]);
+      if (res.exitCode == 0) {
+        _status = _status.copyWith(
+          isWifiEnabled: enable,
+          availableNetworks: enable ? _status.availableNetworks : const [],
+        );
+        notifyListeners();
+        await Future.delayed(const Duration(milliseconds: 500));
+        await checkConnectivity();
+        if (enable) {
+          scanNetworks(forceRescan: false);
+        }
+        return true;
+      }
+    } catch (_) {}
+    return false;
+  }
+
+  /// Disconnects active Wi-Fi connection
+  Future<bool> disconnectWifi() async {
+    final iface = _status.interfaceName;
+    try {
+      ProcessResult? res;
+      if (iface != null && iface.isNotEmpty) {
+        res = await Process.run('nmcli', ['dev', 'disconnect', iface]);
+      }
+      if (res == null || res.exitCode != 0) {
+        if (_status.currentSsid != null) {
+          res = await Process.run('nmcli', [
+            'connection',
+            'down',
+            'id',
+            _status.currentSsid!,
+          ]);
+        }
+      }
+      await Future.delayed(const Duration(milliseconds: 500));
+      await checkConnectivity();
+      await scanNetworks(forceRescan: false);
+      return !_status.isWifi;
+    } catch (_) {}
+    return false;
+  }
+
+  /// Parses nmcli tabular wifi output into WifiNetwork objects
+  List<WifiNetwork> _parseWifiList(String output) {
+    final networks = <WifiNetwork>[];
+    final seenSsids = <String>{};
+    final lines = output.split('\n');
+
+    for (final line in lines) {
+      final parts = line.split(':');
+      if (parts.length >= 3) {
+        final ssid = parts[0].trim();
+        final sig = int.tryParse(parts[1].trim()) ?? 60;
+        final sec = parts[2].trim();
+        final inUse = parts.length > 3 && parts[3].trim() == '*';
+
+        // Filter out hidden / empty SSIDs and duplicates
+        if (ssid.isNotEmpty && !seenSsids.contains(ssid)) {
+          seenSsids.add(ssid);
+          networks.add(
+            WifiNetwork(
+              ssid: ssid,
+              signalStrength: sig,
+              isSecure: sec.isNotEmpty && !sec.contains('--'),
+              isConnected: inUse || (_status.currentSsid == ssid),
+              securityType: sec.isNotEmpty ? sec : 'Open',
+            ),
+          );
+        }
+      }
+    }
+
+    // Sort: Connected network first, then by signal strength descending
+    networks.sort((a, b) {
+      if (a.isConnected && !b.isConnected) return -1;
+      if (!a.isConnected && b.isConnected) return 1;
+      return b.signalStrength.compareTo(a.signalStrength);
+    });
+
+    return networks;
+  }
+
+  /// Scans for ACTUAL available WiFi networks nearby (Instant cached scan + background fresh rescan)
+  Future<List<WifiNetwork>> scanNetworks({bool forceRescan = false}) async {
+    // If radio is disabled, don't scan
+    await checkWifiRadio();
+    if (!_status.isWifiEnabled) {
+      _status = _status.copyWith(
+        availableNetworks: const [],
+        isScanning: false,
+      );
+      notifyListeners();
+      return const [];
+    }
+
     _status = _status.copyWith(isScanning: true);
     notifyListeners();
 
-    final networks = <WifiNetwork>[];
-    final seenSsids = <String>{};
+    // 1. Instant cached scan first to populate UI without waiting
+    try {
+      final cachedRes = await Process.run('nmcli', [
+        '-t',
+        '-f',
+        'SSID,SIGNAL,SECURITY,IN-USE',
+        'dev',
+        'wifi',
+        'list',
+      ]).timeout(const Duration(seconds: 2));
 
+      if (cachedRes.exitCode == 0) {
+        final cachedNetworks = _parseWifiList(cachedRes.stdout.toString());
+        if (cachedNetworks.isNotEmpty) {
+          _status = _status.copyWith(availableNetworks: cachedNetworks);
+          notifyListeners();
+        }
+      }
+    } catch (_) {}
+
+    // 2. Perform fresh scan with 12s timeout
     try {
       final res = await Process.run('nmcli', [
         '-t',
@@ -368,47 +513,26 @@ class NetworkService extends ChangeNotifier {
         'list',
         '--rescan',
         'yes',
-      ]).timeout(const Duration(seconds: 5));
+      ]).timeout(const Duration(seconds: 12));
 
       if (res.exitCode == 0) {
-        final lines = res.stdout.toString().split('\n');
-
-        for (final line in lines) {
-          final parts = line.split(':');
-          if (parts.length >= 3) {
-            final ssid = parts[0].trim();
-            final sig = int.tryParse(parts[1].trim()) ?? 60;
-            final sec = parts[2].trim();
-            final inUse = parts.length > 3 && parts[3].trim() == '*';
-
-            // Filter out hidden / empty SSIDs and duplicates
-            if (ssid.isNotEmpty && !seenSsids.contains(ssid)) {
-              seenSsids.add(ssid);
-              networks.add(
-                WifiNetwork(
-                  ssid: ssid,
-                  signalStrength: sig,
-                  isSecure: sec.isNotEmpty && !sec.contains('--'),
-                  isConnected: inUse || (_status.currentSsid == ssid),
-                  securityType: sec.isNotEmpty ? sec : 'Open',
-                ),
-              );
-            }
-          }
+        final freshNetworks = _parseWifiList(res.stdout.toString());
+        if (freshNetworks.isNotEmpty) {
+          _status = _status.copyWith(
+            availableNetworks: freshNetworks,
+            isScanning: false,
+          );
+          notifyListeners();
+          return freshNetworks;
         }
       }
-    } catch (_) {}
+    } catch (_) {
+      // If rescan times out or fails (e.g. rate limit), keep the cached networks
+    }
 
-    // Sort: Connected network first, then by signal strength descending
-    networks.sort((a, b) {
-      if (a.isConnected && !b.isConnected) return -1;
-      if (!a.isConnected && b.isConnected) return 1;
-      return b.signalStrength.compareTo(a.signalStrength);
-    });
-
-    _status = _status.copyWith(availableNetworks: networks, isScanning: false);
+    _status = _status.copyWith(isScanning: false);
     notifyListeners();
-    return networks;
+    return _status.availableNetworks;
   }
 
   /// Connects to a WiFi network with password
@@ -438,7 +562,7 @@ class NetworkService extends ChangeNotifier {
     // Verify connection
     await Future.delayed(const Duration(milliseconds: 1000));
     await checkConnectivity();
-    await scanNetworks();
+    await scanNetworks(forceRescan: false);
 
     return success || _status.isOnline;
   }

@@ -423,11 +423,17 @@ class _ScanWorkflowDialogState extends ConsumerState<ScanWorkflowDialog> {
                 targetCode,
                 branch: effectiveBranch,
               );
+              // Synchronize ledger recorded count to verified detected count and log restock
+              await SqliteService.instance.confirmSurplusRestock(
+                perfumeCode: targetCode,
+                branch: effectiveBranch,
+                detectedCount: slotCount,
+              );
 
               _verificationSuccess = true;
               _detectedCount = slotCount;
               _lowStockCount = 0;
-              _statusMessage = 'Restock Verified! $label now has sufficient stock ($slotCount / 5 bottles). Low stock alert resolved.';
+              _statusMessage = 'Restock Verified! $label now has sufficient stock ($slotCount / 5 bottles). Ledger updated and alerts resolved.';
             } else {
               _verificationSuccess = false;
               _detectedCount = slotCount;
@@ -444,10 +450,20 @@ class _ScanWorkflowDialogState extends ConsumerState<ScanWorkflowDialog> {
               if (widget.targetAlert != null) {
                 await SqliteService.instance.markAlertRead(widget.targetAlert!.id);
               }
+              await SqliteService.instance.confirmSurplusRestock(
+                perfumeCode: '${_selectedTray}1',
+                branch: effectiveBranch,
+                detectedCount: c100,
+              );
+              await SqliteService.instance.confirmSurplusRestock(
+                perfumeCode: '${_selectedTray}2',
+                branch: effectiveBranch,
+                detectedCount: c50,
+              );
               _verificationSuccess = true;
               _detectedCount = c100 + c50;
               _lowStockCount = 0;
-              _statusMessage = 'Restock Verified! Tray $_selectedTray: Slot 1 ($c100 / 5) and Slot 2 ($c50 / 5) have sufficient stock.';
+              _statusMessage = 'Restock Verified! Tray $_selectedTray: Slot 1 ($c100 / 5) and Slot 2 ($c50 / 5) have sufficient stock. Ledger updated and alerts resolved.';
             } else {
               _verificationSuccess = false;
               _detectedCount = c100 + c50;

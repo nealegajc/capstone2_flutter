@@ -37,7 +37,21 @@ class SaleRecordModel {
   }
 
   String get formattedTotal {
+    if (isRefund) {
+      return '-₱${(-totalAmount).toStringAsFixed(2)}';
+    }
     return '₱${totalAmount.toStringAsFixed(2)}';
+  }
+
+  bool get isRefund => totalAmount < 0;
+
+  String get transactionType => isRefund ? 'REFUND' : 'SALE';
+
+  String get signedFormattedTotal {
+    if (isRefund) {
+      return '-₱${(-totalAmount).toStringAsFixed(2)}';
+    }
+    return '+₱${totalAmount.toStringAsFixed(2)}';
   }
 
   String get formattedUnitPrice {

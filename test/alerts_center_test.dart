@@ -127,7 +127,7 @@ void main() {
       expect(find.text('All Alerts'), findsOneWidget);
       expect(find.text('Out of Stock'), findsWidgets);
       expect(find.text('Low Stock'), findsWidgets);
-      expect(find.text('System / Camera'), findsOneWidget);
+      expect(find.text('System / Anomaly'), findsOneWidget);
 
       // Verify legacy chips are completely gone
       expect(find.text('Misplaced'), findsNothing);
@@ -147,8 +147,8 @@ void main() {
       expect(find.text('Low Stock Alert'), findsOneWidget);
       expect(find.text('Camera Scan Service Unavailable'), findsNothing);
 
-      // Filter by System / Camera
-      await tester.tap(find.text('System / Camera').first);
+      // Filter by System / Anomaly
+      await tester.tap(find.text('System / Anomaly').first);
       await tester.pumpAndSettle();
       expect(find.text('Out of Stock Alert'), findsNothing);
       expect(find.text('Low Stock Alert'), findsNothing);
@@ -208,7 +208,7 @@ void main() {
       // Initially on Active Alerts tab
       expect(find.text('1 ACTIVE'), findsOneWidget);
       expect(find.text('Low Stock Alert'), findsOneWidget);
-      expect(find.text('Acknowledge All'), findsOneWidget);
+      expect(find.text('Acknowledge All'), findsNothing);
       expect(find.text('Verified Restock'), findsNothing);
 
       // Tap Resolved History tab

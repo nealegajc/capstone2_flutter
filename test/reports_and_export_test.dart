@@ -312,10 +312,7 @@ void main() {
       expect(find.textContaining('Daily store performance, sales register, and wireless report sharing'), findsOneWidget);
       expect(find.textContaining('Branch: San Pablo'), findsNothing);
 
-      // 2. Verify Prominent Action Button: "Record New Sale"
-      expect(find.text('Record New Sale'), findsOneWidget);
-
-      // 3. Verify 4-Card Daily Retail KPI Grid
+      // 2. Verify 4-Card Daily Retail KPI Grid
       expect(find.text("TODAY'S REVENUE"), findsOneWidget);
       expect(find.text('₱1,400.00'), findsOneWidget);
 
@@ -328,11 +325,11 @@ void main() {
       expect(find.text('LOW STOCK ALERTS'), findsOneWidget);
       expect(find.text('4 Items Low'), findsOneWidget);
 
-      // 4. Verify Prominent Action Banner: "View & Share Reports"
+      // 3. Verify Prominent Action Banner: "View & Share Reports"
       expect(find.text('In-App Report Viewer & Wireless Wi-Fi Transfer'), findsOneWidget);
       expect(find.text('View & Share Reports'), findsOneWidget);
 
-      // 5. Verify Recent Sales Activity List
+      // 4. Verify Recent Sales Activity List
       expect(find.text("Today's Sales Register Feed"), findsOneWidget);
       expect(find.textContaining('Sauvage Dior'), findsWidgets);
       expect(find.textContaining('Vanilla Woods'), findsWidgets);
@@ -381,7 +378,7 @@ void main() {
       expect(find.text('No transactions recorded today.'), findsOneWidget);
     });
 
-    testWidgets('Tapping Record New Sale opens RecordSaleDialog and View & Share Reports opens ReportViewerDialog', (tester) async {
+    testWidgets('Tapping View & Share Reports opens ReportViewerDialog', (tester) async {
       tester.view.physicalSize = const Size(1920, 1080);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(() => tester.view.resetPhysicalSize());
@@ -414,17 +411,6 @@ void main() {
         ),
       );
 
-      await tester.pumpAndSettle();
-
-      // Tap "Record New Sale"
-      await tester.tap(find.text('Record New Sale'));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 300));
-
-      expect(find.byType(Dialog), findsOneWidget);
-
-      // Close dialog
-      await tester.tap(find.byIcon(Icons.close_rounded).last);
       await tester.pumpAndSettle();
 
       // Tap "View & Share Reports"

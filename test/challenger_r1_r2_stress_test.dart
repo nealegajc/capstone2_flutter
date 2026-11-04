@@ -484,7 +484,7 @@ void main() {
       expect(find.text('Camera Scan Service Unavailable'), findsNothing);
 
       // 3. System filter: ONLY alt_sys visible
-      await tester.tap(find.text('System / Camera').first);
+      await tester.tap(find.text('System / Anomaly').first);
       await tester.pumpAndSettle();
       expect(find.text('Out of Stock Alert'), findsNothing);
       expect(find.text('Low Stock Alert'), findsNothing);
@@ -849,7 +849,7 @@ void main() {
       expect(find.text('1 ACTIVE'), findsOneWidget);
       expect(find.text('Out of Stock Alert - AA1'), findsOneWidget);
       expect(find.text('Resolved Low Stock Alert - BB1'), findsNothing);
-      expect(find.text('Acknowledge All'), findsOneWidget);
+      expect(find.text('Acknowledge All'), findsNothing);
 
       // Switch to Resolved History view:
       await tester.tap(find.text('Resolved History'));
@@ -859,7 +859,7 @@ void main() {
       expect(find.text('Resolved Low Stock Alert - BB1'), findsOneWidget);
       expect(find.text('Out of Stock Alert - AA1'), findsNothing);
       expect(find.text('Resolved'), findsOneWidget); // Status badge
-      expect(find.text('Acknowledge All'), findsNothing); // Acknowledge all is hidden on history tab
+      expect(find.text('Acknowledge All'), findsNothing);
     });
   });
 }

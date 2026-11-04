@@ -617,18 +617,53 @@ class _TrayRoiPainter extends CustomPainter {
         return upper == code.toUpperCase() || upper.startsWith(code.toUpperCase());
       });
 
-      // Background fill: amber tint when paused/seasonal-off
-      final fillPaint = Paint()
-        ..color = isOff
-            ? const Color(0xFFF59E0B).withValues(alpha: 0.22)
-            : (isTraySelected
-                ? AppColors.brandAccent.withValues(alpha: 0.18)
-                : Colors.white.withValues(alpha: 0.06))
-        ..style = PaintingStyle.fill;
+      // Subtle dual-column fill: 100ML (Left) & 50ML (Right)
+      final leftHalfRect = Rect.fromLTRB(box.left, box.top, box.center.dx, box.bottom);
+      final rightHalfRect = Rect.fromLTRB(box.center.dx, box.top, box.right, box.bottom);
 
-      canvas.drawRRect(
-        RRect.fromRectAndRadius(box, const Radius.circular(10)),
-        fillPaint,
+      if (isOff) {
+        final offFill = Paint()
+          ..color = const Color(0xFFF59E0B).withValues(alpha: 0.20)
+          ..style = PaintingStyle.fill;
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(box, const Radius.circular(10)),
+          offFill,
+        );
+      } else {
+        // Left Column (100ML) subtle teal tint
+        final leftFill = Paint()
+          ..color = isTraySelected
+              ? AppColors.statusGreen.withValues(alpha: 0.12)
+              : Colors.tealAccent.withValues(alpha: 0.04)
+          ..style = PaintingStyle.fill;
+        canvas.drawRect(leftHalfRect, leftFill);
+
+        // Right Column (50ML) subtle amber/purple tint
+        final rightFill = Paint()
+          ..color = isTraySelected
+              ? AppColors.brandGold.withValues(alpha: 0.12)
+              : Colors.amberAccent.withValues(alpha: 0.04)
+          ..style = PaintingStyle.fill;
+        canvas.drawRect(rightHalfRect, rightFill);
+      }
+
+      // Vertical Centerline Acrylic Divider Line (separating 100ML and 50ML)
+      final dividerPaint = Paint()
+        ..color = isOff
+            ? const Color(0xFFF59E0B).withValues(alpha: 0.7)
+            : (isTraySelected
+                ? AppColors.brandAccent
+                : Colors.white.withValues(alpha: 0.65))
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = isTraySelected ? 1.8 : 1.4;
+
+      _drawDashedLine(
+        canvas,
+        Offset(box.center.dx, box.top + 28),
+        Offset(box.center.dx, box.bottom - 6),
+        dividerPaint,
+        dashWidth: 6.0,
+        dashSpace: 4.0,
       );
 
       // Border outline: amber dashed outline when seasonal-off
@@ -712,7 +747,7 @@ class _TrayRoiPainter extends CustomPainter {
       } else {
         final pillCenterX = box.center.dx;
         final pillCenterY = math.max(10.0, box.top + 10);
-        final tagWidth = math.min(80.0, box.width * 0.85);
+        final tagWidth = math.min(84.0, box.width * 0.85);
         final tagRect = Rect.fromCenter(
           center: Offset(pillCenterX, pillCenterY),
           width: tagWidth,
@@ -722,7 +757,7 @@ class _TrayRoiPainter extends CustomPainter {
         final tagBgPaint = Paint()
           ..color = isTraySelected
               ? AppColors.brandAccent
-              : Colors.black.withValues(alpha: 0.85)
+              : Colors.black.withValues(alpha: 0.88)
           ..style = PaintingStyle.fill;
         canvas.drawRRect(
           RRect.fromRectAndRadius(tagRect, const Radius.circular(9)),
@@ -747,57 +782,60 @@ class _TrayRoiPainter extends CustomPainter {
             tagRect.center.dy - (textPainter.height / 2),
           ),
         );
-      }
 
-      // Center Scent Watermark / Label
-      textPainter.text = TextSpan(
-        children: [
-          TextSpan(
-            text: '$code\n',
+        // Sub-headers: 100ML (Left) and 50ML (Right)
+        if (box.width >= 40) {
+          final subHeaderY = box.top + 24;
+
+          // 100ML Label (Left column)
+          final leftColCenterX = (box.left + box.center.dx) / 2.0;
+          textPainter.text = TextSpan(
+            text: '100ML',
             style: TextStyle(
-              color: isOff
-                  ? const Color(0xFFF59E0B)
-                  : (isTraySelected
-                      ? AppColors.brandAccent
-                      : Colors.white.withValues(alpha: 0.85)),
-              fontSize: 16,
-              fontWeight: FontWeight.w900,
-              decoration: isOff ? TextDecoration.lineThrough : null,
-              height: 1.1,
-              shadows: const [
-                Shadow(
-                  color: Colors.black,
-                  blurRadius: 4,
-                  offset: Offset(0, 1),
-                ),
-              ],
-            ),
-          ),
-          TextSpan(
-            text: isOff ? 'PAUSED' : 'ALL SIZES',
-            style: TextStyle(
-              color: isOff
-                  ? const Color(0xFFF59E0B)
-                  : (isTraySelected
-                      ? AppColors.brandAccent.withValues(alpha: 0.8)
-                      : Colors.white54),
-              fontSize: 9,
-              fontWeight: FontWeight.w700,
+              color: isTraySelected
+                  ? AppColors.statusGreen
+                  : Colors.tealAccent.shade100,
+              fontSize: 8.0,
+              fontWeight: FontWeight.w800,
               letterSpacing: 0.3,
               shadows: const [Shadow(color: Colors.black, blurRadius: 3)],
             ),
-          ),
-        ],
-      );
-      textPainter.textAlign = TextAlign.center;
-      textPainter.layout();
-      textPainter.paint(
-        canvas,
-        Offset(
-          box.center.dx - (textPainter.width / 2),
-          box.center.dy - (textPainter.height / 2),
-        ),
-      );
+          );
+          textPainter.textAlign = TextAlign.center;
+          textPainter.layout();
+          textPainter.paint(
+            canvas,
+            Offset(
+              leftColCenterX - (textPainter.width / 2),
+              subHeaderY,
+            ),
+          );
+
+          // 50ML Label (Right column)
+          final rightColCenterX = (box.center.dx + box.right) / 2.0;
+          textPainter.text = TextSpan(
+            text: '50ML',
+            style: TextStyle(
+              color: isTraySelected
+                  ? AppColors.brandGold
+                  : Colors.amberAccent.shade100,
+              fontSize: 8.0,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 0.3,
+              shadows: const [Shadow(color: Colors.black, blurRadius: 3)],
+            ),
+          );
+          textPainter.textAlign = TextAlign.center;
+          textPainter.layout();
+          textPainter.paint(
+            canvas,
+            Offset(
+              rightColCenterX - (textPainter.width / 2),
+              subHeaderY,
+            ),
+          );
+        }
+      }
     }
 
     // 3. Corner L-Shapes for Selected Tray Target (or overallRect if none selected)
@@ -883,6 +921,35 @@ class _TrayRoiPainter extends CustomPainter {
         canvas.drawPath(extract, paint);
         distance += dashWidth + dashSpace;
       }
+    }
+  }
+
+  void _drawDashedLine(
+    Canvas canvas,
+    Offset p1,
+    Offset p2,
+    Paint paint, {
+    double dashWidth = 6.0,
+    double dashSpace = 4.0,
+  }) {
+    final dx = p2.dx - p1.dx;
+    final dy = p2.dy - p1.dy;
+    final totalDistance = math.sqrt(dx * dx + dy * dy);
+    if (totalDistance <= 0) return;
+
+    final ux = dx / totalDistance;
+    final uy = dy / totalDistance;
+
+    double currentDist = 0.0;
+    while (currentDist < totalDistance) {
+      final segLen = math.min(dashWidth, totalDistance - currentDist);
+      final start = Offset(p1.dx + ux * currentDist, p1.dy + uy * currentDist);
+      final end = Offset(
+        p1.dx + ux * (currentDist + segLen),
+        p1.dy + uy * (currentDist + segLen),
+      );
+      canvas.drawLine(start, end, paint);
+      currentDist += dashWidth + dashSpace;
     }
   }
 

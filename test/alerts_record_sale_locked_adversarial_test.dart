@@ -350,8 +350,9 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 200));
 
-      // Verify ribbon Log Restock button
-      expect(find.widgetWithText(ElevatedButton, 'Log Restock'), findsOneWidget);
+      // Verify ribbon buttons are purged
+      expect(find.widgetWithText(ElevatedButton, 'Log Restock'), findsNothing);
+      expect(find.widgetWithText(OutlinedButton, 'Acknowledge All'), findsNothing);
 
       // Verify clean subtitle branding without branch jargon
       expect(find.textContaining('Smart Shelf Display'), findsOneWidget);
@@ -396,16 +397,22 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 200));
 
-      expect(find.widgetWithText(ElevatedButton, 'Record Sale'), findsOneWidget);
-      await tester.tap(find.widgetWithText(ElevatedButton, 'Record Sale'));
+      expect(find.widgetWithText(ElevatedButton, 'Take Action'), findsOneWidget);
+      await tester.tap(find.widgetWithText(ElevatedButton, 'Take Action'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 300));
 
-      expect(find.text('Selected Fragrance (Locked to Alert)'), findsOneWidget);
-      expect(find.text('LOCKED'), findsOneWidget);
-      expect(find.byType(DropdownButton<ProductModel>), findsNothing);
+      expect(find.text('Unified Stock Movement Hub'), findsOneWidget);
+      expect(find.text('Sale'), findsWidgets);
 
-      await tester.tap(find.text('Confirm Sale (₱260.00)'));
+      // Confirm sale from hub
+      await tester.tap(find.byKey(const ValueKey('submit_stock_movement_button')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+
+      // Choose Computer Vision verification
+      expect(find.byKey(const ValueKey('verification_choice_vision')), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('verification_choice_vision')));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 500));
 
@@ -484,13 +491,13 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 200));
 
-      await tester.tap(find.widgetWithText(ElevatedButton, 'Record Sale'));
+      expect(find.widgetWithText(ElevatedButton, 'Take Action'), findsOneWidget);
+      await tester.tap(find.widgetWithText(ElevatedButton, 'Take Action'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 300));
 
-      // Must identify as 100ml with universal ₱260 price
-      expect(find.text('Bottle Size: 100ml'), findsOneWidget);
-      expect(find.text('Confirm Sale (₱260.00)'), findsOneWidget);
+      expect(find.text('Unified Stock Movement Hub'), findsOneWidget);
+      expect(find.textContaining('XX1'), findsWidgets);
 
       // Close modal
       await tester.tap(find.byIcon(Icons.close_rounded));
@@ -623,16 +630,16 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 200));
 
-      // Record Sale button must be visible for trimmed code
-      expect(find.widgetWithText(ElevatedButton, 'Record Sale'), findsOneWidget);
+      // Take Action button must be visible for trimmed code
+      expect(find.widgetWithText(ElevatedButton, 'Take Action'), findsOneWidget);
 
-      await tester.tap(find.widgetWithText(ElevatedButton, 'Record Sale'));
+      await tester.tap(find.widgetWithText(ElevatedButton, 'Take Action'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 300));
 
-      // Must find trimmed code CD1
-      expect(find.text('CD1'), findsOneWidget);
-      expect(find.text('Bottle Size: 100ml'), findsOneWidget);
+      // Must find trimmed code CD1 in Hub
+      expect(find.text('Unified Stock Movement Hub'), findsOneWidget);
+      expect(find.textContaining('CD1'), findsWidgets);
 
       // Close modal
       await tester.tap(find.byIcon(Icons.close_rounded));
@@ -640,7 +647,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 200));
     });
 
-    testWidgets('R4 Surplus Discrepancy: Shows Manually Check Restock and hides Record Sale', (tester) async {
+    testWidgets('R4 Surplus Discrepancy: Shows Take Action button and opens Restock tab', (tester) async {
       tester.view.physicalSize = const Size(1920, 1080);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(() => tester.view.resetPhysicalSize());
@@ -669,6 +676,7 @@ void main() {
         status: 'needs_review',
         lastUpdated: DateTime.now(),
       );
+      await sqliteService.saveInventoryRecord(invSurplus);
 
       await tester.pumpWidget(
         ProviderScope(
@@ -687,19 +695,29 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 200));
 
-      // Surplus discrepancy must render Manually Check Restock button
-      expect(find.widgetWithText(ElevatedButton, 'Manually Check Restock'), findsOneWidget);
-      // Surplus discrepancy MUST NOT render Record Sale
+      // Surplus discrepancy renders consolidated Take Action button
+      expect(find.widgetWithText(ElevatedButton, 'Take Action'), findsOneWidget);
       expect(find.widgetWithText(ElevatedButton, 'Record Sale'), findsNothing);
 
-      // Tap Manually Check Restock
-      await tester.tap(find.widgetWithText(ElevatedButton, 'Manually Check Restock'));
+      // Tap Take Action
+      await tester.tap(find.widgetWithText(ElevatedButton, 'Take Action'));
       await tester.pump();
-      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pump(const Duration(milliseconds: 300));
 
-      // Alert must be resolved
-      final unreadAlerts = await sqliteService.getAlerts(branch, unreadOnly: true);
-      expect(unreadAlerts.any((a) => a.id == 'alt_cd2_surplus'), isFalse);
+      // Should open Hub with Restock tab pre-selected
+      expect(find.text('Unified Stock Movement Hub'), findsOneWidget);
+      expect(find.text('Restock'), findsWidgets);
+
+      // Verify Restock quantity is capped to surplus delta (detected 4 - recorded 2 = 2)
+      expect(find.text('2'), findsOneWidget);
+      expect(find.text('(Capped to 2 added bottles)'), findsOneWidget);
+
+      // '+' button must be disabled because quantity is already at surplus cap (2)
+      final addButtonFinder = find.widgetWithIcon(IconButton, Icons.add_rounded);
+      expect(tester.widget<IconButton>(addButtonFinder).onPressed, isNull);
+
+      // Verify 'Reconcile Deficit Discrepancy' checkbox is completely purged from UI
+      expect(find.text('Reconcile Deficit Discrepancy'), findsNothing);
     });
 
     testWidgets('R4 Alert Consolidation: Discrepancy and Low Stock merge into 1 card with secondary badge', (tester) async {
@@ -768,16 +786,9 @@ void main() {
       expect(find.text('Discrepancy'), findsOneWidget);
       expect(find.descendant(of: find.byType(ListView), matching: find.text('Low Stock')), findsOneWidget);
 
-      // Dismiss button resolves BOTH underlying alerts
+      // Direct Mark as Resolved checkmark button is purged from the alert card
       final dismissBtn = find.byTooltip('Mark as Resolved');
-      expect(dismissBtn, findsOneWidget);
-      await tester.tap(dismissBtn);
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 500));
-
-      final unreadAlerts = await sqliteService.getAlerts(branch, unreadOnly: true);
-      expect(unreadAlerts.any((a) => a.id == 'alt_cd1_disc_combo'), isFalse);
-      expect(unreadAlerts.any((a) => a.id == 'alt_cd1_low_combo'), isFalse);
+      expect(dismissBtn, findsNothing);
     });
   });
 }

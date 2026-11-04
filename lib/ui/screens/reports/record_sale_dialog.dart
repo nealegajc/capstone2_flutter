@@ -15,12 +15,14 @@ class RecordSaleDialog extends ConsumerStatefulWidget {
   final ProductModel? initialProduct;
   final String? branch;
   final bool isLocked;
+  final bool isDeficitResolution;
 
   const RecordSaleDialog({
     super.key,
     this.initialProduct,
     this.branch,
     this.isLocked = false,
+    this.isDeficitResolution = false,
   });
 
   static Future<bool?> show(
@@ -28,6 +30,7 @@ class RecordSaleDialog extends ConsumerStatefulWidget {
     ProductModel? initialProduct,
     String? branch,
     bool isLocked = false,
+    bool isDeficitResolution = false,
   }) {
     return showDialog<bool>(
       context: context,
@@ -36,6 +39,7 @@ class RecordSaleDialog extends ConsumerStatefulWidget {
         initialProduct: initialProduct,
         branch: branch,
         isLocked: isLocked,
+        isDeficitResolution: isDeficitResolution,
       ),
     );
   }
@@ -112,6 +116,7 @@ class _RecordSaleDialogState extends ConsumerState<RecordSaleDialog> {
         saleRecord: saleRecord,
         event: event,
         branch: effectiveBranch,
+        isDeficitResolution: widget.isDeficitResolution,
       );
 
       // 4. Invalidate Providers

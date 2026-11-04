@@ -544,7 +544,7 @@ class _CameraMonitorScreenState extends ConsumerState<CameraMonitorScreen> {
                       ),
                       const SizedBox(width: 10),
 
-                      // 4. 2K QHD Resolution Badge
+                      // 4. Stream Resolution & 2K Scan Ready Badge
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                         decoration: BoxDecoration(
@@ -560,7 +560,7 @@ class _CameraMonitorScreenState extends ConsumerState<CameraMonitorScreen> {
                             Icon(Icons.hd_rounded, color: AppColors.brandAccent, size: 18),
                             SizedBox(width: 6),
                             Text(
-                              '2K QHD (2560x1440)',
+                              '720p HD Stream • 2K Scan',
                               style: TextStyle(
                                 fontSize: 12,
                                 fontWeight: FontWeight.bold,
@@ -1044,7 +1044,7 @@ class _CameraMonitorScreenState extends ConsumerState<CameraMonitorScreen> {
                             _buildTelemetryRow(
                               context,
                               'Stream Quality',
-                              '${hardwareService.currentQualityMode.resolution} (2K Max)',
+                              '${hardwareService.currentQualityMode.resolution} (720p HD • 2K Scan Max)',
                             ),
                             _buildTelemetryRow(
                               context,
@@ -1263,17 +1263,19 @@ class _MjpegLiveViewerState extends State<MjpegLiveViewer> {
   @override
   void initState() {
     super.initState();
+    _currentFrame = widget.initialFrame;
     _connectionStartTime = DateTime.now();
     _subscribe();
     _watchdogTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) {
         final now = DateTime.now();
+        // Give 6 seconds buffer before treating stream as stalled to allow handshake/switching
         final frameStalled =
             _lastFrameReceivedTime != null &&
-            now.difference(_lastFrameReceivedTime!).inSeconds >= 4;
+            now.difference(_lastFrameReceivedTime!).inSeconds >= 6;
         final connectStalled =
             _currentFrame == null &&
-            now.difference(_connectionStartTime).inSeconds >= 4;
+            now.difference(_connectionStartTime).inSeconds >= 6;
 
         if (frameStalled || connectStalled) {
           if (!_isStalled) {
@@ -1281,7 +1283,7 @@ class _MjpegLiveViewerState extends State<MjpegLiveViewer> {
           }
         } else if (_isStalled &&
             _lastFrameReceivedTime != null &&
-            now.difference(_lastFrameReceivedTime!).inSeconds < 4) {
+            now.difference(_lastFrameReceivedTime!).inSeconds < 6) {
           setState(() => _isStalled = false);
         }
       }

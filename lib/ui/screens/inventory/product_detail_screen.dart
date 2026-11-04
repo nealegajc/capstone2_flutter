@@ -8,6 +8,7 @@ import '../../../core/theme/theme_helper.dart';
 import '../../../data/models/product_model.dart';
 import '../../../providers/kiosk_providers.dart';
 import '../../components/status_badge.dart';
+import '../../components/stock_movement_hub_dialog.dart';
 import '../reports/record_sale_dialog.dart';
 
 class ProductDetailScreen extends ConsumerWidget {
@@ -55,6 +56,22 @@ class ProductDetailScreen extends ConsumerWidget {
           appBar: AppBar(
             title: const Text('Product Details & Vision Specs'),
             actions: [
+              ElevatedButton.icon(
+                key: const Key('btn_product_detail_stock_movement_hub'),
+                onPressed: () =>
+                    StockMovementHubDialog.show(context, initialProduct: p),
+                icon: const Icon(Icons.swap_horiz_rounded, size: 18),
+                label: const Text('Stock Movement'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.brandPrimary,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 10,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
               ElevatedButton.icon(
                 onPressed: () =>
                     RecordSaleDialog.show(context, initialProduct: p),

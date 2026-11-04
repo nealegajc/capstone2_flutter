@@ -6,13 +6,11 @@ import '../../../core/router/route_names.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/theme_helper.dart';
 import '../../../data/models/alert_model.dart';
-import '../../../data/models/product_model.dart';
-import '../../../data/seeds/catalog_seed_data.dart';
 import '../../../data/services/sqlite_service.dart';
 import '../../../providers/kiosk_providers.dart';
 import '../../components/status_badge.dart';
 import '../../components/scan_workflow_dialog.dart';
-import '../reports/record_sale_dialog.dart';
+import '../../components/stock_movement_hub_dialog.dart';
 
 class _ConsolidatedAlertItem {
   final String perfumeCode;
@@ -21,8 +19,11 @@ class _ConsolidatedAlertItem {
   final bool isOutOfStock;
   final bool isLowStock;
   final bool isSystem;
+  final bool isUnreconciledAnomaly;
   final bool isDeficit;
   final bool isSurplus;
+  final int deficitQty;
+  final int surplusQty;
   final AlertModel primaryAlert;
   final int? stockCount;
 
@@ -33,8 +34,11 @@ class _ConsolidatedAlertItem {
     required this.isOutOfStock,
     required this.isLowStock,
     required this.isSystem,
+    this.isUnreconciledAnomaly = false,
     required this.isDeficit,
     required this.isSurplus,
+    this.deficitQty = 1,
+    this.surplusQty = 1,
     required this.primaryAlert,
     this.stockCount,
   });
@@ -178,17 +182,28 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
 
         bool isDeficit = false;
         bool isSurplus = false;
+        int deficitQty = 1;
+        int surplusQty = 1;
         if (detected != null && recorded != null) {
           if (detected < recorded) {
             isDeficit = true;
+            deficitQty = (recorded - detected).clamp(1, 5);
           } else if (detected > recorded) {
             isSurplus = true;
+            surplusQty = (detected - recorded).clamp(1, 5);
           }
         } else if (hasDiscrepancy) {
           // If no ledger info available, discrepancy defaults to deficit (unrecorded sale)
           isDeficit = true;
         }
 
+        // Check if this alert was flagged as an unreconciled discrepancy anomaly
+        final isUnreconciledAnomaly = alerts.any(
+          (a) =>
+              a.title.toLowerCase().contains('unreconciled') ||
+              a.desc.toLowerCase().contains('unreconciled') ||
+              (hasDiscrepancy && detected != null && recorded != null && detected == recorded),
+        );
         final stockCount = detected ?? (hasOos ? 0 : null);
 
         consolidatedItems.add(_ConsolidatedAlertItem(
@@ -198,8 +213,11 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
           isOutOfStock: hasOos,
           isLowStock: hasLow,
           isSystem: !hasDiscrepancy && !hasOos && !hasLow,
+          isUnreconciledAnomaly: isUnreconciledAnomaly,
           isDeficit: isDeficit,
           isSurplus: isSurplus,
+          deficitQty: deficitQty,
+          surplusQty: surplusQty,
           primaryAlert: primaryAlert,
           stockCount: stockCount,
         ));
@@ -277,16 +295,21 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Row(
+                        mainAxisSize: MainAxisSize.min,
                         children: [
-                          Text(
-                            _showHistory
-                                ? 'Resolved Alerts & Audit History'
-                                : 'Shelf Alerts & Incidents Center',
-                            style: TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.w800,
-                              color: context.textPrimaryColor,
-                              letterSpacing: -0.3,
+                          Flexible(
+                            child: Text(
+                              _showHistory
+                                  ? 'Resolved Alerts & Audit History'
+                                  : 'Shelf Alerts & Incidents Center',
+                              style: TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.w800,
+                                color: context.textPrimaryColor,
+                                letterSpacing: -0.3,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                              maxLines: 1,
                             ),
                           ),
                           const SizedBox(width: 10),
@@ -329,6 +352,8 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                           fontSize: 12,
                           color: context.textSecondaryColor,
                         ),
+                        overflow: TextOverflow.ellipsis,
+                        maxLines: 1,
                       ),
                     ],
                   ),
@@ -363,65 +388,6 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                         onTap: () => setState(() => _showHistory = true),
                       ),
                     ],
-                  ),
-                ),
-                if (!_showHistory) ...[
-                  const SizedBox(width: 12),
-                  OutlinedButton.icon(
-                    onPressed: activeAlerts.isEmpty
-                        ? null
-                        : () async {
-                            await SqliteService.instance.markAllAlertsRead(
-                              null,
-                              branch,
-                            );
-                            ref.invalidate(liveAlertsProvider(branch));
-                            ref.invalidate(resolvedAlertsHistoryProvider(branch));
-                            ref.invalidate(dashboardStatsProvider(branch));
-                            if (context.mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text(
-                                    'All active alerts marked as acknowledged.',
-                                  ),
-                                  backgroundColor: AppColors.statusGreen,
-                                ),
-                              );
-                            }
-                          },
-                    icon: const Icon(Icons.done_all_rounded, size: 18),
-                    label: const Text('Acknowledge All'),
-                    style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 12,
-                      ),
-                      side: BorderSide(color: context.borderColor),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                    ),
-                  ),
-                ],
-                const SizedBox(width: 12),
-                ElevatedButton.icon(
-                  onPressed: () => context.push(AppRoutePaths.createRestock),
-                  icon: const Icon(Icons.move_to_inbox_rounded, size: 18),
-                  label: const Text('Log Restock'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.brandAccent,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 12,
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    textStyle: const TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.bold,
-                    ),
                   ),
                 ),
               ],
@@ -489,27 +455,34 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
 
                       final statusType = _showHistory
                           ? StatusBadgeType.synced
-                          : (item.isDiscrepancy
-                              ? StatusBadgeType.misplaced
-                              : (item.isOutOfStock
-                                  ? StatusBadgeType.lowStock
-                                  : (item.isLowStock
+                          : (item.isUnreconciledAnomaly
+                              ? StatusBadgeType.alert
+                              : (item.isDiscrepancy
+                                  ? StatusBadgeType.misplaced
+                                  : (item.isOutOfStock
                                       ? StatusBadgeType.lowStock
-                                      : StatusBadgeType.good)));
+                                      : (item.isLowStock
+                                          ? StatusBadgeType.lowStock
+                                          : StatusBadgeType.good))));
 
                       final statusLabel = _showHistory
                           ? 'Resolved'
-                          : (item.isDiscrepancy
-                              ? 'Discrepancy'
-                              : (item.isOutOfStock
-                                  ? 'Out of Stock'
-                                  : (item.isLowStock
-                                      ? 'Low Stock'
-                                      : 'System Alert')));
+                          : (item.isUnreconciledAnomaly
+                              ? 'Anomaly'
+                              : (item.isDiscrepancy
+                                  ? 'Discrepancy'
+                                  : (item.isOutOfStock
+                                      ? 'Out of Stock'
+                                      : (item.isLowStock
+                                          ? 'Low Stock'
+                                          : 'System Alert'))));
 
                       String? secondaryBadgeLabel;
                       Color? secondaryBadgeColor;
-                      if (!_showHistory && item.isDiscrepancy) {
+                      if (!_showHistory && item.isUnreconciledAnomaly) {
+                        secondaryBadgeLabel = 'Unreconciled';
+                        secondaryBadgeColor = AppColors.statusBlue;
+                      } else if (!_showHistory && item.isDiscrepancy) {
                         if (item.isOutOfStock) {
                           secondaryBadgeLabel = 'Out of Stock';
                           secondaryBadgeColor = AppColors.statusRed;
@@ -519,23 +492,17 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                         }
                       }
 
-                      final bool showRecordSale = !_showHistory &&
-                          item.isDiscrepancy &&
-                          item.isDeficit &&
-                          item.perfumeCode.isNotEmpty;
+                      final bool isDiscrepancyCard = item.isDiscrepancy && item.perfumeCode.isNotEmpty;
 
-                      final bool showManuallyCheckRestock = !_showHistory &&
-                          item.isDiscrepancy &&
-                          item.isSurplus &&
-                          item.perfumeCode.isNotEmpty;
-
-                      final String actionLabel =
-                          (item.isDiscrepancy || item.isOutOfStock || item.isLowStock)
+                      final String actionLabel = isDiscrepancyCard
+                          ? 'Take Action'
+                          : (item.isOutOfStock || item.isLowStock)
                               ? 'Verify Restock'
                               : 'Inspect Camera View';
 
-                      final String? secondaryActionLabel =
-                          (item.isDiscrepancy || item.isOutOfStock || item.isLowStock)
+                      final String? secondaryActionLabel = isDiscrepancyCard
+                          ? null
+                          : (item.isOutOfStock || item.isLowStock)
                               ? 'Restock Order'
                               : null;
 
@@ -554,71 +521,32 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                           perfumeCode: item.perfumeCode,
                           stockCount: item.stockCount,
                           isHistory: _showHistory,
-                          showRecordSale: showRecordSale,
-                          showManuallyCheckRestock: showManuallyCheckRestock,
-                          onRecordSale: () async {
-                            final code = item.perfumeCode.trim();
-                            final sqlite = ref.read(sqliteServiceProvider);
-                            var product = await sqlite.getProductByCode(code);
-                            if (product == null) {
-                              final allProducts =
-                                  ref.read(masterProductsProvider).valueOrNull ?? [];
-                              product = allProducts
-                                  .where((p) => p.perfumeCode.trim() == code)
-                                  .firstOrNull;
-                            }
-                            product ??= CatalogSeedData.products
-                                .where((p) => p.perfumeCode.trim() == code)
-                                .firstOrNull;
-                            product ??= ProductModel(
-                              id: 'prod_$code',
-                              perfumeCode: code,
-                              name: SqliteService.getPerfumeFullName(code),
-                              bottleSize: code.endsWith('1') ? '100ml' : '50ml',
-                            );
-                            if (context.mounted) {
-                              final recorded = await RecordSaleDialog.show(
-                                context,
-                                initialProduct: product,
-                                branch: branch,
-                                isLocked: true,
-                              );
-                              if (recorded == true) {
-                                final ids = item.alerts.map((al) => al.id).toList();
-                                await sqlite.markAllAlertsRead(ids, branch);
-                                ref.invalidate(liveAlertsProvider(branch));
-                                ref.invalidate(resolvedAlertsHistoryProvider(branch));
-                                ref.invalidate(dashboardStatsProvider(branch));
-                                ref.invalidate(liveInventoryProvider(branch));
-                              }
-                            }
-                          },
-                          onManuallyCheckRestock: () async {
-                            final code = item.perfumeCode.trim();
-                            await SqliteService.instance.confirmSurplusRestock(
-                              perfumeCode: code,
-                              branch: branch,
-                              detectedCount: item.stockCount,
-                            );
-                            ref.invalidate(liveAlertsProvider(branch));
-                            ref.invalidate(resolvedAlertsHistoryProvider(branch));
-                            ref.invalidate(dashboardStatsProvider(branch));
-                            ref.invalidate(liveInventoryProvider(branch));
-                            ref.invalidate(stockMovementLogsProvider(branch));
-                            if (context.mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text(
-                                    'Restock confirmed for $code. Ledger synchronized.',
-                                  ),
-                                  backgroundColor: AppColors.statusGreen,
-                                ),
-                              );
-                            }
-                          },
+                          isDiscrepancyCard: isDiscrepancyCard,
                           actionLabel: actionLabel,
                           onAction: () async {
-                            if (item.isDiscrepancy || item.isOutOfStock || item.isLowStock) {
+                            if (isDiscrepancyCard) {
+                              final code = item.perfumeCode.trim();
+                              final initialType = item.isDeficit
+                                  ? StockMovementType.sale
+                                  : (item.isSurplus
+                                      ? StockMovementType.restock
+                                      : StockMovementType.sale);
+
+                              await StockMovementHubDialog.show(
+                                context,
+                                initialPerfumeCode: code,
+                                initialType: initialType,
+                                fromDeficitDiscrepancy: item.isDeficit,
+                                maxDeficitQty: item.isDeficit ? item.deficitQty : null,
+                                fromSurplusDiscrepancy: item.isSurplus,
+                                maxSurplusQty: item.isSurplus ? item.surplusQty : null,
+                              );
+
+                              ref.invalidate(liveAlertsProvider(branch));
+                              ref.invalidate(resolvedAlertsHistoryProvider(branch));
+                              ref.invalidate(dashboardStatsProvider(branch));
+                              ref.invalidate(liveInventoryProvider(branch));
+                            } else if (item.isOutOfStock || item.isLowStock) {
                               await ScanWorkflowDialog.show(
                                 context,
                                 isTargetedVerification: true,
@@ -636,18 +564,6 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                           onSecondaryAction: secondaryActionLabel != null
                               ? () => context.push(AppRoutePaths.createRestock)
                               : null,
-                          onDismiss: _showHistory
-                              ? null
-                              : () async {
-                                  final ids = item.alerts.map((al) => al.id).toList();
-                                  await SqliteService.instance.markAllAlertsRead(
-                                    ids,
-                                    branch,
-                                  );
-                                  ref.invalidate(liveAlertsProvider(branch));
-                                  ref.invalidate(resolvedAlertsHistoryProvider(branch));
-                                  ref.invalidate(dashboardStatsProvider(branch));
-                                },
                         ),
                       );
                     },
@@ -791,15 +707,11 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
     String perfumeCode = '',
     int? stockCount,
     bool isHistory = false,
-    bool showRecordSale = false,
-    bool showManuallyCheckRestock = false,
-    VoidCallback? onRecordSale,
-    VoidCallback? onManuallyCheckRestock,
+    bool isDiscrepancyCard = false,
     required String actionLabel,
     required VoidCallback onAction,
     String? secondaryActionLabel,
     VoidCallback? onSecondaryAction,
-    VoidCallback? onDismiss,
   }) {
     Color accentColor;
     if (isHistory) {
@@ -1010,63 +922,9 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                         ),
                       ),
                       const SizedBox(width: 16),
-                      // Action buttons with touch target (min 44-48dp)
-                      if (showRecordSale && onRecordSale != null && hasPerfumeCode && !isHistory) ...[
-                        SizedBox(
-                          height: 44,
-                          child: ElevatedButton.icon(
-                            onPressed: onRecordSale,
-                            icon: const Icon(
-                              Icons.point_of_sale_rounded,
-                              size: 18,
-                            ),
-                            label: const Text('Record Sale'),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: AppColors.statusGreen,
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 16,
-                              ),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                              textStyle: const TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                      ],
-                      if (showManuallyCheckRestock && onManuallyCheckRestock != null && !isHistory) ...[
-                        SizedBox(
-                          height: 44,
-                          child: ElevatedButton.icon(
-                            onPressed: onManuallyCheckRestock,
-                            icon: const Icon(
-                              Icons.check_circle_outline_rounded,
-                              size: 18,
-                            ),
-                            label: const Text('Manually Check Restock'),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: AppColors.brandAccent,
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 16,
-                              ),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                              textStyle: const TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                      ],
+
+
+                      // Optional Secondary Action for non-discrepancy alerts (e.g. Restock Order)
                       if (secondaryActionLabel != null && onSecondaryAction != null && !isHistory) ...[
                         SizedBox(
                           height: 44,
@@ -1091,41 +949,30 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                         ),
                         const SizedBox(width: 10),
                       ],
-                      if (onDismiss != null && !isHistory) ...[
-                        Tooltip(
-                          message: 'Mark as Resolved',
-                          child: SizedBox(
-                            height: 44,
-                            width: 44,
-                            child: OutlinedButton(
-                              onPressed: onDismiss,
-                              style: OutlinedButton.styleFrom(
-                                padding: EdgeInsets.zero,
-                                side: BorderSide(color: context.borderColor),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
-                              ),
-                              child: const Icon(
-                                Icons.check_rounded,
-                                color: AppColors.statusGreen,
-                                size: 22,
-                              ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                      ],
+
+                      // Primary Action button ('Take Action' for discrepancy, 'Verify Restock' / 'Inspect Camera View' for others)
                       if (!isHistory) ...[
                         SizedBox(
                           height: 44,
-                          child: ElevatedButton(
+                          child: ElevatedButton.icon(
+                            key: Key('btn_action_${perfumeCode.trim()}'),
                             onPressed: onAction,
+                            icon: Icon(
+                              isDiscrepancyCard
+                                  ? Icons.swap_horiz_rounded
+                                  : (statusType == StatusBadgeType.misplaced
+                                      ? Icons.videocam_rounded
+                                      : Icons.qr_code_scanner_rounded),
+                              size: 18,
+                            ),
+                            label: Text(actionLabel),
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: (statusType == StatusBadgeType.misplaced)
-                                  ? AppColors.statusOrange
-                                  : AppColors.brandAccent,
-                              foregroundColor: Colors.white,
+                              backgroundColor: isDiscrepancyCard
+                                  ? AppColors.brandGold
+                                  : (statusType == StatusBadgeType.misplaced
+                                      ? AppColors.statusOrange
+                                      : AppColors.brandAccent),
+                              foregroundColor: isDiscrepancyCard ? Colors.black : Colors.white,
                               padding: const EdgeInsets.symmetric(horizontal: 16),
                               textStyle: const TextStyle(
                                 fontSize: 13,
@@ -1135,7 +982,6 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                                 borderRadius: BorderRadius.circular(10),
                               ),
                             ),
-                            child: Text(actionLabel),
                           ),
                         ),
                       ],

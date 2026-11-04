@@ -675,7 +675,7 @@ void main() {
       final updatedInv = await SqliteService.instance.getInventoryRecord('AD1', testBranch);
       expect(updatedInv, isNotNull);
       expect(updatedInv!.recorded, equals(5));
-      expect(updatedInv.detected, equals(2)); // camera detected invariant preserved
+      expect(updatedInv.detected, equals(5)); // per R3 restock aligns detected = newRecorded to prevent false discrepancy
 
       // Verify restock record was created
       final restocks = await SqliteService.instance.getRestockRecords(testBranch);

@@ -8,6 +8,7 @@ class InventoryEventModel {
   final String shelfArea;
   final String branch;
   final int quantity;
+  final String reason;
   final DateTime timestamp;
   final String syncStatus; // 'synced', 'pending'
 
@@ -19,6 +20,7 @@ class InventoryEventModel {
     required this.shelfArea,
     required this.branch,
     required this.quantity,
+    this.reason = '',
     DateTime? timestamp,
     this.syncStatus = 'synced',
   }) : timestamp = timestamp ?? DateTime.now();
@@ -54,6 +56,7 @@ class InventoryEventModel {
           map['shelfArea'] as String? ?? map['shelf_area'] as String? ?? '',
       branch: map['branch'] as String? ?? 'San Pablo',
       quantity: (map['quantity'] as num?)?.toInt() ?? 1,
+      reason: map['reason'] as String? ?? '',
       timestamp: parsedDate,
       syncStatus:
           map['syncStatus'] as String? ??
@@ -72,6 +75,7 @@ class InventoryEventModel {
       'shelfArea': shelfArea,
       'branch': branch,
       'quantity': quantity,
+      'reason': reason,
       'timestamp': timestamp.millisecondsSinceEpoch,
       'syncStatus': syncStatus,
     };
@@ -87,6 +91,7 @@ class InventoryEventModel {
       'shelf_area': shelfArea,
       'branch': branch,
       'quantity': quantity,
+      'reason': reason,
       'timestamp': timestamp.toIso8601String(),
       'sync_status': syncStatus,
     };

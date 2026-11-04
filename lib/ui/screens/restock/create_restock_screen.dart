@@ -156,15 +156,15 @@ class _CreateRestockScreenState extends ConsumerState<CreateRestockScreen> {
 
       // 3. Immediately increment SQLite inventory_records for this branch & product
       // Invariant: Recorded stock per slot MUST NEVER exceed max physical capacity (clamp to 5).
-      // Invariant: Detected stock MUST NEVER increment on invoice creation (only updated by camera feed).
+      // Invariant: Restock places bottles directly on shelf; update both recorded and detected (detected = newRecorded),
+      // setting status = 'normal' to prevent instant false discrepancy alerts.
       final existing = await SqliteService.instance.getInventoryRecord(
         product.perfumeCode,
         targetBranch,
       );
       if (existing != null) {
         final newRecorded = (existing.recorded + _restockQty).clamp(0, 5);
-        final currentDetected = existing.detected.clamp(0, 5);
-        final hasDiscrepancy = currentDetected != newRecorded;
+        final currentDetected = newRecorded;
         final updated = InventoryRecordModel(
           id: existing.id,
           perfumeCode: existing.perfumeCode,
@@ -174,7 +174,7 @@ class _CreateRestockScreenState extends ConsumerState<CreateRestockScreen> {
           shelf: existing.shelf,
           recorded: newRecorded,
           detected: currentDetected,
-          status: hasDiscrepancy ? 'needs_review' : 'normal',
+          status: 'normal',
           misplacementDetails: existing.misplacementDetails,
           lastUpdated: now,
           price: existing.price,
@@ -182,8 +182,7 @@ class _CreateRestockScreenState extends ConsumerState<CreateRestockScreen> {
         await SqliteService.instance.upsertInventoryRecord(updated);
       } else {
         final newRecorded = _restockQty.clamp(0, 5);
-        const currentDetected = 0;
-        final hasDiscrepancy = currentDetected != newRecorded;
+        final currentDetected = newRecorded;
         final newRecord = InventoryRecordModel(
           id: 'inv_${now.millisecondsSinceEpoch}',
           perfumeCode: product.perfumeCode,
@@ -193,7 +192,7 @@ class _CreateRestockScreenState extends ConsumerState<CreateRestockScreen> {
           shelf: shelf,
           recorded: newRecorded,
           detected: currentDetected,
-          status: hasDiscrepancy ? 'needs_review' : 'normal',
+          status: 'normal',
           misplacementDetails: '',
           lastUpdated: now,
           price: product.price,
@@ -201,7 +200,7 @@ class _CreateRestockScreenState extends ConsumerState<CreateRestockScreen> {
         await SqliteService.instance.upsertInventoryRecord(newRecord);
       }
 
-      // 4. Clear active low stock / out of stock alerts for this perfume
+      // 4. Clear active low stock, out of stock, and discrepancy alerts for this perfume
       await SqliteService.instance.markStockAlertsReadForPerfume(
         product.perfumeCode,
         branch: targetBranch,

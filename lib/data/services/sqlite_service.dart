@@ -282,6 +282,15 @@ class SqliteService {
             "id LIKE 'test_%' OR id LIKE 'mock_%' OR perfumeCode IN ('A', 'B', 'C', 'D')",
       );
     } catch (_) {}
+
+    // Ensure inventory_events has a reason column
+    try {
+      final info = await db.rawQuery('PRAGMA table_info(inventory_events)');
+      final cols = info.map((r) => r['name'] as String).toSet();
+      if (!cols.contains('reason')) {
+        await db.execute('ALTER TABLE inventory_events ADD COLUMN reason TEXT DEFAULT ""');
+      }
+    } catch (_) {}
   }
 
   /// Consolidated single helper containing all 12 tables and 11 indexes (CREATE TABLE IF NOT EXISTS / CREATE INDEX IF NOT EXISTS)
@@ -352,6 +361,7 @@ class SqliteService {
         shelfArea TEXT NOT NULL,
         branch TEXT NOT NULL,
         quantity INTEGER NOT NULL DEFAULT 1,
+        reason TEXT DEFAULT '',
         timestamp INTEGER NOT NULL,
         syncStatus TEXT NOT NULL DEFAULT 'synced'
       )
@@ -1613,6 +1623,24 @@ class SqliteService {
       }
     }
 
+    // Query active unread discrepancy alerts for the targeted slots
+    final Set<String> activeDiscrepancyCodes = {};
+    if (productDetectedCounts.isNotEmpty) {
+      final placeholders =
+          List.filled(productDetectedCounts.keys.length, '?').join(',');
+      final activeAlertRows = await db.query(
+        'alerts',
+        columns: ['perfumeCode'],
+        where:
+            'type = ? AND isRead = 0 AND perfumeCode IN ($placeholders) AND branch = ?',
+        whereArgs: ['discrepancy', ...productDetectedCounts.keys, effectiveBranch],
+      );
+      for (final row in activeAlertRows) {
+        final pCode = row['perfumeCode'] as String?;
+        if (pCode != null) activeDiscrepancyCodes.add(pCode);
+      }
+    }
+
     // 3. Batch update SQLite ONLY for active targeted slots
     final batch = db.batch();
 
@@ -1687,11 +1715,32 @@ class SqliteService {
           conflictAlgorithm: ConflictAlgorithm.replace,
         );
       } else if (!hasDiscrepancy || isSeasonalOff) {
-        batch.delete(
-          'alerts',
-          where: 'type = ? AND perfumeCode = ? AND branch = ?',
-          whereArgs: ['discrepancy', code, effectiveBranch],
-        );
+        // If an active unread discrepancy alert was logged for this slot and the physical count
+        // returned to recorded count without staff taking action/resolving it, do NOT silently
+        // delete the alert! Doing so would erase revenue audit trails if a bottle was removed/sold
+        // and subsequently restocked without logging.
+        final hadActiveDiscrepancy = activeDiscrepancyCodes.contains(code);
+        if (!hadActiveDiscrepancy || isSeasonalOff) {
+          batch.delete(
+            'alerts',
+            where: 'type = ? AND perfumeCode = ? AND branch = ?',
+            whereArgs: ['discrepancy', code, effectiveBranch],
+          );
+        } else {
+          // Flag as Unreconciled Discrepancy anomaly: count recovered to recorded count,
+          // but previous movement has not been logged in ledger.
+          final pName = getPerfumeFullName(code);
+          batch.update(
+            'alerts',
+            {
+              'title': 'Unreconciled Discrepancy (Anomaly)',
+              'desc':
+                  'Slot $code ($pName): Physical shelf count returned to $detectedCount bottle(s), but previous deficit was not logged in ledger. Please verify if sold & restocked or returned.',
+            },
+            where: 'type = ? AND perfumeCode = ? AND branch = ? AND isRead = 0',
+            whereArgs: ['discrepancy', code, effectiveBranch],
+          );
+        }
       }
 
       if (isSeasonalOff) {
@@ -2623,14 +2672,37 @@ class SqliteService {
       enqueueSync: enqueueSync,
     );
 
-    // 2. Clear any active low_stock or out_of_stock alerts for this fragrance (mark isRead = 1 for history auditing)
+    // 2. Clear any active alerts for this fragrance (mark isRead = 1 for history auditing)
     await db.update(
       'alerts',
       {'isRead': 1},
       where:
-          '(type = ? OR type = ? OR type = ?) AND perfumeCode = ? AND branch = ? AND isRead = 0',
-      whereArgs: ['low_stock', 'lowStock', 'out_of_stock', perfumeCode, effectiveBranch],
+          '(type = ? OR type = ? OR type = ? OR type = ?) AND perfumeCode = ? AND branch = ? AND isRead = 0',
+      whereArgs: ['low_stock', 'lowStock', 'out_of_stock', 'discrepancy', perfumeCode, effectiveBranch],
     );
+
+    // 2b. Synchronize ledger recorded count to verified restock quantity
+    final invRows = await db.query(
+      'inventory_records',
+      where: 'perfumeCode = ? AND branch = ?',
+      whereArgs: [perfumeCode, effectiveBranch],
+      limit: 1,
+    );
+    if (invRows.isNotEmpty) {
+      final curDet = (invRows.first['detected'] as num?)?.toInt() ?? verifiedQuantity;
+      final newRec = verifiedQuantity.clamp(0, 5);
+      await db.update(
+        'inventory_records',
+        {
+          'recorded': newRec,
+          'detected': curDet,
+          'status': newRec == curDet ? 'normal' : 'needs_review',
+          'lastUpdated': now.millisecondsSinceEpoch,
+        },
+        where: 'perfumeCode = ? AND branch = ?',
+        whereArgs: [perfumeCode, effectiveBranch],
+      );
+    }
 
     // 3. Log RESTOCKED event in inventory_events
     final pName = getPerfumeFullName(perfumeCode);
@@ -3886,6 +3958,7 @@ class SqliteService {
     required SaleRecordModel saleRecord,
     required InventoryEventModel event,
     required String branch,
+    bool isDeficitResolution = false,
     bool enqueueSync = true,
   }) async {
     final lowThreshold = await getLowStockThreshold();
@@ -3920,10 +3993,20 @@ class SqliteService {
       );
       if (invRows.isNotEmpty) {
         final current = InventoryRecordModel.fromMap(invRows.first);
-        final newDetected =
-            (current.detected - saleRecord.quantitySold).clamp(0, 100);
-        final newRecorded =
-            (current.recorded - saleRecord.quantitySold).clamp(0, 100);
+        final int newDetected;
+        final int newRecorded;
+        if (isDeficitResolution) {
+          // Deficit discrepancy resolution: reconcile recorded ledger with detected physical count,
+          // leaving detected untouched so on-shelf stock remains at the true physical bottle count.
+          newRecorded = current.detected.clamp(0, 5);
+          newDetected = current.detected.clamp(0, 5);
+        } else {
+          newDetected =
+              (current.detected - saleRecord.quantitySold).clamp(0, 100);
+          newRecorded =
+              (current.recorded - saleRecord.quantitySold).clamp(0, 100);
+        }
+
         final updatedInv = current.copyWith(
           detected: newDetected,
           recorded: newRecorded,
@@ -3937,6 +4020,16 @@ class SqliteService {
           updatedInv.toMap(),
           conflictAlgorithm: ConflictAlgorithm.replace,
         );
+
+        if (isDeficitResolution) {
+          // Auto-dismiss any active discrepancy alert for that slot
+          await txn.update(
+            'alerts',
+            {'isRead': 1},
+            where: 'type = ? AND perfumeCode = ? AND branch = ?',
+            whereArgs: ['discrepancy', saleRecord.perfumeCode, branch],
+          );
+        }
 
         if (enqueueSync) {
           await txn.insert('sync_queue', {
@@ -3988,6 +4081,417 @@ class SqliteService {
             'Sale recorded: ${saleRecord.quantitySold}x ${saleRecord.productName} (${saleRecord.bottleSize}) for ₱${saleRecord.totalAmount.toStringAsFixed(2)}.',
         user: saleRecord.soldBy,
         branch: saleRecord.branch,
+        enqueueSync: enqueueSync,
+      );
+    }
+  }
+
+  /// Records a customer return & refund transaction.
+  /// When [isResellable] is true: increments recorded and detected counts (clamped to 5) and logs RETURN_RESTOCKED.
+  /// When [isResellable] is false: writes off bottle with no shelf restock and logs refund/damage event.
+  /// Always inserts a negative sale transaction to offset gross revenue.
+  Future<void> recordCustomerReturnRefund({
+    required String perfumeCode,
+    required String productName,
+    required String bottleSize,
+    required int quantity,
+    required double unitPrice,
+    required bool isResellable,
+    required String authorizedBy,
+    String? branch,
+    bool enqueueSync = true,
+  }) async {
+    final effectiveBranch = branch ?? await getBranchName();
+    final lowThreshold = await getLowStockThreshold();
+    final db = await database;
+    final now = DateTime.now();
+    final refundAmount = -(unitPrice * quantity);
+
+    await db.transaction((txn) async {
+      // 1. Insert negative sale record for refund financial accounting
+      final saleId = 'refund_${now.millisecondsSinceEpoch}';
+      final refundSale = SaleRecordModel(
+        id: saleId,
+        perfumeCode: perfumeCode,
+        productName: productName,
+        bottleSize: bottleSize,
+        quantitySold: quantity,
+        unitPrice: unitPrice,
+        totalAmount: refundAmount,
+        branch: effectiveBranch,
+        soldBy: authorizedBy,
+        soldAt: now,
+        syncStatus: 'synced',
+      );
+      await txn.insert(
+        'sales_records',
+        refundSale.toMap(),
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+
+      // 2. Insert inventory event
+      final eventId = 'evt_return_${now.millisecondsSinceEpoch}';
+      final eventType = isResellable ? 'RETURN_RESTOCKED' : 'DAMAGE_WRITEOFF';
+      final reason = isResellable
+          ? 'Customer Return Resellable'
+          : 'Customer Return Damaged';
+      final invEvent = InventoryEventModel(
+        id: eventId,
+        eventType: eventType,
+        productName: productName,
+        perfumeCode: perfumeCode,
+        shelfArea: 'Layer ${perfumeCode.isNotEmpty ? perfumeCode[0] : 'A'}',
+        branch: effectiveBranch,
+        quantity: quantity,
+        reason: reason,
+        timestamp: now,
+        syncStatus: 'synced',
+      );
+      await txn.insert(
+        'inventory_events',
+        invEvent.toMap(),
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+
+      // 3. Update inventory record if resellable
+      final invRows = await txn.query(
+        'inventory_records',
+        where: 'perfumeCode = ? AND branch = ?',
+        whereArgs: [perfumeCode, effectiveBranch],
+      );
+      if (invRows.isNotEmpty) {
+        final current = InventoryRecordModel.fromMap(invRows.first);
+        if (isResellable) {
+          final newRecorded = (current.recorded + quantity).clamp(0, 5);
+          final newDetected = (current.detected + quantity).clamp(0, 5);
+          final updated = current.copyWith(
+            recorded: newRecorded,
+            detected: newDetected,
+            status: newDetected == 0
+                ? 'out_of_stock'
+                : (newDetected <= lowThreshold ? 'low' : 'normal'),
+            lastUpdated: now,
+          );
+          await txn.insert(
+            'inventory_records',
+            updated.toMap(),
+            conflictAlgorithm: ConflictAlgorithm.replace,
+          );
+
+          if (enqueueSync) {
+            await txn.insert('sync_queue', {
+              'id': 'sync_inv_${updated.id}',
+              'pendingEventId': updated.id,
+              'targetCollection': 'inventory_records',
+              'operation': 'UPSERT',
+              'payload': jsonEncode(updated.toMap()),
+              'retryCount': 0,
+              'status': 'pending',
+              'branch': updated.branch,
+              'createdAt': now.millisecondsSinceEpoch,
+            }, conflictAlgorithm: ConflictAlgorithm.replace);
+          }
+        }
+      }
+
+      if (enqueueSync) {
+        await txn.insert('sync_queue', {
+          'id': 'sync_sale_$saleId',
+          'pendingEventId': saleId,
+          'targetCollection': 'sales_records',
+          'operation': 'UPSERT',
+          'payload': jsonEncode(refundSale.toMap()),
+          'retryCount': 0,
+          'status': 'pending',
+          'branch': effectiveBranch,
+          'createdAt': now.millisecondsSinceEpoch,
+        }, conflictAlgorithm: ConflictAlgorithm.replace);
+
+        await txn.insert('sync_queue', {
+          'id': 'sync_evt_$eventId',
+          'pendingEventId': eventId,
+          'targetCollection': 'inventory_events',
+          'operation': 'UPSERT',
+          'payload': jsonEncode(invEvent.toMap()),
+          'retryCount': 0,
+          'status': 'pending',
+          'branch': effectiveBranch,
+          'createdAt': now.millisecondsSinceEpoch,
+        }, conflictAlgorithm: ConflictAlgorithm.replace);
+      }
+    });
+
+    if (enqueueSync) {
+      await logActivity(
+        type: 'CUSTOMER_REFUND',
+        description:
+            'Customer refund processed: $quantity x $productName ($bottleSize) authorized by $authorizedBy. Condition: ${isResellable ? 'Resellable' : 'Damaged'}. Amount: -₱${(unitPrice * quantity).toStringAsFixed(2)}.',
+        user: authorizedBy,
+        branch: effectiveBranch,
+        enqueueSync: enqueueSync,
+      );
+    }
+  }
+
+  /// Records a damaged fragrance bottle write-off.
+  /// Supports strictly 3 cause categories: 'Broken Bottle', 'Leaking / Evaporated', 'Defective Atomizer / Cap'.
+  Future<void> recordDamagedWriteOff({
+    required String perfumeCode,
+    required String productName,
+    required String bottleSize,
+    required int quantity,
+    required String reasonCategory,
+    required String authorizedBy,
+    bool isDeficitResolution = false,
+    String? branch,
+    bool enqueueSync = true,
+  }) async {
+    const validReasons = {
+      'Broken Bottle',
+      'Leaking / Evaporated',
+      'Defective Atomizer / Cap',
+    };
+    if (!validReasons.contains(reasonCategory)) {
+      throw ArgumentError(
+        'Invalid damage reason category: "$reasonCategory". Must be one of: ${validReasons.join(', ')}.',
+      );
+    }
+
+    final effectiveBranch = branch ?? await getBranchName();
+    final lowThreshold = await getLowStockThreshold();
+    final db = await database;
+    final now = DateTime.now();
+
+    await db.transaction((txn) async {
+      // 1. Insert inventory event
+      final eventId = 'evt_damage_${now.millisecondsSinceEpoch}';
+      final invEvent = InventoryEventModel(
+        id: eventId,
+        eventType: 'DAMAGE_WRITEOFF',
+        productName: productName,
+        perfumeCode: perfumeCode,
+        shelfArea: 'Layer ${perfumeCode.isNotEmpty ? perfumeCode[0] : 'A'}',
+        branch: effectiveBranch,
+        quantity: quantity,
+        reason: reasonCategory,
+        timestamp: now,
+        syncStatus: 'synced',
+      );
+      await txn.insert(
+        'inventory_events',
+        invEvent.toMap(),
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+
+      // 2. Deduct inventory record
+      final invRows = await txn.query(
+        'inventory_records',
+        where: 'perfumeCode = ? AND branch = ?',
+        whereArgs: [perfumeCode, effectiveBranch],
+      );
+      if (invRows.isNotEmpty) {
+        final current = InventoryRecordModel.fromMap(invRows.first);
+        final int newRecorded;
+        final int newDetected;
+        if (isDeficitResolution) {
+          // Reconciling deficit: align recorded to detected without reducing detected again
+          newRecorded = current.detected.clamp(0, 5);
+          newDetected = current.detected.clamp(0, 5);
+        } else {
+          newRecorded = (current.recorded - quantity).clamp(0, 5);
+          newDetected = (current.detected - quantity).clamp(0, 5);
+        }
+
+        final updated = current.copyWith(
+          recorded: newRecorded,
+          detected: newDetected,
+          status: newDetected == 0
+              ? 'out_of_stock'
+              : (newDetected <= lowThreshold ? 'low' : 'normal'),
+          lastUpdated: now,
+        );
+        await txn.insert(
+          'inventory_records',
+          updated.toMap(),
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+
+        if (isDeficitResolution) {
+          // Clear active discrepancy alert
+          await txn.update(
+            'alerts',
+            {'isRead': 1},
+            where: 'type = ? AND perfumeCode = ? AND branch = ?',
+            whereArgs: ['discrepancy', perfumeCode, effectiveBranch],
+          );
+        }
+
+        if (enqueueSync) {
+          await txn.insert('sync_queue', {
+            'id': 'sync_inv_${updated.id}',
+            'pendingEventId': updated.id,
+            'targetCollection': 'inventory_records',
+            'operation': 'UPSERT',
+            'payload': jsonEncode(updated.toMap()),
+            'retryCount': 0,
+            'status': 'pending',
+            'branch': updated.branch,
+            'createdAt': now.millisecondsSinceEpoch,
+          }, conflictAlgorithm: ConflictAlgorithm.replace);
+        }
+      }
+
+      if (enqueueSync) {
+        await txn.insert('sync_queue', {
+          'id': 'sync_evt_$eventId',
+          'pendingEventId': eventId,
+          'targetCollection': 'inventory_events',
+          'operation': 'UPSERT',
+          'payload': jsonEncode(invEvent.toMap()),
+          'retryCount': 0,
+          'status': 'pending',
+          'branch': effectiveBranch,
+          'createdAt': now.millisecondsSinceEpoch,
+        }, conflictAlgorithm: ConflictAlgorithm.replace);
+      }
+    });
+
+    if (enqueueSync) {
+      await logActivity(
+        type: 'DAMAGE_WRITEOFF',
+        description:
+            'Damaged fragrance write-off: $quantity x $productName ($bottleSize) authorized by $authorizedBy. Reason: $reasonCategory.',
+        user: authorizedBy,
+        branch: effectiveBranch,
+        enqueueSync: enqueueSync,
+      );
+    }
+  }
+
+  /// Commits a visual count audit directly to SQLite, aligning detected = count and recorded = count.
+  /// Automatically updates slot status to 'normal' (or low/oos) and clears active discrepancy alerts.
+  Future<void> recordVisualCountAudit({
+    required String perfumeCode,
+    required int countedBottles,
+    required String shelfArea,
+    required String auditor,
+    String? branch,
+    bool enqueueSync = true,
+  }) async {
+    final effectiveBranch = branch ?? await getBranchName();
+    final lowThreshold = await getLowStockThreshold();
+    final count = countedBottles.clamp(0, 5);
+    final db = await database;
+    final now = DateTime.now();
+    String resolvedProductName = getPerfumeFullName(perfumeCode);
+
+    await db.transaction((txn) async {
+      // 1. Update inventory record: set both detected = count and recorded = count
+      final invRows = await txn.query(
+        'inventory_records',
+        where: 'perfumeCode = ? AND branch = ?',
+        whereArgs: [perfumeCode, effectiveBranch],
+      );
+      if (invRows.isNotEmpty) {
+        final current = InventoryRecordModel.fromMap(invRows.first);
+        resolvedProductName = current.name;
+        final updated = current.copyWith(
+          recorded: count,
+          detected: count,
+          status: count == 0
+              ? 'out_of_stock'
+              : (count <= lowThreshold ? 'low' : 'normal'),
+          lastUpdated: now,
+        );
+        await txn.insert(
+          'inventory_records',
+          updated.toMap(),
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+
+        if (enqueueSync) {
+          await txn.insert('sync_queue', {
+            'id': 'sync_inv_${updated.id}',
+            'pendingEventId': updated.id,
+            'targetCollection': 'inventory_records',
+            'operation': 'UPSERT',
+            'payload': jsonEncode(updated.toMap()),
+            'retryCount': 0,
+            'status': 'pending',
+            'branch': updated.branch,
+            'createdAt': now.millisecondsSinceEpoch,
+          }, conflictAlgorithm: ConflictAlgorithm.replace);
+        }
+      }
+
+      // 2. Clear active discrepancy alerts
+      await txn.update(
+        'alerts',
+        {'isRead': 1},
+        where: 'type = ? AND perfumeCode = ? AND branch = ?',
+        whereArgs: ['discrepancy', perfumeCode, effectiveBranch],
+      );
+
+      // If count > lowThreshold, also clear low_stock and out_of_stock alerts
+      if (count > lowThreshold) {
+        await txn.update(
+          'alerts',
+          {'isRead': 1},
+          where:
+              '(type = ? OR type = ? OR type = ? OR type = ?) AND perfumeCode = ? AND branch = ?',
+          whereArgs: [
+            'low_stock',
+            'lowStock',
+            'out_of_stock',
+            'outOfStock',
+            perfumeCode,
+            effectiveBranch,
+          ],
+        );
+      }
+
+      // 3. Insert inventory event
+      final eventId = 'evt_audit_${now.millisecondsSinceEpoch}';
+      final invEvent = InventoryEventModel(
+        id: eventId,
+        eventType: 'AUDIT_VISUAL_COUNT',
+        productName: resolvedProductName,
+        perfumeCode: perfumeCode,
+        shelfArea: shelfArea,
+        branch: effectiveBranch,
+        quantity: count,
+        reason: 'Visual Count Audit by $auditor',
+        timestamp: now,
+        syncStatus: 'synced',
+      );
+      await txn.insert(
+        'inventory_events',
+        invEvent.toMap(),
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+
+      if (enqueueSync) {
+        await txn.insert('sync_queue', {
+          'id': 'sync_evt_$eventId',
+          'pendingEventId': eventId,
+          'targetCollection': 'inventory_events',
+          'operation': 'UPSERT',
+          'payload': jsonEncode(invEvent.toMap()),
+          'retryCount': 0,
+          'status': 'pending',
+          'branch': effectiveBranch,
+          'createdAt': now.millisecondsSinceEpoch,
+        }, conflictAlgorithm: ConflictAlgorithm.replace);
+      }
+    });
+
+    if (enqueueSync) {
+      await logActivity(
+        type: 'AUDIT_VISUAL_COUNT',
+        description:
+            'Visual shelf count audit for $perfumeCode ($resolvedProductName): count committed to $count bottles by $auditor. Discrepancy alerts resolved.',
+        user: auditor,
+        branch: effectiveBranch,
         enqueueSync: enqueueSync,
       );
     }

@@ -40,6 +40,7 @@ class _ReportViewerDialogState extends ConsumerState<ReportViewerDialog>
 
   String _searchQuery = '';
   String _selectedFilterChip = 'All'; // 'All', 'Low Stock', 'Layer A', 'Layer B', 'Layer C'
+  String _selectedSalesRange = 'today'; // 'today', 'yesterday', '7days', 'month'
 
   String? _serverUrl;
   bool _isServerStarting = true;
@@ -654,118 +655,183 @@ class _ReportViewerDialogState extends ConsumerState<ReportViewerDialog>
     return salesAsync.when(
       data: (allSales) {
         final now = DateTime.now();
-        final todaySales = allSales.where((s) =>
-            s.soldAt.year == now.year &&
-            s.soldAt.month == now.month &&
-            s.soldAt.day == now.day).toList();
+        List<SaleRecordModel> activeSales;
+        String rangeTitle;
+        switch (_selectedSalesRange) {
+          case 'yesterday':
+            final yesterday = now.subtract(const Duration(days: 1));
+            activeSales = allSales.where((s) =>
+                s.soldAt.year == yesterday.year &&
+                s.soldAt.month == yesterday.month &&
+                s.soldAt.day == yesterday.day).toList();
+            rangeTitle = 'YESTERDAY\'S REVENUE';
+            break;
+          case '7days':
+            final cutoff = now.subtract(const Duration(days: 7));
+            activeSales = allSales.where((s) => s.soldAt.isAfter(cutoff)).toList();
+            rangeTitle = '7-DAY REVENUE';
+            break;
+          case 'month':
+            activeSales = allSales.where((s) =>
+                s.soldAt.year == now.year &&
+                s.soldAt.month == now.month).toList();
+            rangeTitle = 'THIS MONTH\'S REVENUE';
+            break;
+          case 'today':
+          default:
+            activeSales = allSales.where((s) =>
+                s.soldAt.year == now.year &&
+                s.soldAt.month == now.month &&
+                s.soldAt.day == now.day).toList();
+            rangeTitle = 'TODAY\'S REVENUE';
+            break;
+        }
 
-        final totalRevenue = todaySales.fold<double>(
+        final totalRevenue = activeSales.fold<double>(
           0.0,
           (sum, s) => sum + s.totalAmount,
         );
-        final totalUnits = todaySales.fold<int>(
+        final totalUnits = activeSales.fold<int>(
           0,
           (sum, s) => sum + s.quantitySold,
         );
 
-        if (todaySales.isEmpty) {
-          return Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  Icons.receipt_long_outlined,
-                  size: 48,
-                  color: context.textSecondaryColor,
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  'No transactions recorded today.',
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.bold,
-                    color: context.textSecondaryColor,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'Sales recorded via "Record New Sale" will appear here in real time.',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: context.textSecondaryColor,
-                  ),
-                ),
-              ],
-            ),
-          );
-        }
-
         return Column(
           children: [
-            Expanded(
-              child: Scrollbar(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.all(16),
-                  child: Table(
-                    columnWidths: const {
-                      0: FlexColumnWidth(1.3), // Time
-                      1: FlexColumnWidth(3.2), // Fragrance Name
-                      2: FlexColumnWidth(1.0), // Size
-                      3: FlexColumnWidth(0.8), // Qty
-                      4: FlexColumnWidth(1.3), // Price
-                      5: FlexColumnWidth(1.5), // Total
-                    },
-                    border: TableBorder(
-                      horizontalInside: BorderSide(
-                        color: context.borderColor.withValues(alpha: 0.5),
-                        width: 0.8,
-                      ),
+            // Quick Period Filter Chips for Sales
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              color: context.surfaceElevatedColor,
+              child: Row(
+                children: [
+                  const Icon(Icons.date_range_rounded, size: 16, color: AppColors.brandGold),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Period:',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: context.textSecondaryColor,
                     ),
+                  ),
+                  const SizedBox(width: 10),
+                  _buildSalesFilterChip('today', 'Today'),
+                  const SizedBox(width: 6),
+                  _buildSalesFilterChip('yesterday', 'Yesterday'),
+                  const SizedBox(width: 6),
+                  _buildSalesFilterChip('7days', 'Last 7 Days'),
+                  const SizedBox(width: 6),
+                  _buildSalesFilterChip('month', 'This Month'),
+                ],
+              ),
+            ),
+            const Divider(height: 1),
+
+            if (activeSales.isEmpty)
+              Expanded(
+                child: Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      TableRow(
-                        decoration: BoxDecoration(
-                          color: context.surfaceElevatedColor,
-                        ),
-                        children: [
-                          _tableTh(context, 'Time'),
-                          _tableTh(context, 'Fragrance Name'),
-                          _tableTh(context, 'Size'),
-                          _tableTh(context, 'Qty'),
-                          _tableTh(context, 'Unit Price'),
-                          _tableTh(context, 'Total Amount'),
-                        ],
+                      Icon(
+                        Icons.receipt_long_outlined,
+                        size: 48,
+                        color: context.textSecondaryColor,
                       ),
-                      for (final s in todaySales)
-                        TableRow(
-                          children: [
-                            _tableTd(
-                              context,
-                              DateFormat('hh:mm a').format(s.soldAt),
-                            ),
-                            _tableTd(
-                              context,
-                              '${s.productName} (${s.perfumeCode})',
-                              isBold: true,
-                            ),
-                            _tableTd(context, s.bottleSize),
-                            _tableTd(context, '${s.quantitySold}'),
-                            _tableTd(
-                              context,
-                              '₱${s.unitPrice.toStringAsFixed(2)}',
-                            ),
-                            _tableTd(
-                              context,
-                              '₱${s.totalAmount.toStringAsFixed(2)}',
-                              isBold: true,
-                              color: AppColors.statusGreen,
-                            ),
-                          ],
+                      const SizedBox(height: 12),
+                      Text(
+                        'No transactions recorded for this period.',
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.bold,
+                          color: context.textSecondaryColor,
                         ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Sales recorded via "Record New Sale" will appear here in real time.',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: context.textSecondaryColor,
+                        ),
+                      ),
                     ],
                   ),
                 ),
+              )
+            else
+              Expanded(
+                child: Scrollbar(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.all(16),
+                    child: Table(
+                      columnWidths: const {
+                        0: FlexColumnWidth(1.3), // Time
+                        1: FlexColumnWidth(3.2), // Fragrance Name
+                        2: FlexColumnWidth(1.0), // Size
+                        3: FlexColumnWidth(0.8), // Qty
+                        4: FlexColumnWidth(1.3), // Price
+                        5: FlexColumnWidth(1.5), // Total
+                      },
+                      border: TableBorder(
+                        horizontalInside: BorderSide(
+                          color: context.borderColor.withValues(alpha: 0.5),
+                          width: 0.8,
+                        ),
+                      ),
+                      children: [
+                        TableRow(
+                          decoration: BoxDecoration(
+                            color: context.surfaceElevatedColor,
+                          ),
+                          children: [
+                            _tableTh(context, 'Time'),
+                            _tableTh(context, 'Fragrance Name'),
+                            _tableTh(context, 'Size'),
+                            _tableTh(context, 'Qty'),
+                            _tableTh(context, 'Unit Price'),
+                            _tableTh(context, 'Total Amount'),
+                          ],
+                        ),
+                        for (final s in activeSales)
+                          TableRow(
+                            children: [
+                              _tableTd(
+                                context,
+                                DateFormat('hh:mm a').format(s.soldAt),
+                              ),
+                              _tableTd(
+                                context,
+                                s.isRefund
+                                    ? '[REFUND] ${s.productName} (${s.perfumeCode})'
+                                    : '${s.productName} (${s.perfumeCode})',
+                                isBold: true,
+                                color: s.isRefund ? const Color(0xFFD97706) : null,
+                              ),
+                              _tableTd(context, s.bottleSize),
+                              _tableTd(context, '${s.quantitySold}'),
+                              _tableTd(
+                                context,
+                                '₱${s.unitPrice.toStringAsFixed(2)}',
+                              ),
+                              _tableTd(
+                                context,
+                                s.isRefund
+                                    ? '-₱${(-s.totalAmount).toStringAsFixed(2)}'
+                                    : '₱${s.totalAmount.toStringAsFixed(2)}',
+                                isBold: true,
+                                color: s.isRefund
+                                    ? const Color(0xFFD97706)
+                                    : AppColors.statusGreen,
+                              ),
+                            ],
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
               ),
-            ),
+
             // Footer summary
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
@@ -777,7 +843,7 @@ class _ReportViewerDialogState extends ConsumerState<ReportViewerDialog>
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(
-                    'TOTAL TRANSACTIONS: ${todaySales.length} ($totalUnits Bottles Sold)',
+                    'TOTAL TRANSACTIONS: ${activeSales.length} ($totalUnits Bottles Sold)',
                     style: const TextStyle(
                       fontWeight: FontWeight.bold,
                       fontSize: 13,
@@ -785,7 +851,7 @@ class _ReportViewerDialogState extends ConsumerState<ReportViewerDialog>
                     ),
                   ),
                   Text(
-                    'TODAY\'S REVENUE: ₱${NumberFormat('#,##0.00').format(totalRevenue)}',
+                    '$rangeTitle: ₱${NumberFormat('#,##0.00').format(totalRevenue)}',
                     style: const TextStyle(
                       fontWeight: FontWeight.bold,
                       fontSize: 13,
@@ -800,6 +866,34 @@ class _ReportViewerDialogState extends ConsumerState<ReportViewerDialog>
       },
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (e, _) => Center(child: Text('Error loading sales log: $e')),
+    );
+  }
+
+  Widget _buildSalesFilterChip(String key, String label) {
+    final isSelected = _selectedSalesRange == key;
+    return ChoiceChip(
+      label: Text(
+        label,
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+          color: isSelected ? AppColors.brandGold : context.textSecondaryColor,
+        ),
+      ),
+      selected: isSelected,
+      selectedColor: AppColors.brandGold.withValues(alpha: 0.2),
+      backgroundColor: context.surfaceColor,
+      side: BorderSide(
+        color: isSelected ? AppColors.brandGold : context.borderColor,
+      ),
+      showCheckmark: false,
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      visualDensity: VisualDensity.compact,
+      onSelected: (_) {
+        setState(() {
+          _selectedSalesRange = key;
+        });
+      },
     );
   }
 
@@ -933,6 +1027,33 @@ class _ReportViewerDialogState extends ConsumerState<ReportViewerDialog>
 
                     final isDamage = eventType == 'DAMAGE_WRITEOFF';
                     final isRestock = eventType == 'RESTOCKED';
+                    final isReturn = eventType == 'RETURN_RESTOCKED';
+                    final isAudit = eventType == 'AUDIT_VISUAL_COUNT';
+
+                    Color iconBg;
+                    Color iconColor;
+                    IconData iconData;
+                    if (isRestock) {
+                      iconBg = AppColors.statusGreen.withValues(alpha: 0.15);
+                      iconColor = AppColors.statusGreen;
+                      iconData = Icons.add_business_rounded;
+                    } else if (isDamage) {
+                      iconBg = AppColors.statusRed.withValues(alpha: 0.15);
+                      iconColor = AppColors.statusRed;
+                      iconData = Icons.delete_sweep_rounded;
+                    } else if (isReturn) {
+                      iconBg = const Color(0xFFD97706).withValues(alpha: 0.15);
+                      iconColor = const Color(0xFFD97706);
+                      iconData = Icons.keyboard_return_rounded;
+                    } else if (isAudit) {
+                      iconBg = AppColors.brandGold.withValues(alpha: 0.15);
+                      iconColor = AppColors.brandGold;
+                      iconData = Icons.pin_rounded;
+                    } else {
+                      iconBg = Colors.blue.withValues(alpha: 0.15);
+                      iconColor = Colors.blue;
+                      iconData = Icons.sync_alt_rounded;
+                    }
 
                     return ListTile(
                       dense: true,
@@ -943,22 +1064,12 @@ class _ReportViewerDialogState extends ConsumerState<ReportViewerDialog>
                       leading: Container(
                         padding: const EdgeInsets.all(8),
                         decoration: BoxDecoration(
-                          color: isRestock
-                              ? AppColors.statusGreen.withValues(alpha: 0.15)
-                              : (isDamage
-                                  ? AppColors.statusRed.withValues(alpha: 0.15)
-                                  : Colors.blue.withValues(alpha: 0.15)),
+                          color: iconBg,
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Icon(
-                          isRestock
-                              ? Icons.add_business_rounded
-                              : (isDamage
-                                  ? Icons.delete_sweep_rounded
-                                  : Icons.sync_alt_rounded),
-                          color: isRestock
-                              ? AppColors.statusGreen
-                              : (isDamage ? AppColors.statusRed : Colors.blue),
+                          iconData,
+                          color: iconColor,
                           size: 18,
                         ),
                       ),
@@ -967,7 +1078,7 @@ class _ReportViewerDialogState extends ConsumerState<ReportViewerDialog>
                         style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
                       ),
                       subtitle: Text(
-                        'Shelf: ${ev.shelfArea} • Quantity: $qty bottle(s)',
+                        'Shelf: ${ev.shelfArea} • Quantity: $qty bottle(s)${ev.reason.isNotEmpty ? " • Reason: ${ev.reason}" : ""}',
                         style: TextStyle(
                           fontSize: 11,
                           color: context.textSecondaryColor,

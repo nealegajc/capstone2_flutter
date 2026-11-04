@@ -137,16 +137,16 @@ class CameraHardwareService extends ChangeNotifier {
   double _currentFps = 0.0;
   int _frameCount = 0;
   DateTime? _fpsStartTime;
-  CameraQualityMode _currentQualityMode = CameraQualityMode.qhd1440p;
+  CameraQualityMode _currentQualityMode = CameraQualityMode.hd720p;
   String? _activeDeviceNode;
   int _activeCameraId = 1;
 
-  /// Automatic fallback ladder: 2K QHD -> 1080p FHD -> 720p HD -> 480p SD
+  /// Streaming fallback ladder optimized for live monitoring: 720p HD -> 1080p FHD -> 480p SD -> 2K QHD
   static const List<CameraQualityMode> fallbackLadder = [
-    CameraQualityMode.qhd1440p,
-    CameraQualityMode.fhd1080p,
     CameraQualityMode.hd720p,
+    CameraQualityMode.fhd1080p,
     CameraQualityMode.vga480p,
+    CameraQualityMode.qhd1440p,
   ];
 
   /// Sensor node resolution cache so resolved sensor resolutions are reused without startup lag
@@ -280,10 +280,10 @@ class CameraHardwareService extends ChangeNotifier {
 
     _activeDeviceNode = targetDevice;
 
-    // Use cached resolved quality if available, or requested qualityMode, or default to 2K QHD
+    // Use requested qualityMode, or cached resolved quality if available, or default to 720p HD (Ultra Smooth Zero Lag)
     final modeToUse = qualityMode ??
         _deviceResolvedQuality[targetDevice] ??
-        CameraQualityMode.qhd1440p;
+        CameraQualityMode.hd720p;
     final ladderIndex = fallbackLadder.indexOf(modeToUse);
 
     // Check if target device is a SunplusIT/Rapoo/Jieli camera or has hardware MJPEG
@@ -932,9 +932,8 @@ class CameraHardwareService extends ChangeNotifier {
         matchedDevice?.name.toLowerCase().contains('composite') == true;
 
     List<String> captureArgs;
-    final quality = mode ??
-        _deviceResolvedQuality[targetDevice] ??
-        CameraQualityMode.qhd1440p;
+    // Snapshot and inventory scans strictly target 2K QHD (2560x1440) max detail
+    final quality = mode ?? CameraQualityMode.qhd1440p;
     if (isHardwareMjpeg) {
       captureArgs = [
         '-y',

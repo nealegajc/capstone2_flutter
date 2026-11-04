@@ -29,13 +29,90 @@ class _WifiConnectionDialogState extends ConsumerState<WifiConnectionDialog> {
   bool _isConnecting = false;
   bool _isTestingReachability = false;
   ReachabilityResult? _reachabilityResult;
+  bool _isDisconnecting = false;
+  bool _isTogglingWifi = false;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(networkServiceProvider).checkWifiRadio();
       ref.read(networkServiceProvider).scanNetworks();
     });
+  }
+
+  Future<void> _handleToggleWifi(bool value) async {
+    setState(() => _isTogglingWifi = true);
+    await ref.read(networkServiceProvider).setWifiEnabled(value);
+    if (mounted) {
+      setState(() => _isTogglingWifi = false);
+    }
+  }
+
+  Future<void> _confirmAndDisconnect(String ssid) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: context.surfaceColor,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            const Icon(Icons.link_off_rounded, color: AppColors.statusRed),
+            const SizedBox(width: 10),
+            Text(
+              'Disconnect Wi-Fi',
+              style: TextStyle(
+                color: context.textPrimaryColor,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
+        content: Text(
+          'Are you sure you want to disconnect from "$ssid"?',
+          style: TextStyle(color: context.textSecondaryColor),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: Text(
+              'Cancel',
+              style: TextStyle(color: context.textSecondaryColor),
+            ),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.statusRed,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Disconnect'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && mounted) {
+      setState(() => _isDisconnecting = true);
+      final success = await ref.read(networkServiceProvider).disconnectWifi();
+      if (mounted) {
+        setState(() => _isDisconnecting = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              success
+                  ? 'Disconnected from "$ssid".'
+                  : 'Failed to disconnect from "$ssid".',
+            ),
+            backgroundColor:
+                success ? AppColors.statusGreen : AppColors.statusRed,
+          ),
+        );
+      }
+    }
   }
 
   @override
@@ -195,6 +272,34 @@ class _WifiConnectionDialogState extends ConsumerState<WifiConnectionDialog> {
                 ),
                 Row(
                   children: [
+                    Tooltip(
+                      message: netStatus.isWifiEnabled
+                          ? 'Turn off Wi-Fi'
+                          : 'Turn on Wi-Fi',
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            netStatus.isWifiEnabled
+                                ? Icons.wifi
+                                : Icons.wifi_off,
+                            size: 18,
+                            color: netStatus.isWifiEnabled
+                                ? AppColors.brandAccent
+                                : context.textMutedColor,
+                          ),
+                          const SizedBox(width: 4),
+                          Switch(
+                            value: netStatus.isWifiEnabled,
+                            activeThumbColor: AppColors.brandAccent,
+                            onChanged: _isTogglingWifi
+                                ? null
+                                : (val) => _handleToggleWifi(val),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 4),
                     IconButton(
                       icon: isScanning
                           ? const SizedBox(
@@ -207,10 +312,11 @@ class _WifiConnectionDialogState extends ConsumerState<WifiConnectionDialog> {
                             )
                           : const Icon(Icons.refresh_rounded),
                       tooltip: 'Rescan Wi-Fi Networks',
-                      onPressed: isScanning
+                      onPressed: (!netStatus.isWifiEnabled || isScanning)
                           ? null
-                          : () =>
-                                ref.read(networkServiceProvider).scanNetworks(),
+                          : () => ref
+                              .read(networkServiceProvider)
+                              .scanNetworks(forceRescan: true),
                     ),
                     IconButton(
                       onPressed: () => Navigator.of(context).pop(),
@@ -268,27 +374,78 @@ class _WifiConnectionDialogState extends ConsumerState<WifiConnectionDialog> {
                           ),
                         ],
                       ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 2,
-                        ),
-                        decoration: BoxDecoration(
-                          color: netStatus.isOnline
-                              ? AppColors.statusGreenBg
-                              : AppColors.statusRedBg,
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Text(
-                          netStatus.isOnline ? 'Online' : 'Offline',
-                          style: TextStyle(
-                            color: netStatus.isOnline
-                                ? AppColors.statusGreen
-                                : AppColors.statusRed,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w800,
+                      Row(
+                        children: [
+                          if (netStatus.isWifi &&
+                              netStatus.currentSsid != null) ...[
+                            OutlinedButton.icon(
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: AppColors.statusRed,
+                                side: BorderSide(
+                                  color: AppColors.statusRed.withValues(
+                                    alpha: 0.5,
+                                  ),
+                                ),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 4,
+                                ),
+                                visualDensity: VisualDensity.compact,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                              ),
+                              onPressed: _isDisconnecting
+                                  ? null
+                                  : () => _confirmAndDisconnect(
+                                        netStatus.currentSsid!,
+                                      ),
+                              icon: _isDisconnecting
+                                  ? const SizedBox(
+                                      width: 12,
+                                      height: 12,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: AppColors.statusRed,
+                                      ),
+                                    )
+                                  : const Icon(
+                                      Icons.link_off_rounded,
+                                      size: 14,
+                                    ),
+                              label: const Text(
+                                'Disconnect',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                          ],
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: netStatus.isOnline
+                                  ? AppColors.statusGreenBg
+                                  : AppColors.statusRedBg,
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              netStatus.isOnline ? 'Online' : 'Offline',
+                              style: TextStyle(
+                                color: netStatus.isOnline
+                                    ? AppColors.statusGreen
+                                    : AppColors.statusRed,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
                           ),
-                        ),
+                        ],
                       ),
                     ],
                   ),
@@ -376,7 +533,8 @@ class _WifiConnectionDialogState extends ConsumerState<WifiConnectionDialog> {
                     letterSpacing: 1.0,
                   ),
                 ),
-                if (netStatus.availableNetworks.isNotEmpty)
+                if (netStatus.isWifiEnabled &&
+                    netStatus.availableNetworks.isNotEmpty)
                   Text(
                     '${netStatus.availableNetworks.length} Networks Found',
                     style: TextStyle(
@@ -391,7 +549,59 @@ class _WifiConnectionDialogState extends ConsumerState<WifiConnectionDialog> {
 
             // Actual Scanned Network List (Zero Hardcoded Fallbacks)
             Flexible(
-              child: isScanning && netStatus.availableNetworks.isEmpty
+              child: !netStatus.isWifiEnabled
+                  ? Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(32),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.wifi_off_rounded,
+                              size: 48,
+                              color: context.textMutedColor,
+                            ),
+                            const SizedBox(height: 12),
+                            Text(
+                              'Wi-Fi is turned off',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
+                                color: context.textPrimaryColor,
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              'Enable Wi-Fi to view and connect to nearby networks.',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: context.textSecondaryColor,
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            ElevatedButton.icon(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: AppColors.brandAccent,
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                  vertical: 10,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                              ),
+                              onPressed: _isTogglingWifi
+                                  ? null
+                                  : () => _handleToggleWifi(true),
+                              icon: const Icon(Icons.wifi, size: 16),
+                              label: const Text('Turn On Wi-Fi'),
+                            ),
+                          ],
+                        ),
+                      ),
+                    )
+                  : isScanning && netStatus.availableNetworks.isEmpty
                   ? Center(
                       child: Padding(
                         padding: const EdgeInsets.all(32),
@@ -459,13 +669,13 @@ class _WifiConnectionDialogState extends ConsumerState<WifiConnectionDialog> {
                                 !isEth &&
                                 net.ssid == netStatus.currentSsid);
 
-                        return Container(
-                          decoration: BoxDecoration(
-                            color: isSelected
-                                ? AppColors.brandAccent.withValues(alpha: 0.12)
-                                : context.surfaceElevatedColor,
+                        return Material(
+                          color: isSelected
+                              ? AppColors.brandAccent.withValues(alpha: 0.12)
+                              : context.surfaceElevatedColor,
+                          shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(14),
-                            border: Border.all(
+                            side: BorderSide(
                               color: isSelected
                                   ? AppColors.brandAccent
                                   : (isCurrentlyConnected
@@ -476,6 +686,7 @@ class _WifiConnectionDialogState extends ConsumerState<WifiConnectionDialog> {
                               width: isSelected ? 1.5 : 1,
                             ),
                           ),
+                          clipBehavior: Clip.antiAlias,
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [

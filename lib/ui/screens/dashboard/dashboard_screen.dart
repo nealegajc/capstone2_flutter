@@ -428,113 +428,117 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                     ? ((stats.totalInStock / capacity) * 100).clamp(0, 100).toInt()
                     : 0;
 
-                return Row(
-                  children: [
-                    // Card 1: Total In Stock
-                    _buildSummaryCard(
-                      context: context,
-                      title: 'Total In Stock',
-                      count: '${stats.totalInStock}',
-                      badgeText: '$fillPercent% Full',
-                      badgeColor: AppColors.statusGreen,
-                      subtitle:
-                          '${stats.activeItemCount} Fragrances • $capacity Shelf Cap',
-                      color: AppColors.statusGreen,
-                      bgColor: AppColors.statusGreenBg,
-                      icon: Icons.inventory_2_rounded,
-                      tooltip:
-                          'Tap to view full stock inventory and slot assignments',
-                      onTap: () => context.push(AppRoutePaths.inventory),
-                    ),
-                    const SizedBox(width: 16),
+                return SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  physics: const BouncingScrollPhysics(),
+                  child: Row(
+                    children: [
+                      // Card 1: Total In Stock
+                      _buildSummaryCard(
+                        context: context,
+                        title: 'Total In Stock',
+                        count: '${stats.totalInStock}',
+                        badgeText: '$fillPercent% Full',
+                        badgeColor: AppColors.statusGreen,
+                        subtitle:
+                            '${stats.activeItemCount} Fragrances • $capacity Shelf Cap',
+                        color: AppColors.statusGreen,
+                        bgColor: AppColors.statusGreenBg,
+                        icon: Icons.inventory_2_rounded,
+                        tooltip:
+                            'Tap to view full stock inventory and slot assignments',
+                        onTap: () => context.push(AppRoutePaths.inventory),
+                      ),
+                      const SizedBox(width: 16),
 
-                    // Card 2: Low Stock Alerts
-                    _buildSummaryCard(
-                      context: context,
-                      title: 'Low Stock Alerts',
-                      count: '${stats.lowStockCount}',
-                      badgeText:
-                          stats.lowStockCount > 0 ? 'Restock' : 'Optimal',
-                      badgeColor: stats.lowStockCount > 0
-                          ? AppColors.statusOrange
-                          : AppColors.statusGreen,
-                      subtitle: stats.lowStockCount > 0
-                          ? '${stats.lowStockCount} items need restocking (≤ 2 bottles)'
-                          : 'All fragrances well-stocked (> 2 bottles)',
-                      color: stats.lowStockCount > 0
-                          ? AppColors.statusOrange
-                          : AppColors.statusGreen,
-                      bgColor: stats.lowStockCount > 0
-                          ? AppColors.statusOrangeBg
-                          : AppColors.statusGreenBg,
-                      icon: stats.lowStockCount > 0
-                          ? Icons.warning_amber_rounded
-                          : Icons.check_circle_outline_rounded,
-                      tooltip: 'Tap to filter alerts by low stock items',
-                      onTap: () =>
-                          context.push('${AppRoutePaths.alerts}?filter=low_stock'),
-                    ),
-                    const SizedBox(width: 16),
+                      // Card 2: Low Stock Alerts
+                      _buildSummaryCard(
+                        context: context,
+                        title: 'Low Stock Alerts',
+                        count: '${stats.lowStockCount}',
+                        badgeText:
+                            stats.lowStockCount > 0 ? 'Restock' : 'Optimal',
+                        badgeColor: stats.lowStockCount > 0
+                            ? AppColors.statusOrange
+                            : AppColors.statusGreen,
+                        subtitle: stats.lowStockCount > 0
+                            ? '${stats.lowStockCount} items need restocking (≤ 2 bottles)'
+                            : 'All fragrances well-stocked (> 2 bottles)',
+                        color: stats.lowStockCount > 0
+                            ? AppColors.statusOrange
+                            : AppColors.statusGreen,
+                        bgColor: stats.lowStockCount > 0
+                            ? AppColors.statusOrangeBg
+                            : AppColors.statusGreenBg,
+                        icon: stats.lowStockCount > 0
+                            ? Icons.warning_amber_rounded
+                            : Icons.check_circle_outline_rounded,
+                        tooltip: 'Tap to filter alerts by low stock items',
+                        onTap: () =>
+                            context.push('${AppRoutePaths.alerts}?filter=low_stock'),
+                      ),
+                      const SizedBox(width: 16),
 
-                    // Card 3: Restock Needed / Out of Stock
-                    _buildSummaryCard(
-                      context: context,
-                      title: 'Restock Needed',
-                      count: '${stats.restockNeededCount}',
-                      badgeText: stats.restockNeededCount > 0
-                          ? (stats.outOfStockCount > 0
-                              ? '${stats.outOfStockCount} Out'
-                              : 'Refill')
-                          : 'Optimal',
-                      badgeColor: stats.restockNeededCount > 0
-                          ? AppColors.statusRed
-                          : AppColors.statusGreen,
-                      subtitle: stats.restockNeededCount > 0
-                          ? (stats.outOfStockCount > 0
-                              ? '${stats.outOfStockCount} out of stock, ${stats.restockNeededCount - stats.outOfStockCount} low'
-                              : '${stats.restockNeededCount} items requiring replenishment')
-                          : 'All shelf slots fully replenished',
-                      color: stats.restockNeededCount > 0
-                          ? AppColors.statusRed
-                          : AppColors.statusGreen,
-                      bgColor: stats.restockNeededCount > 0
-                          ? AppColors.statusRedBg
-                          : AppColors.statusGreenBg,
-                      icon: stats.restockNeededCount > 0
-                          ? Icons.inventory_rounded
-                          : Icons.task_alt_rounded,
-                      tooltip: 'Tap to view inventory restock list',
-                      onTap: () => context.push(AppRoutePaths.inventory),
-                    ),
-                    const SizedBox(width: 16),
+                      // Card 3: Restock Needed / Out of Stock
+                      _buildSummaryCard(
+                        context: context,
+                        title: 'Restock Needed',
+                        count: '${stats.restockNeededCount}',
+                        badgeText: stats.restockNeededCount > 0
+                            ? (stats.outOfStockCount > 0
+                                ? '${stats.outOfStockCount} Out'
+                                : 'Refill')
+                            : 'Optimal',
+                        badgeColor: stats.restockNeededCount > 0
+                            ? AppColors.statusRed
+                            : AppColors.statusGreen,
+                        subtitle: stats.restockNeededCount > 0
+                            ? (stats.outOfStockCount > 0
+                                ? '${stats.outOfStockCount} out of stock, ${stats.restockNeededCount - stats.outOfStockCount} low'
+                                : '${stats.restockNeededCount} items requiring replenishment')
+                            : 'All shelf slots fully replenished',
+                        color: stats.restockNeededCount > 0
+                            ? AppColors.statusRed
+                            : AppColors.statusGreen,
+                        bgColor: stats.restockNeededCount > 0
+                            ? AppColors.statusRedBg
+                            : AppColors.statusGreenBg,
+                        icon: stats.restockNeededCount > 0
+                            ? Icons.inventory_rounded
+                            : Icons.task_alt_rounded,
+                        tooltip: 'Tap to view inventory restock list',
+                        onTap: () => context.push(AppRoutePaths.inventory),
+                      ),
+                      const SizedBox(width: 16),
 
-                    // Card 4: Shelf Cameras
-                    _buildSummaryCard(
-                      context: context,
-                      title: 'Shelf Cameras',
-                      count: '${detectedCams.length} / 6',
-                      badgeText: detectedCams.length == 6
-                          ? '6 / 6 Connected'
-                          : '${detectedCams.length} / 6 Active',
-                      badgeColor: detectedCams.isNotEmpty
-                          ? AppColors.statusGreen
-                          : AppColors.statusOrange,
-                      subtitle: detectedCams.length == 6
-                          ? 'All 6 shelf cameras online & ready'
-                          : (detectedCams.isNotEmpty
-                              ? '${detectedCams.length} camera${detectedCams.length == 1 ? '' : 's'} connected'
-                              : '6 cameras in standby mode'),
-                      color: detectedCams.isNotEmpty
-                          ? AppColors.statusGreen
-                          : AppColors.statusOrange,
-                      bgColor: detectedCams.isNotEmpty
-                          ? AppColors.statusGreenBg
-                          : AppColors.statusOrangeBg,
-                      icon: Icons.videocam_rounded,
-                      tooltip: 'Tap to open shelf camera monitor and controls',
-                      onTap: () => context.push(AppRoutePaths.cameraMonitor),
-                    ),
-                  ],
+                      // Card 4: Shelf Cameras
+                      _buildSummaryCard(
+                        context: context,
+                        title: 'Shelf Cameras',
+                        count: '${detectedCams.length} / 6',
+                        badgeText: detectedCams.length == 6
+                            ? '6 / 6 Connected'
+                            : '${detectedCams.length} / 6 Active',
+                        badgeColor: detectedCams.isNotEmpty
+                            ? AppColors.statusGreen
+                            : AppColors.statusOrange,
+                        subtitle: detectedCams.length == 6
+                            ? 'All 6 shelf cameras online & ready'
+                            : (detectedCams.isNotEmpty
+                                ? '${detectedCams.length} camera${detectedCams.length == 1 ? '' : 's'} connected'
+                                : '6 cameras in standby mode'),
+                        color: detectedCams.isNotEmpty
+                            ? AppColors.statusGreen
+                            : AppColors.statusOrange,
+                        bgColor: detectedCams.isNotEmpty
+                            ? AppColors.statusGreenBg
+                            : AppColors.statusOrangeBg,
+                        icon: Icons.videocam_rounded,
+                        tooltip: 'Tap to open shelf camera monitor and controls',
+                        onTap: () => context.push(AppRoutePaths.cameraMonitor),
+                      ),
+                    ],
+                  ),
                 );
               },
               loading: () => const Center(child: CircularProgressIndicator()),
@@ -728,239 +732,56 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                 ),
                 const SizedBox(width: 20),
 
-                // Right Column: Active Alerts Feed
+                // Right Column: Active Alerts Feed & Recent System Activity
                 Expanded(
                   flex: 5,
-                  child: Card(
-                    color: context.surfaceColor,
-                    child: Padding(
-                      padding: const EdgeInsets.all(20),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  child: Column(
+                    children: [
+                      // 1. Recent Shelf Alerts
+                      Card(
+                        color: context.surfaceColor,
+                        child: Padding(
+                          padding: const EdgeInsets.all(20),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(
-                                'Recent Shelf Alerts',
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w800,
-                                  color: context.textPrimaryColor,
-                                ),
-                              ),
-                              TextButton.icon(
-                                onPressed: () =>
-                                    context.push(AppRoutePaths.alerts),
-                                icon: const Icon(
-                                  Icons.arrow_forward_rounded,
-                                  size: 16,
-                                ),
-                                label: const Text(
-                                  'View All',
-                                  style: TextStyle(fontSize: 12),
-                                ),
-                              ),
-                            ],
-                          ),
-                          Divider(height: 24, color: context.borderColor),
-                          alertsAsync.when(
-                            data: (alerts) {
-                              if (alerts.isEmpty) {
-                                return Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    vertical: 24,
-                                  ),
-                                  child: Center(
-                                    child: Text(
-                                      'No active shelf alerts. All 6 camera zones optimal.',
-                                      style: TextStyle(
-                                        color: context.textMutedColor,
-                                        fontSize: 13,
-                                      ),
+                              Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Text(
+                                    'Recent Shelf Alerts',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w800,
+                                      color: context.textPrimaryColor,
                                     ),
                                   ),
-                                );
-                              }
-                              return Column(
-                                children: alerts.take(3).map((a) {
-                                  return Padding(
-                                    padding: const EdgeInsets.symmetric(
-                                      vertical: 4,
+                                  TextButton.icon(
+                                    onPressed: () =>
+                                        context.push(AppRoutePaths.alerts),
+                                    icon: const Icon(
+                                      Icons.arrow_forward_rounded,
+                                      size: 16,
                                     ),
-                                    child: _buildAlertItem(
-                                      context: context,
-                                      product: a.title,
-                                      location:
-                                          'Cap: ${a.perfumeCode.isNotEmpty ? a.perfumeCode : "Shelf"}',
-                                      issue: a.desc,
-                                      badgeType: a.type == 'low_stock'
-                                          ? StatusBadgeType.lowStock
-                                          : (a.type == 'misplaced'
-                                                ? StatusBadgeType.misplaced
-                                                : StatusBadgeType.good),
-                                      onTap: () =>
-                                          context.push(AppRoutePaths.alerts),
+                                    label: const Text(
+                                      'View All',
+                                      style: TextStyle(fontSize: 12),
                                     ),
-                                  );
-                                }).toList(),
-                              );
-                            },
-                            loading: () => const Center(
-                              child: CircularProgressIndicator(),
-                            ),
-                            error: (_, _) => Text(
-                              'Unable to load alerts.',
-                              style: TextStyle(
-                                color: context.textSecondaryColor,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 20),
-
-            // 5. Quick Operations & Live Store Activity Hub
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Left: Quick Kiosk Operations
-                Expanded(
-                  flex: 6,
-                  child: Card(
-                    color: context.surfaceColor,
-                    child: Padding(
-                      padding: const EdgeInsets.all(20),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text(
-                                'Quick Kiosk Operations',
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w800,
-                                  color: context.textPrimaryColor,
-                                ),
-                              ),
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 8,
-                                  vertical: 3,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: AppColors.brandAccent.withValues(
-                                    alpha: 0.12,
                                   ),
-                                  borderRadius: BorderRadius.circular(6),
-                                ),
-                                child: const Text(
-                                  'QUICK ACTIONS',
-                                  style: TextStyle(
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.w800,
-                                    color: AppColors.brandAccent,
-                                    letterSpacing: 0.6,
-                                  ),
-                                ),
+                                ],
                               ),
-                            ],
-                          ),
-                          Divider(height: 24, color: context.borderColor),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: _buildQuickActionButton(
-                                  context: context,
-                                  title: 'Log Restock',
-                                  subtitle: 'Incoming bottle delivery',
-                                  icon: Icons.move_to_inbox_rounded,
-                                  color: AppColors.statusGreen,
-                                  onTap: () =>
-                                      context.push(AppRoutePaths.createRestock),
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: _buildQuickActionButton(
-                                  context: context,
-                                  title: 'View & Share Reports',
-                                  subtitle: 'Wi-Fi phone QR & stock tables',
-                                  icon: Icons.open_in_new_rounded,
-                                  color: AppColors.brandGold,
-                                  onTap: () => ReportViewerDialog.show(
-                                    context,
-                                    branch: branch,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 20),
-
-                // Right: Recent System Activity
-                Expanded(
-                  flex: 5,
-                  child: Card(
-                    color: context.surfaceColor,
-                    child: Padding(
-                      padding: const EdgeInsets.all(20),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text(
-                                'Recent System Activity',
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w800,
-                                  color: context.textPrimaryColor,
-                                ),
-                              ),
-                              TextButton.icon(
-                                onPressed: () =>
-                                    context.push(AppRoutePaths.activityLogs),
-                                icon: const Icon(
-                                  Icons.arrow_forward_rounded,
-                                  size: 16,
-                                ),
-                                label: const Text(
-                                  'View All',
-                                  style: TextStyle(fontSize: 12),
-                                ),
-                              ),
-                            ],
-                          ),
-                          Divider(height: 24, color: context.borderColor),
-                          Consumer(
-                            builder: (context, ref, _) {
-                              final logsAsync = ref.watch(
-                                systemActivityLogsProvider(branch),
-                              );
-                              return logsAsync.when(
-                                data: (logs) {
-                                  if (logs.isEmpty) {
+                              Divider(height: 24, color: context.borderColor),
+                              alertsAsync.when(
+                                data: (alerts) {
+                                  if (alerts.isEmpty) {
                                     return Padding(
                                       padding: const EdgeInsets.symmetric(
                                         vertical: 24,
                                       ),
                                       child: Center(
                                         child: Text(
-                                          'No recent system activity recorded.',
+                                          'No active shelf alerts. All 6 camera zones optimal.',
                                           style: TextStyle(
                                             color: context.textMutedColor,
                                             fontSize: 13,
@@ -969,174 +790,208 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                                       ),
                                     );
                                   }
-                                  final recent = logs.take(3).toList();
                                   return Column(
-                                    children: [
-                                      for (
-                                        int i = 0;
-                                        i < recent.length;
-                                        i++
-                                      ) ...[
-                                        if (i > 0)
-                                          Divider(
-                                            height: 14,
-                                            color: context.borderColor
-                                                .withValues(alpha: 0.5),
-                                          ),
-                                        Row(
-                                          children: [
-                                            Container(
-                                              padding: const EdgeInsets.all(6),
-                                              decoration: BoxDecoration(
-                                                color: context
-                                                    .surfaceElevatedColor,
-                                                borderRadius:
-                                                    BorderRadius.circular(8),
-                                              ),
-                                              child: Icon(
-                                                recent[i].type.contains('SALE')
-                                                    ? Icons.payments_rounded
-                                                    : (recent[i].type.contains(
-                                                            'SYNC',
-                                                          )
-                                                          ? Icons
-                                                                .cloud_done_rounded
-                                                          : (recent[i].type
-                                                                    .contains(
-                                                                      'SCAN',
-                                                                    )
-                                                                ? Icons
-                                                                      .camera_alt_rounded
-                                                                : Icons
-                                                                      .info_outline_rounded)),
-                                                size: 16,
-                                                color: AppColors.brandAccent,
-                                              ),
-                                            ),
-                                            const SizedBox(width: 10),
-                                            Expanded(
-                                              child: Column(
-                                                crossAxisAlignment:
-                                                    CrossAxisAlignment.start,
-                                                children: [
-                                                  Text(
-                                                    recent[i].description,
-                                                    style: TextStyle(
-                                                      fontSize: 12.5,
-                                                      fontWeight:
-                                                          FontWeight.w600,
-                                                      color: context
-                                                          .textPrimaryColor,
-                                                    ),
-                                                    maxLines: 1,
-                                                    overflow:
-                                                        TextOverflow.ellipsis,
-                                                  ),
-                                                  Text(
-                                                    recent[i]
-                                                        .formattedTimestamp,
-                                                    style: TextStyle(
-                                                      fontSize: 11,
-                                                      color: context
-                                                          .textMutedColor,
-                                                    ),
-                                                  ),
-                                                ],
-                                              ),
-                                            ),
-                                          ],
+                                    children: alerts.take(3).map((a) {
+                                      return Padding(
+                                        padding: const EdgeInsets.symmetric(
+                                          vertical: 4,
                                         ),
-                                      ],
-                                    ],
+                                        child: _buildAlertItem(
+                                          context: context,
+                                          product: a.title,
+                                          location:
+                                              'Cap: ${a.perfumeCode.isNotEmpty ? a.perfumeCode : "Shelf"}',
+                                          issue: a.desc,
+                                          badgeType: a.type == 'low_stock'
+                                              ? StatusBadgeType.lowStock
+                                              : (a.type == 'misplaced'
+                                                    ? StatusBadgeType.misplaced
+                                                    : StatusBadgeType.good),
+                                          onTap: () => context
+                                              .push(AppRoutePaths.alerts),
+                                        ),
+                                      );
+                                    }).toList(),
                                   );
                                 },
                                 loading: () => const Center(
                                   child: CircularProgressIndicator(),
                                 ),
                                 error: (_, _) => Text(
-                                  'Unable to load logs.',
+                                  'Unable to load alerts.',
                                   style: TextStyle(
                                     color: context.textSecondaryColor,
                                   ),
                                 ),
-                              );
-                            },
+                              ),
+                            ],
                           ),
-                        ],
+                        ),
                       ),
-                    ),
+                      const SizedBox(height: 16),
+
+                      // 2. Recent System Activity
+                      Card(
+                        color: context.surfaceColor,
+                        child: Padding(
+                          padding: const EdgeInsets.all(20),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Text(
+                                    'Recent System Activity',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w800,
+                                      color: context.textPrimaryColor,
+                                    ),
+                                  ),
+                                  TextButton.icon(
+                                    onPressed: () => context
+                                        .push(AppRoutePaths.activityLogs),
+                                    icon: const Icon(
+                                      Icons.arrow_forward_rounded,
+                                      size: 16,
+                                    ),
+                                    label: const Text(
+                                      'View All',
+                                      style: TextStyle(fontSize: 12),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              Divider(height: 24, color: context.borderColor),
+                              Consumer(
+                                builder: (context, ref, _) {
+                                  final logsAsync = ref.watch(
+                                    systemActivityLogsProvider(branch),
+                                  );
+                                  return logsAsync.when(
+                                    data: (logs) {
+                                      if (logs.isEmpty) {
+                                        return Padding(
+                                          padding: const EdgeInsets.symmetric(
+                                            vertical: 24,
+                                          ),
+                                          child: Center(
+                                            child: Text(
+                                              'No recent system activity recorded.',
+                                              style: TextStyle(
+                                                color: context.textMutedColor,
+                                                fontSize: 13,
+                                              ),
+                                            ),
+                                          ),
+                                        );
+                                      }
+                                      final recent = logs.take(3).toList();
+                                      return Column(
+                                        children: [
+                                          for (
+                                            int i = 0;
+                                            i < recent.length;
+                                            i++
+                                          ) ...[
+                                            if (i > 0)
+                                              Divider(
+                                                height: 14,
+                                                color: context.borderColor
+                                                    .withValues(alpha: 0.5),
+                                              ),
+                                            Row(
+                                              children: [
+                                                Container(
+                                                  padding:
+                                                      const EdgeInsets.all(6),
+                                                  decoration: BoxDecoration(
+                                                    color: context
+                                                        .surfaceElevatedColor,
+                                                    borderRadius:
+                                                      BorderRadius.circular(8),
+                                                  ),
+                                                  child: Icon(
+                                                    recent[i].type.contains('SALE')
+                                                        ? Icons.payments_rounded
+                                                        : (recent[i].type.contains(
+                                                                'SYNC',
+                                                              )
+                                                              ? Icons
+                                                                    .cloud_done_rounded
+                                                              : (recent[i].type
+                                                                        .contains(
+                                                                          'SCAN',
+                                                                        )
+                                                                    ? Icons
+                                                                          .camera_alt_rounded
+                                                                    : Icons
+                                                                          .info_outline_rounded)),
+                                                    size: 16,
+                                                    color: AppColors.brandAccent,
+                                                  ),
+                                                ),
+                                                const SizedBox(width: 10),
+                                                Expanded(
+                                                  child: Column(
+                                                    crossAxisAlignment:
+                                                        CrossAxisAlignment.start,
+                                                    children: [
+                                                      Text(
+                                                        recent[i].description,
+                                                        style: TextStyle(
+                                                          fontSize: 12.5,
+                                                          fontWeight:
+                                                              FontWeight.w600,
+                                                          color: context
+                                                              .textPrimaryColor,
+                                                        ),
+                                                        maxLines: 1,
+                                                        overflow:
+                                                            TextOverflow.ellipsis,
+                                                      ),
+                                                      Text(
+                                                        recent[i]
+                                                            .formattedTimestamp,
+                                                        style: TextStyle(
+                                                          fontSize: 11,
+                                                          color: context
+                                                              .textMutedColor,
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ],
+                                        ],
+                                      );
+                                    },
+                                    loading: () => const Center(
+                                      child: CircularProgressIndicator(),
+                                    ),
+                                    error: (_, _) => Text(
+                                      'Unable to load logs.',
+                                      style: TextStyle(
+                                        color: context.textSecondaryColor,
+                                      ),
+                                    ),
+                                  );
+                                },
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],
             ),
           ],
-        ),
-      ),
-    );
-  }
-
-  static Widget _buildQuickActionButton({
-    required BuildContext context,
-    required String title,
-    required String subtitle,
-    required IconData icon,
-    required Color color,
-    required VoidCallback? onTap,
-  }) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
-        child: Container(
-          height: 64.0,
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-          decoration: BoxDecoration(
-            color: context.surfaceElevatedColor,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: color.withValues(alpha: 0.3)),
-          ),
-          child: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Icon(icon, color: color, size: 24),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      title,
-                      style: TextStyle(
-                        fontSize: 14.5,
-                        fontWeight: FontWeight.w800,
-                        color: context.textPrimaryColor,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    Text(
-                      subtitle,
-                      style: TextStyle(
-                        fontSize: 11.5,
-                        color: context.textMutedColor,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
         ),
       ),
     );
@@ -1415,7 +1270,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       ),
     );
 
-    return Expanded(
+    return SizedBox(
+      width: 270,
       child: Material(
         color: Colors.transparent,
         child: InkWell(
